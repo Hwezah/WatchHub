@@ -741,11 +741,8 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
-        Section("Extra trackers","Attach public trackers to bare magnet links so they resolve faster.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("On", settings.addTrackers, onClick = { set(settings.copy(addTrackers = true)) })
-                Chip("Off", !settings.addTrackers, onClick = { set(settings.copy(addTrackers = false)) })
-            }
+        ToggleSection("Extra trackers", "Attach public trackers to bare magnet links so they resolve faster.", settings.addTrackers) {
+            set(settings.copy(addTrackers = it))
         }
         }
 
@@ -906,16 +903,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
 
         if (page == "Home screen") Panel {
-        Section(
+        ToggleSection(
             "Built-in rows",
             "The app's own rows — genres from Cinemeta, IMDb charts, TMDB's picks for you, watch orders. Off, Home is " +
                 "only your setup: Continue Watching, My List and your addons' catalogues (Xperience, AIO…) in your addon order.",
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("On", settings.builtInHome, onClick = { set(settings.copy(builtInHome = true)) })
-                Chip("Off", !settings.builtInHome, onClick = { set(settings.copy(builtInHome = false)) })
-            }
-        }
+            settings.builtInHome,
+        ) { set(settings.copy(builtInHome = it)) }
         val addons by Addons.list.collectAsState()
         val withRows = addons.filter { a -> a.on && a.catalogs.any { !it.required } }
         Section(
@@ -930,9 +923,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     val shown = key !in settings.hiddenShelves
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${c.name} · ${com.torrentviewer.core.typeLabel(c.type)}", Modifier.weight(1f), style = Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Chip(if (shown) "Shown" else "Hidden", shown, onClick = {
-                            set(settings.copy(hiddenShelves = if (shown) settings.hiddenShelves + key else settings.hiddenShelves - key))
-                        }, compact = true)
+                        Toggle(shown, { on ->
+                            set(settings.copy(hiddenShelves = if (on) settings.hiddenShelves - key else settings.hiddenShelves + key))
+                        })
                     }
                 }
             }
@@ -1294,7 +1287,7 @@ private fun AddonCard(a: com.torrentviewer.core.Addon, first: Boolean, last: Boo
                 ) { Text("Uninstall", style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.muted)) }
             }
             Spacer(Modifier.width(8.dp))
-            Chip(if (a.on) "On" else "Off", a.on, onClick = { Addons.toggle(a.url) })
+            Toggle(a.on, { Addons.toggle(a.url) })
             if (!first) Tap({ Addons.move(a.url, -1) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_chevron_up, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
             if (!last) Tap({ Addons.move(a.url, 1) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_chevron_down, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
         }
@@ -1412,6 +1405,18 @@ private fun PrefRow(name: String, options: List<Pair<String, String>>, chosen: S
     Text(name, Modifier.padding(bottom = 8.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
     Row(Modifier.padding(bottom = 20.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { (value, label) -> Chip(label, chosen == value, onClick = { onPick(value) }) }
+    }
+}
+
+/** An on/off setting: its name and what it does on the left, the switch on the right. */
+@Composable
+private fun ToggleSection(title: String, hint: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, style = Type.title.copy(fontWeight = FontWeight.Bold))
+            Text(hint, Modifier.padding(top = 4.dp), style = Type.meta.copy(color = Ink.faint))
+        }
+        Toggle(checked, onChange)
     }
 }
 

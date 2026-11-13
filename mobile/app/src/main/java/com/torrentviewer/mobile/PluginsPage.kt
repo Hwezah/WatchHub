@@ -1,5 +1,9 @@
 package com.torrentviewer.mobile
 
+import com.torrentviewer.core.Spinner
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -109,6 +113,7 @@ private fun RepoCard(repo: RepositoryData, installed: List<PluginData>, changes:
     var offered by remember(repo.url) { mutableStateOf<List<PluginWrapper>?>(null) }
     var error by remember(repo.url) { mutableStateOf<String?>(null) }
     var query by rememberSaveable(repo.url) { mutableStateOf("") }
+    var kind by rememberSaveable(repo.url) { mutableStateOf<String?>(null) }
     val busy = remember { mutableStateOf(setOf<String>()) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(open) {
@@ -147,10 +152,24 @@ private fun RepoCard(repo: RepositoryData, installed: List<PluginData>, changes:
             offered == null -> Note("Reading ${repo.name}…", Modifier.padding(top = 14.dp))
             else -> {
                 val all = offered!!
-                Field(query, { query = it }, "Search ${all.size} plugins", Modifier.padding(top = 14.dp).fillMaxWidth(), leading = L.drawable.lucide_ic_search)
+                val have = all.count { CsPlugins.installedOf(it) != null }
+                Text(
+                    "Downloaded: $have  ·  Not downloaded: ${all.size - have}",
+                    Modifier.padding(top = 14.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp),
+                )
+                Field(query, { query = it }, "Search ${all.size} plugins", Modifier.padding(top = 10.dp).fillMaxWidth(), leading = L.drawable.lucide_ic_search)
+                // The kinds the plugins say they cover, as CloudStream's chips: Movie, Series, Anime…
+                val types = remember(all) { all.flatMap { it.plugin.tvTypes.orEmpty() }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key } }
+                if (types.isNotEmpty()) Row(
+                    Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    types.forEach { t -> Chip(typeName(t), kind == t, onClick = { kind = if (kind == t) null else t }, compact = true) }
+                }
                 val q = query.trim()
                 val shown = all.filter { w ->
-                    q.isEmpty() || listOfNotNull(w.plugin.name, w.plugin.description, w.plugin.language).any { it.contains(q, ignoreCase = true) }
+                    (kind == null || kind in w.plugin.tvTypes.orEmpty()) &&
+                        (q.isEmpty() || listOfNotNull(w.plugin.name, w.plugin.description, w.plugin.language).any { it.contains(q, ignoreCase = true) })
                 }.sortedBy { it.plugin.name.lowercase() }
                 if (shown.isEmpty()) Note("No plugin matches.", Modifier.padding(top = 12.dp))
                 // The installed list changing (or a plugin loading) re-reads each row's state.
@@ -160,46 +179,86 @@ private fun RepoCard(repo: RepositoryData, installed: List<PluginData>, changes:
     }
 }
 
-/** One plugin a repository offers: name, language and what it covers, and Install, Update or Installed. */
+/** "TvSeries" → "Series", "AsianDrama" → "Asian Drama": CloudStream's type names, read aloud. */
+private fun typeName(t: String) = when (t) {
+    "TvSeries" -> "Series"
+    "AnimeMovie" -> "Anime Movie"
+    "AsianDrama" -> "Asian Drama"
+    "NSFW" -> "NSFW"
+    else -> t.replace(Regex("([a-z])([A-Z])"), "$1 $2")
+}
+
+/** A plugin's language as a flag and a name, as CloudStream lists them: "hi" → 🇮🇳 Hindi. */
+private fun languageLabel(code: String?): String? {
+    val c = code?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+    val flag = when (c.substringBefore('-')) {
+        "en" -> "🇬🇧"; "hi", "ta", "te", "ml", "kn", "mr", "pa", "gu" -> "🇮🇳"; "bn" -> "🇧🇩"; "es" -> "🇪🇸"; "mx" -> "🇲🇽"
+        "fr" -> "🇫🇷"; "de" -> "🇩🇪"; "it" -> "🇮🇹"; "pt" -> "🇧🇷"; "pl" -> "🇵🇱"; "ru" -> "🇷🇺"; "tr" -> "🇹🇷"; "ar" -> "🇸🇦"
+        "id" -> "🇮🇩"; "zh" -> "🇨🇳"; "ja" -> "🇯🇵"; "ko" -> "🇰🇷"; "vi" -> "🇻🇳"; "th" -> "🇹🇭"; "tl" -> "🇵🇭"; "ur" -> "🇵🇰"
+        else -> "🌐"
+    }
+    val name = if (c == "mx") "Spanish" else java.util.Locale.forLanguageTag(c).getDisplayLanguage(java.util.Locale.ENGLISH).ifBlank { c.uppercase() }
+    return "$flag $name"
+}
+
+/**
+ * One plugin a repository offers, as CloudStream lists it: icon, name, language, version and size, what it
+ * says it does; on the right Install, or — installed — Update when there's a newer one, its settings, Remove.
+ */
 @Composable
 private fun OfferedRow(w: PluginWrapper, busy: androidx.compose.runtime.MutableState<Set<String>>, watch: Watch) {
     val p = w.plugin
     val have = CsPlugins.installedOf(w)
     val working = p.url in busy.value
     val scope = rememberCoroutineScope()
-    Row(Modifier.padding(top = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+    fun install() {
+        if (working) return
+        busy.value = busy.value + p.url
+        scope.launch {
+            runCatching { CsPlugins.install(w) }
+                .onSuccess { watch.notes.tryEmit("${if (have == null) "Installed" else "Updated"} ${p.name}") }
+                .onFailure { watch.notes.tryEmit(it.message ?: "Couldn't install ${p.name}") }
+            busy.value = busy.value - p.url
+        }
+    }
+    Row(Modifier.padding(top = 14.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(Ink.text.copy(alpha = 0.06f)), contentAlignment = Alignment.Center) {
+            Lc(L.drawable.lucide_ic_puzzle, tint = Ink.faint, size = 18.dp)
+            p.iconUrl?.takeIf { it.startsWith("http") }?.let { Artwork(it, p.name, Modifier.fillMaxSize(), fill = false) }
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp, end = 6.dp)) {
             Text(p.name, style = Type.body.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
             val facts = listOfNotNull(
-                p.language?.uppercase(),
-                p.tvTypes?.takeIf { it.isNotEmpty() }?.joinToString(", "),
-                "v${p.version}",
-                p.fileSize?.let(::bytes),
+                languageLabel(p.language), "v${p.version}", p.fileSize?.let(::bytes),
                 when (p.status) { 0 -> "down"; 2 -> "slow"; 3 -> "beta"; else -> null },
-            ).joinToString("  ·  ")
-            Text(facts, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            ).joinToString("   ")
+            Text(facts, style = Type.meta.copy(color = Ink.muted, fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
             p.description?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = Type.meta.copy(color = Ink.muted), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
-        Spacer(Modifier.width(10.dp))
-        val label = when {
-            working -> "…"
-            have == null -> "Install"
-            p.version > have.version -> "Update"
-            else -> "Installed"
-        }
-        Chip(label, have != null && label == "Installed", onClick = {
-            if (working || label == "Installed") return@Chip
-            busy.value = busy.value + p.url
-            scope.launch {
-                runCatching { CsPlugins.install(w) }
-                    .onSuccess { watch.notes.tryEmit("${if (have == null) "Installed" else "Updated"} ${p.name}") }
-                    .onFailure { watch.notes.tryEmit(it.message ?: "Couldn't install ${p.name}") }
-                busy.value = busy.value - p.url
+        when {
+            working -> Spinner(size = 22.dp, modifier = Modifier.padding(8.dp))
+            have == null -> RoundTap(L.drawable.lucide_ic_circle_arrow_down, ::install)
+            else -> {
+                if (p.version > have.version) RoundTap(L.drawable.lucide_ic_refresh_cw, ::install)
+                if (CsPlugins.loaded(have) && CsPlugins.settingsOf(have) != null) {
+                    RoundTap(L.drawable.lucide_ic_sliders_horizontal) { CsPlugins.openSettings(have)?.let { watch.notes.tryEmit(it) } }
+                }
+                RoundTap(L.drawable.lucide_ic_trash_2) {
+                    scope.launch {
+                        CsPlugins.uninstall(have)
+                        watch.notes.tryEmit("Removed ${p.name}")
+                    }
+                }
             }
-        }, compact = true)
+        }
     }
+}
+
+@Composable
+private fun RoundTap(icon: Int, onClick: () -> Unit) {
+    Tap(onClick, shape = androidx.compose.foundation.shape.CircleShape) { Lc(icon, Modifier.padding(8.dp), tint = Ink.text, size = 22.dp) }
 }
 
 /** An installed plugin: running (and how many sources it added), or the reason it didn't start; and Remove. */

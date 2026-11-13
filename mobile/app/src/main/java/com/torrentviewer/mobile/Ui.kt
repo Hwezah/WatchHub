@@ -2,6 +2,8 @@
 
 package com.torrentviewer.mobile
 
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.selection.toggleable
 import android.app.Activity
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -617,5 +619,23 @@ val PosterGrid = object : androidx.compose.foundation.lazy.grid.GridCells {
         else maxOf(4, (availableSize + spacing) / (120.dp.roundToPx() + spacing))
         val cells = availableSize - spacing * (count - 1)
         return List(count) { cells / count + if (it < cells % count) 1 else 0 }
+    }
+}
+
+/**
+ * An on/off setting: a flat pill with a round thumb and no outline — red with a dark thumb on the right
+ * when on, a quiet grey with a grey thumb on the left when off. A little smaller than Material's switch.
+ */
+@Composable
+fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val travel by androidx.compose.animation.core.animateDpAsState(if (checked) 18.dp else 0.dp, tween(160), label = "toggle")
+    val track by animateColorAsState(if (checked) Ink.accent else Ink.text.copy(alpha = 0.16f), tween(160), label = "track")
+    val thumb by animateColorAsState(if (checked) Color(0xFF141414) else Ink.muted, tween(160), label = "thumb")
+    Box(
+        modifier.size(width = 44.dp, height = 26.dp).clip(RoundedCornerShape(50)).background(track)
+            .toggleable(checked, remember { MutableInteractionSource() }, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange)
+            .padding(4.dp),
+    ) {
+        Box(Modifier.offset(x = travel).size(18.dp).clip(CircleShape).background(thumb))
     }
 }
