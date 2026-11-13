@@ -14,6 +14,37 @@ Guidance for working in this repository (a fork of Watchly).
 - No feature code without an agreed plan. The owner is a Next.js/TypeScript developer who is new
   to native Android, so explain Android-specific concepts briefly when they come up.
 
+## Direction: CloudStream plugins inside Watchly
+
+Decision: keep this native Kotlin app and its UI, and add a **CloudStream plugin host** so the app can load
+CloudStream extension repositories (repo.json → plugins.json → `.cs3` files, e.g. the `phisherrepo` shortcode).
+Plugins scrape sites on the device, with no addon server in between. Stremio addons stay as a second source.
+Both feed the same sources list.
+
+How it works (CloudStream's own approach, `app/.../plugins/PluginManager.kt` upstream):
+- A `.cs3` is a zip holding `classes.dex` and `manifest.json` (`pluginClassName`). It is loaded with
+  `PathClassLoader(file, appClassLoader)`, so the plugin calls classes **in our app** by their exact names.
+- Those classes come from CloudStream's `library` module (GPL-3.0, `com.lagradost.api`): `MainAPI`, `ExtractorApi`,
+  `loadExtractor`, NiceHttp `app`... Pin it to one upstream commit.
+- Plugins also reach into app-only classes, so a compat layer must provide them under the same package names.
+  In phisher's 86 plugins: `CommonActivity` and `CloudStreamApp` (all 86), `plugins.Plugin` (33),
+  `utils.DataStore` (14), `network.CloudflareKiller` (8), plus a few rarer ones.
+- A plugin is arbitrary code running with our permissions. Only add repos you trust, and say so in the UI.
+- The app ships with **no** repos or plugins. The viewer adds them, the same rule as Watchly's addons.
+
+Integration into the existing UI:
+1. Repos and plugins page under the Addons tab: add a repo by URL or shortcode, then install, update,
+   enable and remove plugins.
+2. Sources on a title page: each enabled provider runs `search(title)` → match by title and year → `load()`
+   → the episode → `loadLinks()`. Each `ExtractorLink` (url, referer, headers, quality, M3U8/DASH/VIDEO) becomes
+   a direct `Hit`. Each `SubtitleFile` becomes a `Sub`. Results show as they arrive, like addons.
+3. Later: provider `mainPage` lists as Home shelves, provider search in Search, and title pages built from `LoadResponse`.
+
+Gaps the player needs fixed for this:
+- Add `media3-exoplayer-hls` and `-dash` (most links are m3u8).
+- Persist stream headers in History (`Watch.kt` ponytail).
+- Make libVLC send every header, not only User-Agent and Referer.
+
 ## Stack
 
 | Layer | What |
