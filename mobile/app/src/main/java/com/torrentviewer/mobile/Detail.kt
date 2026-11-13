@@ -425,15 +425,12 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         Row(Modifier.fillMaxWidth().padding(start = EDGE, end = EDGE - 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("Episodes", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
                             season?.let { s ->
-                                Tap({ downloadSeason(s) }, shape = RoundedCornerShape(6.dp)) {
+                                // The whole season, episode by episode, with filters over what was found.
+                                Tap({ batchFor = s }, shape = RoundedCornerShape(6.dp)) {
                                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Lc(L.drawable.lucide_ic_download, tint = Ink.muted, size = 16.dp)
                                         Text("  Download season $s", style = Type.meta.copy(fontWeight = FontWeight.SemiBold))
                                     }
-                                }
-                                // Batch: the whole season at one resolution, an episode at a time.
-                                Tap({ batchFor = s }, Modifier.padding(start = 2.dp), CircleShape) {
-                                    Lc(L.drawable.lucide_ic_layers, Modifier.padding(6.dp), tint = Ink.muted, size = 18.dp)
                                 }
                             }
                         }
@@ -527,7 +524,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         }
     }
 
-    batchFor?.let { s -> BatchSheet(title, s, onDismiss = { batchFor = null }) }
+    batchFor?.let { s -> BatchSheet(title, s, say = { watch.notes.tryEmit(it) }, onDismiss = { batchFor = null }) }
 
     // A source's actions, over the episode sheet if that is open.
     actions?.let { (hit, ep) ->

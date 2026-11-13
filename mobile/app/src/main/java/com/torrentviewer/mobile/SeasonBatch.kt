@@ -1,6 +1,5 @@
 package com.torrentviewer.mobile
 
-import android.content.Context
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -18,9 +18,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.torrentviewer.core.AppScope
 import com.torrentviewer.core.Episode
 import com.torrentviewer.core.Hit
@@ -37,29 +38,33 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import com.composables.icons.lucide.R as L
 
-/** A batch season download under way, or done: how far it got, and which episodes had nothing at the resolution. */
-data class BatchState(
+/** A season's sources, being gathered: each episode's releases as they come in. */
+data class SeasonScan(
     val titleImdb: String,
     val season: Int,
-    val quality: String,
-    val total: Int,
-    val done: Int = 0,
-    val started: Int = 0,
-    val missed: List<Int> = emptyList(),
-    val last: String? = null,
-    val finished: Boolean = false,
-)
+    val episodes: List<Episode>,
+    /** By episode id, once that episode has answered. */
+    val found: Map<String, List<Hit>> = emptyMap(),
+) {
+    val checked get() = found.size
+    val done get() = found.size >= episodes.size
+}
 
 /**
- * Downloads a whole season at one resolution: every episode's sources are asked in turn (addons and
- * plugins, as the title page does), [batchPick] keeps one, and it goes to the torrent downloader or,
- * for a direct link, to Android's. Runs on even when its sheet is closed.
+ * Batch season downloads: every episode of a season asked for its sources (addons and plugins, as the
+ * title page does, a few at a time), then the viewer's filters pick one release per episode from what
+ * was found, and those go to the Downloads tab. The scan runs on with the sheet closed, and is kept
+ * for the season so reopening the sheet doesn't ask again.
  */
 object SeasonBatch {
-    private val _state = MutableStateFlow<BatchState?>(null)
-    val state: StateFlow<BatchState?> = _state
+    private const val AT_ONCE = 3
+
+    private val _scan = MutableStateFlow<SeasonScan?>(null)
+    val scan: StateFlow<SeasonScan?> = _scan
     private var job: Job? = null
 
     /** An episode's sources, as the title page finds them. */
@@ -67,87 +72,127 @@ object SeasonBatch {
         CsStreams.withPlugins(title, ep, {}) { onHits -> searchEpisode(title, ep.season, ep.episode, onHits) }
     }.getOrDefault(emptyList())
 
-    fun start(context: Context, title: Title, season: Int, quality: String) {
+    /** Starts gathering the season's sources, unless that's already under way or done for this season. */
+    fun begin(title: Title, season: Int, again: Boolean = false) {
+        val now = _scan.value
+        if (!again && now != null && now.titleImdb == title.imdb && now.season == season) return
         val episodes = title.episodes.filter { it.season == season }.sortedBy { it.episode }
-        if (episodes.isEmpty()) return
         job?.cancel()
-        _state.value = BatchState(title.imdb, season, quality, episodes.size)
+        _scan.value = SeasonScan(title.imdb, season, episodes)
+        val gate = Semaphore(AT_ONCE)
         job = AppScope.launch {
-            for (ep in episodes) {
-                val pick = batchPick(sources(title, ep), quality)
-                val tag = episodeTag(ep.season, ep.episode)
-                // Torrents, files and HLS playlists all go to the Downloads tab.
-                if (pick != null) Downloads.add(downloadJob(pick, title, ep))
-                _state.value = _state.value?.let { s ->
-                    s.copy(
-                        done = s.done + 1,
-                        started = s.started + if (pick != null) 1 else 0,
-                        missed = if (pick == null) s.missed + ep.episode else s.missed,
-                        last = pick?.let { "$tag · ${listOfNotNull(if (isHevc(it)) "HEVC" else null, bytes(it.size).takeIf { _ -> it.size > 0 }).joinToString(" · ").ifEmpty { it.addon }}" },
-                    )
+            for (ep in episodes) launch {
+                val hits = gate.withPermit { sources(title, ep) }
+                synchronized(this@SeasonBatch) {
+                    _scan.value = _scan.value?.takeIf { it.titleImdb == title.imdb && it.season == season }
+                        ?.let { it.copy(found = it.found + (ep.id to hits)) }
                 }
             }
-            _state.value = _state.value?.copy(finished = true)
         }
     }
 
-    fun cancel() {
-        job?.cancel()
-        _state.value = _state.value?.copy(finished = true)
+    /** Queues every picked release; how many went. */
+    fun download(title: Title, picks: List<Pair<Episode, Hit>>): Int {
+        picks.forEach { (ep, hit) -> Downloads.add(downloadJob(hit, title, ep)) }
+        return picks.size
     }
 }
 
 /**
- * The batch download sheet: the resolutions the season's first episode has, then, once one is picked,
- * the run's progress. The same sheet, chips and buttons as the rest of the title page.
+ * Download a whole season: filters over the sources found for every episode — resolution, codec, format,
+ * built-in subtitles, source — each offering only what was found, and what each episode would get.
  */
 @Composable
-fun BatchSheet(title: Title, season: Int, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val run by SeasonBatch.state.collectAsState()
-    val mine = run?.takeIf { it.titleImdb == title.imdb && it.season == season }
-    var qualities by remember(title.imdb, season) { mutableStateOf<List<Pair<String, Int>>?>(null) }
-    LaunchedEffect(title.imdb, season) {
-        val first = title.episodes.filter { it.season == season }.minByOrNull { it.episode } ?: return@LaunchedEffect run { qualities = emptyList() }
-        qualities = batchQualities(SeasonBatch.sources(title, first))
-    }
-    BottomSheet("Batch download season $season", onDismiss) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp)) {
-            if (mine != null) {
+fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -> Unit) {
+    LaunchedEffect(title.imdb, season) { SeasonBatch.begin(title, season) }
+    val scanned by SeasonBatch.scan.collectAsState()
+    val scan = scanned?.takeIf { it.titleImdb == title.imdb && it.season == season }
+    var filter by remember(title.imdb, season) { mutableStateOf(BatchFilter()) }
+    var showPlan by remember { mutableStateOf(false) }
+
+    BottomSheet("Download season $season", onDismiss) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 12.dp)) {
+            if (scan == null) return@Column
+            val all = scan.found.values.flatten()
+            if (!scan.done) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Spinner(size = 20.dp)
+                Text("   Checking episodes · ${scan.checked} of ${scan.episodes.size}", style = Type.meta.copy(color = Ink.muted))
+            }
+            if (scan.done && all.none(::batchable)) {
+                Note("Nothing downloadable was found for this season's episodes.")
+                return@Column
+            }
+
+            // Each row offers what the others leave possible; tapping the chosen value again clears it.
+            FilterRow("Resolution", filterOptions(all, filter.copy(quality = null)) { it.quality }, filter.quality) { filter = filter.copy(quality = it) }
+            FilterRow("Codec", filterOptions(all, filter.copy(codec = null)) { it.codec }, filter.codec, label = ::codecLabel) { filter = filter.copy(codec = it) }
+            FilterRow("Format", filterOptions(all, filter.copy(format = null)) { it.format }, filter.format) { filter = filter.copy(format = it) }
+            FilterRow(
+                "Subtitles", filterOptions(all, filter.copy(subsOnly = false)) { if (it.subs) "With subs" else null },
+                if (filter.subsOnly) "With subs" else null,
+            ) { filter = filter.copy(subsOnly = it != null) }
+            FilterRow("Source", filterOptions(all, filter.copy(source = null)) { it.source }, filter.source, label = { if (it == "Link") "Direct link" else it }) { filter = filter.copy(source = it) }
+
+            val plan = scan.episodes.mapNotNull { ep -> scan.found[ep.id]?.let { ep to batchPick(it, filter) } }
+            val picks = plan.mapNotNull { (ep, hit) -> hit?.let { ep to it } }
+            val missing = plan.filter { it.second == null }.map { it.first.episode }
+            val known = picks.sumOf { it.second.size }
+            Text(
+                "Matches ${picks.size} of ${scan.episodes.size} episodes" +
+                    (if (known > 0) " · about ${bytes(known)}" else "") +
+                    (if (picks.any { it.second.size == 0L }) " + some of unknown size" else ""),
+                Modifier.padding(top = 6.dp), style = Type.body.copy(fontWeight = FontWeight.SemiBold),
+            )
+            if (missing.isNotEmpty()) Text(
+                "No match for episode${if (missing.size == 1) "" else "s"} ${missing.joinToString(", ")}" + if (!scan.done) " yet" else "",
+                Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint),
+            )
+            Text(
+                "Per episode: ${if (filter.codec == null) "HEVC (x265) first, then " else ""}the smallest file — nothing under ${bytes(MIN_EPISODE_BYTES)}.",
+                Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp),
+            )
+
+            Chip(if (showPlan) "Hide what each episode gets" else "Show what each episode gets", showPlan, onClick = { showPlan = !showPlan }, Modifier.padding(top = 12.dp), compact = true)
+            if (showPlan) plan.forEach { (ep, hit) ->
+                val t = hit?.let(::traitsOf)
                 Text(
-                    if (mine.finished) "Done — started ${mine.started} of ${mine.total} at ${mine.quality}"
-                    else "${mine.quality} · ${mine.done} of ${mine.total} episodes checked · ${mine.started} downloading",
-                    style = Type.body.copy(fontWeight = FontWeight.SemiBold),
+                    "${episodeTag(ep.season, ep.episode)}  " + if (hit == null) "—" else
+                        listOfNotNull(hit.quality, t?.codec?.takeIf { it != UNKNOWN }?.let(::codecLabel), t?.format?.takeIf { it != UNKNOWN }, bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null })
+                            .joinToString(" · "),
+                    Modifier.padding(top = 6.dp), style = Type.meta.copy(color = if (hit == null) Ink.faint else Ink.muted), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                mine.last?.let { Text("Latest: $it", Modifier.padding(top = 4.dp), style = Type.meta.copy(color = Ink.faint)) }
-                if (mine.missed.isNotEmpty()) {
-                    Note("Nothing at ${mine.quality} for episode${if (mine.missed.size == 1) "" else "s"} ${mine.missed.joinToString(", ")}.", Modifier.padding(top = 8.dp))
-                }
-                Text("Each episode appears in the Downloads tab as it is found.", Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint))
-                if (!mine.finished) Button("Stop", { SeasonBatch.cancel() }, Modifier.padding(top = 14.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_x)
-                if (!mine.finished) return@Column
-                Text("Start another", Modifier.padding(top = 18.dp, bottom = 8.dp), style = Type.overline.copy(color = Ink.faint))
             }
-            val list = qualities
-            when {
-                list == null -> Row(Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Spinner(size = 24.dp)
-                    Text("   Checking which resolutions there are…", style = Type.body)
-                }
-                list.isEmpty() -> Note("No downloadable single-episode sources found for this season.")
-                else -> {
-                    Text(
-                        "Pick a resolution. For each episode the smallest file at it is kept, HEVC (x265) first, " +
-                            "skipping anything under ${bytes(MIN_EPISODE_BYTES)} — trailers and samples.",
-                        Modifier.padding(bottom = 12.dp), style = Type.meta.copy(color = Ink.faint),
-                    )
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        list.forEach { (q, n) ->
-                            Chip("$q · $n", false, onClick = { SeasonBatch.start(context, title, season, q) }, icon = L.drawable.lucide_ic_download)
-                        }
-                    }
-                }
-            }
+
+            Button(
+                if (picks.isEmpty()) "Nothing matches" else "Download ${picks.size} episode${if (picks.size == 1) "" else "s"}",
+                {
+                    if (picks.isEmpty()) return@Button
+                    SeasonBatch.download(title, picks)
+                    say("Downloading ${picks.size} episodes of season $season — see Downloads")
+                    onDismiss()
+                },
+                Modifier.padding(top = 16.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_download, primary = picks.isNotEmpty(),
+            )
+            if (scan.done) Chip("Ask every source again", false, onClick = { SeasonBatch.begin(title, season, again = true) }, Modifier.padding(top = 10.dp).align(Alignment.CenterHorizontally), compact = true)
+        }
+    }
+}
+
+private fun codecLabel(c: String) = when (c) {
+    "x265" -> "x265 (HEVC)"
+    "x264" -> "x264 (AVC)"
+    else -> c
+}
+
+/** One filter: its name, then Any and each value found with its count. */
+@Composable
+private fun FilterRow(name: String, options: List<Pair<String, Int>>, chosen: String?, label: (String) -> String = { it }, onPick: (String?) -> Unit) {
+    if (options.isEmpty() && chosen == null) return
+    Text(name, Modifier.padding(top = 8.dp, bottom = 6.dp), style = Type.overline.copy(color = Ink.faint))
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Chip("Any", chosen == null, onClick = { onPick(null) }, compact = true)
+        options.forEach { (value, n) ->
+            Chip("${label(value)} · $n", chosen == value, onClick = { onPick(if (chosen == value) null else value) }, compact = true)
         }
     }
 }
