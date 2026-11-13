@@ -122,7 +122,8 @@ private fun RepoCard(repo: RepositoryData, installed: List<PluginData>, changes:
             runCatching { CsPlugins.offered(repo) }.onSuccess { offered = it }.onFailure { error = it.message }
         }
     }
-    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(16.dp)) {
+    // Thin inside padding: the plugin list gets the width.
+    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(horizontal = 10.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
                 Lc(L.drawable.lucide_ic_puzzle, tint = Ink.muted, size = 22.dp)
