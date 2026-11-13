@@ -138,7 +138,7 @@ fun TopScreen(startKind: String, onOpen: (Title) -> Unit, onBack: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
-            GridCells.Adaptive(104.dp),
+            PosterGrid,
             state = rememberLazyGridState(),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),

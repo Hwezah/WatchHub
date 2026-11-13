@@ -606,3 +606,16 @@ fun Heading(text: String, modifier: Modifier = Modifier, trailing: @Composable (
         trailing()
     }
 }
+
+/**
+ * Poster grids: always three across a phone held upright, however large its display size is set; turned
+ * sideways (or on a tablet), as many as fit at about 120 dp each, never fewer than four.
+ */
+val PosterGrid = object : androidx.compose.foundation.lazy.grid.GridCells {
+    override fun androidx.compose.ui.unit.Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val count = if (availableSize < 600.dp.roundToPx()) 3
+        else maxOf(4, (availableSize + spacing) / (120.dp.roundToPx() + spacing))
+        val cells = availableSize - spacing * (count - 1)
+        return List(count) { cells / count + if (it < cells % count) 1 else 0 }
+    }
+}

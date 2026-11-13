@@ -124,7 +124,7 @@ fun PersonScreen(id: Int, name: String, onOpen: (Title) -> Unit, onBack: () -> U
     val p = person
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
-            GridCells.Adaptive(110.dp),
+            PosterGrid,
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 32.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),

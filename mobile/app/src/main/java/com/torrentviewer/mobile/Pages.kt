@@ -121,8 +121,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.composables.icons.lucide.R as L
 
-/** Poster columns: three across a phone held upright. */
-private val POSTER = GridCells.Adaptive(104.dp)
+/** Poster columns: three across a phone held upright, more turned sideways ([PosterGrid]). */
+private val POSTER = PosterGrid
 
 private fun subOf(t: Title) = listOfNotNull(if (t.isSeries) "Series" else "Film", t.year?.take(4)).joinToString("  ·  ")
 

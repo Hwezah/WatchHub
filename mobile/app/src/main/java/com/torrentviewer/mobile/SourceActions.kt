@@ -75,6 +75,18 @@ fun SourceActions(
                 style = Type.meta.copy(color = Ink.faint), maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
             Action(L.drawable.lucide_ic_play, "Play in app") { onDismiss(); onPlay(hit) }
+            // Android's share sheet: download managers (1DM, ADM), messengers, notes — whatever takes a link.
+            Action(L.drawable.lucide_ic_share_2, "Share link", "1DM, ADM, Telegram… — use it soon, links expire") {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, magnetOf(hit)?.takeIf { !link } ?: hit.uri)
+                    putExtra(Intent.EXTRA_SUBJECT, heading)
+                    putExtra(Intent.EXTRA_TITLE, heading)
+                }
+                if (runCatching { context.startActivity(Intent.createChooser(send, "Share link").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isFailure) {
+                    say("No app can take the link.")
+                }
+            }
             if (hit.external) {
                 Action(L.drawable.lucide_ic_external_link, "Open in its app") { onDismiss(); onPlay(hit) }
             }
