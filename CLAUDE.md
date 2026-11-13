@@ -14,36 +14,30 @@ Guidance for working in this repository (a fork of Watchly).
 - No feature code without an agreed plan. The owner is a Next.js/TypeScript developer who is new
   to native Android, so explain Android-specific concepts briefly when they come up.
 
-## Direction: CloudStream plugins inside Watchly
+## CloudStream plugins (built in)
 
-Decision: keep this native Kotlin app and its UI, and add a **CloudStream plugin host** so the app can load
-CloudStream extension repositories (repo.json → plugins.json → `.cs3` files, e.g. the `phisherrepo` shortcode).
-Plugins scrape sites on the device, with no addon server in between. Stremio addons stay as a second source.
-Both feed the same sources list.
+The app loads CloudStream extension repositories (repo.json → plugins.json → `.cs3`, e.g. the
+`phisherrepo` shortcode). Plugins scrape sites on the phone; Stremio addons stay as a second source,
+both feeding one sources list.
 
-How it works (CloudStream's own approach, `app/.../plugins/PluginManager.kt` upstream):
-- A `.cs3` is a zip holding `classes.dex` and `manifest.json` (`pluginClassName`). It is loaded with
-  `PathClassLoader(file, appClassLoader)`, so the plugin calls classes **in our app** by their exact names.
-- Those classes come from CloudStream's `library` module (GPL-3.0, `com.lagradost.api`): `MainAPI`, `ExtractorApi`,
-  `loadExtractor`, NiceHttp `app`... Pin it to one upstream commit.
-- Plugins also reach into app-only classes, so a compat layer must provide them under the same package names.
-  In phisher's 86 plugins: `CommonActivity` and `CloudStreamApp` (all 86), `plugins.Plugin` (33),
-  `utils.DataStore` (14), `network.CloudflareKiller` (8), plus a few rarer ones.
-- A plugin is arbitrary code running with our permissions. Only add repos you trust, and say so in the UI.
-- The app ships with **no** repos or plugins. The viewer adds them, the same rule as Watchly's addons.
+- **Library**: `com.github.recloudstream.cloudstream:library` from JitPack, pinned to the commit of
+  CloudStream's `pre-release` tag (`mobile/app/build.gradle.kts`). Bump it when plugins fail with
+  `NoSuchMethodError` / `NoClassDefFoundError`.
+- **Compat layer**: `mobile/app/src/main/java/com/lagradost/cloudstream3/**` re-implements the
+  CloudStream *app* classes plugins call (`CloudStreamApp`, `CommonActivity`, `DataStore`, `Plugin`,
+  `CloudflareKiller`, `MainActivity` events, `PluginManager`, `RepositoryManager`). Plugins link to these
+  by exact name and JVM signature: never rename members or change parameter types/defaults. Ported
+  from CloudStream (GPL-3.0). Not implemented yet: sync accounts (AniList etc.), the player API, VideoClickAction.
+- **Host** (`mobile/.../cs/`): `CsPlugins` (repos, install/update/remove, load at launch),
+  `CsStore` (JSON in `Kv` global keys), `CsStreams` (search → load → loadLinks → `Hit`s, merged
+  with addon results in `Detail.findSources`), `CsLogic`/`CsMatch` (pure, unit-tested).
+- **UI**: Addons tab switch → `PluginsPage.kt`; source rows' ⋯ / long-press → `SourceActions.kt`.
+- Release builds are **not minified** (plugins call library classes by name, as in CloudStream).
+- The app ships with no repositories; a plugin is third-party code running with app permissions.
 
-Integration into the existing UI:
-1. Repos and plugins page under the Addons tab: add a repo by URL or shortcode, then install, update,
-   enable and remove plugins.
-2. Sources on a title page: each enabled provider runs `search(title)` → match by title and year → `load()`
-   → the episode → `loadLinks()`. Each `ExtractorLink` (url, referer, headers, quality, M3U8/DASH/VIDEO) becomes
-   a direct `Hit`. Each `SubtitleFile` becomes a `Sub`. Results show as they arrive, like addons.
-3. Later: provider `mainPage` lists as Home shelves, provider search in Search, and title pages built from `LoadResponse`.
-
-Gaps the player needs fixed for this:
-- Add `media3-exoplayer-hls` and `-dash` (most links are m3u8).
-- Persist stream headers in History (`Watch.kt` ponytail).
-- Make libVLC send every header, not only User-Agent and Referer.
+Known gaps: HLS downloads (only single-file links download, via Android's DownloadManager); plugin
+links usually expire, so Continue Watching may need a fresh "Reload links"; provider home pages and
+provider search are not shown yet; libVLC sends only User-Agent/Referer headers.
 
 ## Stack
 
@@ -86,8 +80,8 @@ tv/core/src/main/java/com/torrentviewer/core/          (shared logic)
   Trackers.kt       Simkl / MDBList sync; Tmdb, Kids, WatchOrders, Avatars, Updates: the rest
 ```
 
-Stream flow: Detail page → `searchStreams` / `searchEpisode` ask every enabled addon with a
-`stream` resource in parallel → `Hit`s merged and ranked → `Watch.stream(hit)`:
+Stream flow: Detail page → `CsStreams.withPlugins` runs the plugins and `searchStreams` / `searchEpisode`
+(every enabled addon with a `stream` resource) in parallel → `Hit`s (plugin links first) → `Watch.stream(hit)`:
 - `url` (debrid or own server) → `playLink` → player opens the URL directly (headers from `proxyHeaders`).
 - `infoHash`/magnet → TorBox link if a key is set and it's cached → otherwise `TorrentStream` + `LocalFileServer`.
 - `ytId` / `externalUrl` → handed to another app.
@@ -100,6 +94,11 @@ Every constant there was tuned against real swarms.
 
 ## Build and run
 
+**CI is the build machine** (the owner works from a phone): every push to a `ccr-*` branch touching
+`mobile/` or `tv/core/` runs `.github/workflows/build-phone.yml` — unit tests, debug APKs — and publishes
+them on the **`phone-latest`** pre-release (install the `arm64-v8a` APK). Debug builds are
+`com.hwezah.watchhub.dev`, signed with the committed debug keystore so each one installs over the last.
+
 Requirements: JDK 17 or 21, Android SDK (platform 37), NDK 27.1.12297006, CMake 3.22.1.
 Android Studio installs all of these.
 
@@ -107,8 +106,8 @@ Android Studio installs all of these.
 cd mobile
 ./gradlew compileDebugKotlin          # fast compile check (phone + tv/core)
 ./gradlew assembleDebug               # APKs in app/build/outputs/apk/debug/ (one per ABI)
-./gradlew installDebug                # install "Watchly Next" (com.torrentviewer.app.next) on a USB-connected phone
-./gradlew installRelease              # minified release (com.torrentviewer.app)
+./gradlew installDebug                # install WatchHub (com.hwezah.watchhub.dev) on a USB-connected phone
+./gradlew installRelease              # release (com.hwezah.watchhub)
 
 cd ../tv
 ./gradlew :core:testDebugUnitTest     # unit tests for shared logic (tv/core/src/test)
@@ -144,9 +143,8 @@ Logs: `adb logcat -s watch stremio torbox releases Subtitles`. The engine also w
   `./gradlew :core:testDebugUnitTest` in `tv/`.
 - **Commits:** imperative and short, prefixed with the area, for example `Phone: …` or `Core: …`.
 
-## Fork housekeeping (known, not yet done)
+## Fork housekeeping
 
-- `tv/core/Updates.kt` and `Release.kt` still point at upstream `sammyZi/Watchly` releases.
-- Release builds are signed with the committed `mobile/app/debug.keystore`. Use a private keystore before
-  distributing APKs.
-- `applicationId` is still upstream's `com.torrentviewer.app`.
+- Done: app id `com.hwezah.watchhub`, label WatchHub, update checks and legal page point at `Hwezah/WatchHub`.
+- Open: release builds are still signed with the committed `mobile/app/debug.keystore`; use a private
+  keystore (as a GitHub secret) before distributing APKs widely.
