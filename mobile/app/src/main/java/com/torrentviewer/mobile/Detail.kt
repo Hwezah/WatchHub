@@ -832,14 +832,17 @@ private fun CastRow(names: List<String>) {
 @Composable
 private fun AwardsCard(text: String) {
     val a = remember(text) { awardsOf(text) }
+    // An upright phone: the trophy and the words spaced around the card's middle; elsewhere side by side from the start.
+    val spread = isPortraitPhone()
     Row(
         Modifier.padding(top = 18.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Ink.surface).grain().padding(14.dp),
+        horizontalArrangement = if (spread) Arrangement.SpaceAround else Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(42.dp).clip(CircleShape).background(Ink.imdb.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
             Lc(L.drawable.lucide_ic_trophy, tint = Ink.imdb, size = 22.dp)
         }
-        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+        Column(Modifier.weight(1f, fill = !spread).padding(start = 12.dp)) {
             Text(a.headline ?: if (a.wins == null && a.nominations == null) text else "Awards", style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (a.wins != null || a.nominations != null) {
                 Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
