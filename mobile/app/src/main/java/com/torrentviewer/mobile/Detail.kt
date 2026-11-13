@@ -613,12 +613,18 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         listOf(st.dlQuality, st.dlCodec, st.dlFormat, if (st.dlSubs) "subtitles" else "", if (st.dlSource == "Link") "direct link" else st.dlSource.lowercase())
             .filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { "the best that can be saved" }
     }
+    // Said in green on both choices: the resolution comes from Settings, and that's where to change it.
+    fun resolutionNote(): String {
+        val q = com.torrentviewer.core.SettingsStore.value.value.dlQuality
+        return "The resolution picked by default is ${q.ifEmpty { "any (the best found)" }}, as set in Settings → Preferred download. Change it there for a different resolution!"
+    }
     askEpisode?.let { ep ->
         DownloadChoice(
             "${episodeTag(ep.season, ep.episode)} · picks your preferred ${preferred()}, or the nearest found",
             onInternal = { quickDownload(ep) },
             onExternal = { askEpisode = null; quickDownload(ep, external = true) },
             onDismiss = { askEpisode = null },
+            disclaimer = resolutionNote(),
         )
     }
     askSeason?.let { s ->
@@ -629,6 +635,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             onDismiss = { askSeason = null },
             internalNote = "Pick resolution, codec, format, subtitles and source, see what each episode gets, then everything goes to the Downloads tab.",
             externalNote = "The same filters, then every episode's link goes to 1DM, ADM or another downloader in one go.",
+            disclaimer = resolutionNote(),
         )
     }
 

@@ -267,6 +267,8 @@ fun DownloadChoice(
     onDismiss: () -> Unit,
     internalNote: String = "Saved in the Downloads tab. Resumes after a pause, keeps to Wi-Fi if you set it, and gets a fresh link if this one expires.",
     externalNote: String = "1DM, ADM or another downloader on your phone — Android shows the ones you have. Start it soon: links like these can expire.",
+    /** A line in green under the choices: where the picked resolution comes from, and where to change it. */
+    disclaimer: String? = null,
 ) {
     androidx.compose.ui.window.Dialog(onDismiss, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         // Low on the screen, resting just a notch above the tab bar (about 70 dp over the system's own bar);
@@ -289,6 +291,7 @@ fun DownloadChoice(
             }
             Spacer(Modifier.height(10.dp))
             ChoiceTile(L.drawable.lucide_ic_external_link, "Choose External Downloader", externalNote, onClick = onExternal)
+            disclaimer?.let { Text(it, Modifier.padding(top = 12.dp), style = Type.meta.copy(color = Ink.download, fontWeight = FontWeight.Medium)) }
             Text(
                 "Cancel", Modifier.align(Alignment.End).padding(top = 14.dp).clip(RoundedCornerShape(8.dp))
                     .clickable(onClick = onDismiss).padding(horizontal = 10.dp, vertical = 6.dp),
