@@ -19,6 +19,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.torrentviewer.core.Hit
 import com.torrentviewer.core.History
 import com.torrentviewer.core.Kv
 import com.torrentviewer.core.SettingsStore
@@ -91,6 +92,13 @@ data class DownloadJob(
     val playlist: Boolean = false,
     /** The source's resolution ("720p"), to pick the playlist's matching variant. */
     val quality: String? = null,
+    /** Where the link came from — the addon or plugin, its link name, the episode — to ask for a fresh one when it expires. */
+    val source: String? = null,
+    val linkName: String? = null,
+    val epSeason: Int? = null,
+    val epNumber: Int? = null,
+    /** Fresh links fetched so far for this download. */
+    val refreshes: Int = 0,
 ) {
     val label get() = titleName ?: title
 
@@ -99,6 +107,7 @@ data class DownloadJob(
         .put("fileIndices", JSONArray(files)).put("savedIndices", JSONArray(saved)).put("paused", paused).put("mobileData", mobileData).put("sequential", sequential)
         .put("skipped", JSONArray(skipped))
         .put("link", link).put("playlist", playlist).put("quality", quality)
+        .put("source", source).put("linkName", linkName).put("epSeason", epSeason).put("epNumber", epNumber).put("refreshes", refreshes)
         .put("headers", JSONObject().also { o -> headers.forEach { (k, v) -> o.put(k, v) } })
 
     companion object {
@@ -124,6 +133,11 @@ data class DownloadJob(
                 headers = o.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith { h.optString(it) } }.orEmpty(),
                 playlist = o.optBoolean("playlist"),
                 quality = o.str("quality"),
+                source = o.str("source"),
+                linkName = o.str("linkName"),
+                epSeason = if (o.has("epSeason") && !o.isNull("epSeason")) o.optInt("epSeason") else null,
+                epNumber = if (o.has("epNumber") && !o.isNull("epNumber")) o.optInt("epNumber") else null,
+                refreshes = o.optInt("refreshes"),
             )
         }
     }
@@ -431,7 +445,17 @@ object Downloads {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "link download failed: ${e.message}")
-                errors[job.uri] = e.message ?: "Couldn't save that link"
+                // An expired or unreachable link: ask the sources for a fresh one and carry on with it.
+                val dead = e is LinkExpiredException || e is java.net.UnknownHostException || e is java.net.ConnectException
+                if (dead && job.refreshes < MAX_REFRESHES && job.imdb != null) {
+                    update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Link expired — getting a fresh one…", speed = 0) }
+                    val fresh = runCatching { LinkRefresh.fresh(job) }.onFailure { Log.w(TAG, "refresh: ${it.message}") }.getOrNull()
+                    if (fresh != null) {
+                        replaceLink(job, fresh)
+                        return@launch
+                    }
+                }
+                errors[job.uri] = (if (dead && job.imdb != null) "No fresh link found — " else "") + (e.message ?: "Couldn't save that link")
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
             } finally {
                 synchronized(lock) { links.remove(job.uri) }
@@ -439,6 +463,30 @@ object Downloads {
             }
         }
         synchronized(lock) { links[job.uri] = run }
+    }
+
+    /** Fresh links tried per download before it is left failed. */
+    private const val MAX_REFRESHES = 2
+
+    /** Swaps a dead link for [hit] — a fresh one for the same video — and starts it. */
+    private fun replaceLink(old: DownloadJob, hit: Hit) {
+        val next = old.copy(
+            uri = hit.uri,
+            link = hit.direct,
+            headers = if (hit.direct) hit.headers else emptyMap(),
+            playlist = hit.direct && isPlaylist(hit),
+            quality = hit.quality ?: old.quality,
+            source = hit.addon.ifEmpty { old.source },
+            linkName = hit.name,
+            refreshes = old.refreshes + 1,
+        )
+        Log.i(TAG, "fresh link for ${old.label} from ${hit.addon}")
+        scope.launch { linkWork(old.uri).deleteRecursively() }
+        synchronized(lock) {
+            _live.value = _live.value.map { if (it.job.uri == old.uri) LiveDownload(next, DlState.RESOLVING, error = "Got a fresh link") else it }
+            writeQueue(jobs())
+        }
+        begin(next)
     }
 
     /* -------------------------------------------------------------- engine */

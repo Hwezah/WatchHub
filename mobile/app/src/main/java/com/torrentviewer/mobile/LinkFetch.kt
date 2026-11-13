@@ -19,7 +19,13 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.coroutines.coroutineContext
 
 /** A download that can't be done, with the reason to show. */
-class LinkDownloadException(message: String) : IOException(message)
+open class LinkDownloadException(message: String) : IOException(message)
+
+/** The link is dead — expired, refused, or its server gone — but a fresh one for the same video may work. */
+class LinkExpiredException(message: String) : LinkDownloadException(message)
+
+/** What a server says to a link whose token ran out or that it no longer serves. */
+private val EXPIRED = setOf(400, 401, 403, 404, 410)
 
 /**
  * Saves a direct link to a file: one file as it is (resumed with a Range request), or an HLS playlist
@@ -56,6 +62,7 @@ object LinkFetch {
         try {
             val code = conn.responseCode
             if (code == 416) return@withContext Result(out, extOf(url, conn.contentType))
+            if (code in EXPIRED) throw LinkExpiredException("The link has expired (the server answered $code)")
             if (code !in 200..299) throw LinkDownloadException("The server answered $code")
             // 200 to a Range request: the server starts over, so must we.
             if (code == 200 && have > 0) {
@@ -90,7 +97,7 @@ object LinkFetch {
     private suspend fun hls(url: String, headers: Map<String, String>, quality: String?, work: File, progress: Progress): Result {
         var mediaUrl = url
         var text = fetchText(url, headers)
-        if (!text.trimStart('﻿').trimStart().startsWith("#EXTM3U")) throw LinkDownloadException("That link isn't a playlist")
+        if (!text.trimStart('﻿').trimStart().startsWith("#EXTM3U")) throw LinkExpiredException("The link no longer leads to the stream")
         if (isMasterPlaylist(text)) {
             val master = parseMaster(text, url)
             val pick = pickVariant(master.variants, heightOf(quality)) ?: throw LinkDownloadException("The playlist lists no streams")
@@ -189,17 +196,22 @@ object LinkFetch {
                     val conn = open(url, headers, range)
                     try {
                         val code = conn.responseCode
+                        if (code in EXPIRED) throw LinkExpiredException("The link has expired (${URL(url).host} answered $code)")
                         if (code !in 200..299) throw IOException("${URL(url).host} answered $code")
                         conn.inputStream.use { it.readBytes() }
                     } finally {
                         conn.disconnect()
                     }
                 }
+            } catch (e: LinkExpiredException) {
+                // Asking again won't revive it.
+                throw e
             } catch (e: IOException) {
                 last = e
                 delay(1000L * (attempt + 1))
             }
         }
+        if (last is java.net.UnknownHostException || last is java.net.ConnectException) throw LinkExpiredException("Can't reach ${URL(url).host}")
         throw LinkDownloadException(last?.message ?: "A part of the stream wouldn't download")
     }
 

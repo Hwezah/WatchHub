@@ -404,6 +404,9 @@ suspend fun searchStreams(title: String, imdb: String? = null, year: String? = n
 
 private val episodeMemo = java.util.concurrent.ConcurrentHashMap<String, List<Hit>>()
 
+/** Forget the episodes' kept answers: links in them can expire, and a retry needs fresh ones. */
+fun forgetStreams() = episodeMemo.clear()
+
 /**
  * Does release [name] say it is this episode? Null when it names none (a season pack): a batch
  * holds it or not, a single release names it or another one.

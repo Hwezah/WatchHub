@@ -61,6 +61,10 @@ fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null) = DownloadJob(
     headers = if (hit.direct) hit.headers else emptyMap(),
     playlist = hit.direct && isPlaylist(hit),
     quality = hit.quality,
+    source = hit.addon.ifEmpty { null },
+    linkName = hit.name,
+    epSeason = episode?.season,
+    epNumber = episode?.episode,
     uri = hit.uri,
     title = hit.name,
     titleName = if (episode != null && from != null) "${from.title} · ${episodeTag(episode.season, episode.episode)}" else from?.title,
@@ -201,7 +205,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     when (row.state) {
-                        DlState.RESOLVING -> if (row.job.link) "Starting…" else "Finding peers…"
+                        DlState.RESOLVING -> if (row.job.link) row.error ?: "Starting…" else "Finding peers…"
                         DlState.DOWNLOADING -> listOfNotNull("$pct%", speed(row.speed), "${row.peers} peers".takeIf { !row.job.link }).joinToString("  ·  ")
                         DlState.PAUSED -> "Paused  ·  $pct%"
                         DlState.WIFI -> "Waiting for Wi-Fi  ·  $pct%"
