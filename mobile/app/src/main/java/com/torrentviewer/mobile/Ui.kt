@@ -438,7 +438,7 @@ fun <T> Sheet(
 
 /** The frame every sheet shares: scrim, rounded top, a grab handle and a heading. */
 @Composable
-fun BottomSheet(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+fun BottomSheet(title: String, onDismiss: () -> Unit, trailing: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) {
     BackHandler(onBack = onDismiss)
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
@@ -497,7 +497,11 @@ fun BottomSheet(title: String, onDismiss: () -> Unit, content: @Composable () ->
                     ),
                 ) {
                     Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp).size(36.dp, 4.dp).clip(CircleShape).background(Ink.stroke))
-                    Text(title, Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 8.dp), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    // The title, and beside it at the far right whatever the sheet puts there (a Reload…).
+                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        trailing?.invoke()
+                    }
                 }
                 content()
             }

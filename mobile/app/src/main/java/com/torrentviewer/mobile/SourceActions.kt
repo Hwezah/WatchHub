@@ -68,6 +68,8 @@ fun SourceActions(
     all: List<Hit>,
     onPlay: (Hit) -> Unit,
     onReload: () -> Unit,
+    /** Links still coming in: the Reload beside the title spins. */
+    busy: Boolean = false,
     /** Into the Downloads tab: torrents, files and HLS playlists alike. */
     onDownload: (Hit) -> Unit,
     say: (String) -> Unit,
@@ -77,7 +79,15 @@ fun SourceActions(
     var mirrors by remember { mutableStateOf(false) }
     val link = hit.direct
     val subs = remember(hit.uri) { CsStreams.subtitlesFor(hit.uri) }
-    BottomSheet(heading, onDismiss) {
+    // Beside the title, a green Reload: these links' tokens expire within minutes.
+    BottomSheet(heading, onDismiss, trailing = {
+        Tap(onReload, shape = RoundedCornerShape(6.dp)) {
+            Row(Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (busy) com.torrentviewer.core.Spinner(size = 18.dp, color = Ink.download) else Lc(L.drawable.lucide_ic_refresh_cw, tint = Ink.download, size = 18.dp)
+                Text("  Reload!", style = Type.label.copy(color = Ink.download, fontWeight = FontWeight.SemiBold))
+            }
+        }
+    }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
             Text(
                 listOfNotNull(hit.quality, hit.addon.ifEmpty { null }, hit.name).joinToString("  ·  "),

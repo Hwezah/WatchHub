@@ -664,7 +664,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 sheet = false
                 watch.stream(h, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
             },
-            onReload = { findSources(ep) },
+            onReload = { reloadSources(ep) },
+            busy = busy,
             onDownload = { h -> Downloads.add(downloadJob(h, title, ep)) },
             say = { watch.notes.tryEmit(it) },
             onDismiss = { actions = null },
