@@ -135,7 +135,7 @@ fun TrailerSheet(youtubeId: String, title: String, onDismiss: () -> Unit) {
                     }
                     Round(L.drawable.lucide_ic_zoom_in) { zoom = (zoom + 1) % ZOOMS.size }
                     Round(L.drawable.lucide_ic_maximize) { full = true }
-                    Round(L.drawable.lucide_ic_x, onDismiss)
+                    Round(L.drawable.lucide_ic_x, onClick = onDismiss)
                 }
                 // The same view in both layouts, so going full screen doesn't restart the video.
                 Box(
