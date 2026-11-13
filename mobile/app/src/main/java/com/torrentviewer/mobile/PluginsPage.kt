@@ -225,7 +225,8 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
     ) {
         Column(Modifier.weight(1f)) {
             Text("${p.internalName}  ·  v${p.version}", style = Type.body.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(state, style = Type.meta.copy(color = tint, fontSize = 12.sp), maxLines = 3, overflow = TextOverflow.Ellipsis)
+            // A failure in full: the missing class it names is what tells what to add.
+            Text(state, style = Type.meta.copy(color = tint, fontSize = 12.sp), maxLines = if (tint == Ink.accent) 10 else 3, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(8.dp))
         // The plugin's own settings — accounts, which sources it asks, languages — as CloudStream's sliders icon.
