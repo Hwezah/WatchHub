@@ -230,6 +230,8 @@ data class Hit(
     val addonUrl: String = "",
     /** The release's own name: a season pack's, where [name] is the one file in it the addon meant. */
     val release: String = name,
+    /** The stream's MIME type when its link can't say (a CloudStream HLS link with no .m3u8); null to guess. */
+    val mime: String? = null,
 ) {
     /** Plays straight from its link: no swarm, no seeders to count. */
     val direct get() = !external && isDirectLink(uri)

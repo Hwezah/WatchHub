@@ -1,3 +1,6 @@
+// AppUtils' JSON helpers are "internal" to CloudStream's own app, which this file stands in for.
+@file:OptIn(com.lagradost.cloudstream3.InternalAPI::class)
+
 package com.lagradost.cloudstream3.utils
 
 import android.content.Context

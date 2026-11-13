@@ -175,7 +175,7 @@ class Watch(val engine: TorrentStream) {
                 addon = hit.addonUrl.takeIf { hit.direct && it.isNotEmpty() },
             ),
         )
-        if (hit.direct) return@launch playLink(fresh, hit.name, hit.size, hit.headers)
+        if (hit.direct) return@launch playLink(fresh, hit.name, hit.size, hit.headers, hit.mime)
         val found = inspect(fresh) ?: return@launch
         if (found.files.none { it.isVideo }) return@launch fail("This torrent holds no video.")
         // A pack of anime names its files by the number through the show: let that pick too.
@@ -265,14 +265,14 @@ class Watch(val engine: TorrentStream) {
      * A link that plays as it is — an addon's debrid stream, a file on the viewer's own server:
      * one file, no torrent, so the engine only has to let go of whatever it was streaming.
      */
-    // ponytail: [headers] aren't kept in History, so a link that needs them may not resume from Continue
-    // Watching; keep them on the Item if an addon that needs them gets common.
-    private suspend fun playLink(target: Item, name: String, size: Long, headers: Map<String, String> = emptyMap()) {
+    // [headers] and [mime] are kept on the History item, so Continue Watching resumes such a link too —
+    // while it lasts: a plugin's link often carries a token that expires within hours.
+    private suspend fun playLink(target: Item, name: String, size: Long, headers: Map<String, String> = emptyMap(), mime: String? = null) {
         val ticket = ++gen
         withContext(Dispatchers.IO) { engine.stop() }
         if (ticket != gen) return
         source = null
-        History.patch(target.uri) { it.copy(torrentName = name, lastFileIndex = 0, files = listOf(StoredFile(0, name, size, true, false, name))) }
+        History.patch(target.uri) { it.copy(torrentName = name, lastFileIndex = 0, files = listOf(StoredFile(0, name, size, true, false, name)), headers = headers, mime = mime) }
         item = History.find(target.uri) ?: target
         meta = TorrentMeta(name, listOf(TorrentFile(0, name, name, size, true, false)))
         playingIndex = 0
@@ -280,7 +280,7 @@ class Watch(val engine: TorrentStream) {
         torboxIndexed = false
         engine.progress.value = null
         // A link that needs headers can't go to a Cast receiver, which won't send them.
-        engine.ready.value = Ready(target.uri, name, emptyList(), lanUrl = target.uri.takeIf { headers.isEmpty() }, headers = headers)
+        engine.ready.value = Ready(target.uri, name, emptyList(), lanUrl = target.uri.takeIf { headers.isEmpty() }, headers = headers, mime = mime)
         playId++
         phase = Phase.PLAYING
     }
@@ -300,7 +300,7 @@ class Watch(val engine: TorrentStream) {
         if (isDirectLink(target.uri)) {
             val hash = linkHash(target.uri)
             if (hash != null && !Addons.stillServes(target.uri, target.addon)) return@launch fromPeers(target, hash)
-            return@launch playLink(target, target.torrentName ?: target.label, target.files?.firstOrNull()?.size ?: 0)
+            return@launch playLink(target, target.torrentName ?: target.label, target.files?.firstOrNull()?.size ?: 0, target.headers, target.mime)
         }
         val known = target.lastFileIndex
         if (known != null && !target.files.isNullOrEmpty() && target.torrentName != null) {

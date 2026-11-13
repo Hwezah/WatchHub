@@ -1141,8 +1141,18 @@ fun AddonsScreen(watch: Watch) {
             adding = false
         }
     }
+    // Stremio addons, or CloudStream plugins: two kinds of source, one tab.
+    var plugins by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = EDGE).padding(bottom = 32.dp)) {
         Heading("Addons")
+        Row(Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("Stremio addons", !plugins, onClick = { plugins = false })
+            Chip("CloudStream plugins", plugins, onClick = { plugins = true })
+        }
+        if (plugins) {
+            PluginsSection(watch)
+            return@Column
+        }
         Text(
             "Streams, subtitles and extra catalogues come from addons — public ones, your debrid service's, or your own media server's. Watchly comes with none.",
             Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),

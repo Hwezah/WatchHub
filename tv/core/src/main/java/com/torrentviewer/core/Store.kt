@@ -395,6 +395,10 @@ data class Item(
     val played: Map<Int, Long> = emptyMap(),
     /** For an addon's debrid link: the manifest link of the addon it came from — see [Addons.stillServes]. */
     val addon: String? = null,
+    /** What a direct link's server wants with every request (proxyHeaders, a plugin's Referer), so it resumes too. */
+    val headers: Map<String, String> = emptyMap(),
+    /** A direct link's MIME type when the link can't say (HLS without .m3u8). */
+    val mime: String? = null,
 ) {
     val label get() = titleName ?: title
 
@@ -441,7 +445,8 @@ data class Item(
             subtitles.forEach { (k, v) -> o.put(k.toString(), JSONArray(v.map { JSONObject().put("path", it.path).put("label", it.label) })) }
         })
         .put("imdb", imdb).put("kind", kind).put("poster", poster).put("backdrop", backdrop).put("titleName", titleName)
-        .put("seeders", seeders).put("torboxFiles", torboxFiles).put("addon", addon)
+        .put("seeders", seeders).put("torboxFiles", torboxFiles).put("addon", addon).put("mime", mime)
+        .put("headers", JSONObject().also { o -> headers.forEach { (k, v) -> o.put(k, v) } })
         .put("played", JSONObject().also { o -> played.forEach { (k, v) -> o.put(k.toString(), v) } })
 
     companion object {
@@ -470,6 +475,8 @@ data class Item(
             seeders = if (o.has("seeders") && !o.isNull("seeders")) o.optInt("seeders") else null,
             torboxFiles = o.optBoolean("torboxFiles", false),
             addon = o.str("addon"),
+            headers = o.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith { h.optString(it) } }.orEmpty(),
+            mime = o.str("mime"),
             played = o.optJSONObject("played")?.let { p -> p.keys().asSequence().mapNotNull { k -> k.toIntOrNull()?.let { it to p.optLong(k) } }.toMap() }.orEmpty(),
         )
     }
