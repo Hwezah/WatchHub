@@ -419,7 +419,18 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             } else if (title.isSeries && seasons.isNotEmpty()) {
                 item(key = "seasons") {
                     Column(Modifier.padding(top = 22.dp)) {
-                        Text("Episodes", Modifier.padding(start = EDGE, bottom = 12.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
+                        // The heading, with the season's download at the far end of the same line.
+                        Row(Modifier.fillMaxWidth().padding(start = EDGE, end = EDGE - 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Episodes", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
+                            season?.let { s ->
+                                Tap({ downloadSeason(s) }, shape = RoundedCornerShape(6.dp)) {
+                                    Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Lc(L.drawable.lucide_ic_download, tint = Ink.muted, size = 16.dp)
+                                        Text("  Download season $s", style = Type.meta.copy(fontWeight = FontWeight.SemiBold))
+                                    }
+                                }
+                            }
+                        }
                         LazyRow(contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(seasons) { s ->
                                 Chip("Season $s", s == season, onClick = {
@@ -430,14 +441,6 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                     hits = null
                                     episode = null
                                 })
-                            }
-                        }
-                        season?.let { s ->
-                            Tap({ downloadSeason(s) }, Modifier.padding(start = EDGE - 4.dp, top = 8.dp), RoundedCornerShape(6.dp)) {
-                                Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Lc(L.drawable.lucide_ic_download, tint = Ink.muted, size = 16.dp)
-                                    Text("  Download season $s", style = Type.meta.copy(fontWeight = FontWeight.SemiBold))
-                                }
                             }
                         }
                     }
