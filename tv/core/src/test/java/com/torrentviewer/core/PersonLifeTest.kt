@@ -7,8 +7,8 @@ import org.junit.Test
 /** A person page's birth line: dates, age, and a death. */
 class PersonLifeTest {
     @Test fun ageCountsOnlyFullYears() {
-        assertEquals(61, ageOf("1964-06-12", null, "2026-06-12"))
-        assertEquals(61, ageOf("1964-06-12", null, "2026-11-13"))
+        assertEquals(62, ageOf("1964-06-12", null, "2026-06-12"))
+        assertEquals(61, ageOf("1964-06-12", null, "2026-06-11"))
         assertEquals(60, ageOf("1964-06-12", null, "2025-06-11"))
         assertNull(ageOf(null, null, "2026-11-13"))
     }
