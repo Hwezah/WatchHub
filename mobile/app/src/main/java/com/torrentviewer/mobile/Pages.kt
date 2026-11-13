@@ -791,6 +791,10 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
+        ToggleSection(
+            "Hide torrents under $MIN_SEEDS seeds", "Left out of the sources lists: with so few seeds they rarely finish. A tap under the list still shows them.",
+            settings.hideFewSeeds,
+        ) { set(settings.copy(hideFewSeeds = it)) }
         ToggleSection("Extra trackers", "Attach public trackers to bare magnet links so they resolve faster.", settings.addTrackers) {
             set(settings.copy(addTrackers = it))
         }

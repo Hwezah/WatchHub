@@ -158,3 +158,12 @@ fun describePick(hit: Hit): String {
         com.torrentviewer.core.bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null },
     ).joinToString(" · ")
 }
+
+/** Fewer seeds than this and a torrent rarely finishes: left out of the sources lists by default. */
+const val MIN_SEEDS = 5
+
+/**
+ * A torrent with too few seeds to bother with: not a direct link or another app's, and not cached on TorBox
+ * ([cached]: lower-case ids), where it plays from TorBox's servers whatever the swarm.
+ */
+fun fewSeeds(hit: Hit, cached: Set<String> = emptySet()) = !hit.direct && !hit.external && hit.seeders < MIN_SEEDS && hit.id.lowercase() !in cached

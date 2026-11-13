@@ -188,7 +188,13 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var quality by remember(title.imdb) { mutableStateOf<String?>(null) }
     /** Which request the visible sources belong to; answers arrive out of order. */
     var ticket by remember { mutableIntStateOf(0) }
-    val shown = hits.orEmpty().filter { quality == null || it.quality == quality }
+    // Torrents under 5 seeds are left out (Settings → Streaming), unless asked for on this page.
+    val settingsNow by com.torrentviewer.core.SettingsStore.value.collectAsState()
+    val cachedIds by TorBox.cached.collectAsState()
+    var showFew by remember(title.imdb) { mutableStateOf(false) }
+    val atQuality = hits.orEmpty().filter { quality == null || it.quality == quality }
+    val shown = if (settingsNow.hideFewSeeds && !showFew) atQuality.filterNot { fewSeeds(it, cachedIds.mapTo(HashSet()) { c -> c.lowercase() }) } else atQuality
+    val hiddenFew = atQuality.size - shown.size
     var sheet by remember { mutableStateOf(false) }
     /** Download on a film or an episode: its releases, to pick one from. */
     var downloadSheet by remember { mutableStateOf(false) }
@@ -564,7 +570,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     )
                 }
             } else {
-                sources(title, episode, hits, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> watch.stream(hit, title) }
+                sources(title, episode, hits, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> watch.stream(hit, title) }
             }
         }
         // Over the art, a round back button; once the page scrolls under it, a solid bar with the name.
@@ -585,7 +591,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         val ep = episode
         BottomSheet(ep?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: "Sources", onDismiss = { sheet = false }) {
             LazyColumn {
-                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
+                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
                     sheet = false
                     watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
                 }
@@ -597,7 +603,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         val ep = episode
         BottomSheet(ep?.let { "Download ${episodeTag(it.season, it.episode)}: pick a release" } ?: "Download: pick a release", onDismiss = { downloadSheet = false }) {
             LazyColumn {
-                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, language = searchLang()?.name, onDownload = { hit ->
+                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit ->
                     downloadSheet = false
                     keep(hit, ep)
                 }) { hit ->
@@ -743,6 +749,9 @@ private fun LazyListScope.sources(
     onMore: ((Hit) -> Unit)? = null,
     /** Asks every addon and plugin again: the pill left of All. */
     onReload: (() -> Unit)? = null,
+    /** Torrents left out for too few seeds, and how to show them. */
+    hiddenFew: Int = 0,
+    onShowFew: (() -> Unit)? = null,
     onPlay: (Hit) -> Unit,
 ) {
     val qualities = hits.orEmpty().mapNotNull { it.quality }.distinct().sortedBy { QUALITY_ORDER.indexOf(it).let { i -> if (i < 0) 9 else i } }
@@ -786,6 +795,14 @@ private fun LazyListScope.sources(
                     },
                 )
                 hits == null && episode == null && title.isSeries -> Note("Choose an episode to see what is available.")
+            }
+            // What was left out, and a tap to bring it back.
+            if (hiddenFew > 0 && onShowFew != null) Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart) {
+                Text(
+                    "$hiddenFew torrent${if (hiddenFew == 1) "" else "s"} under $MIN_SEEDS seeds hidden · Show",
+                    Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onShowFew).padding(horizontal = 6.dp, vertical = 4.dp),
+                    style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold),
+                )
             }
         }
     }
@@ -946,11 +963,10 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
                     maxLines = 1,
                 )
                 Text(
-                    // A film's scope is "Episode" only by default — it says nothing there.
+                    // A film's scope is "Episode" only by default — it says nothing there. Seeds are on the right, highlighted.
                     listOfNotNull(
                         hit.scope.label.takeIf { hit.kind == "tv" || hit.scope != Scope.EPISODE },
                         bytes(hit.size).takeIf { hit.size > 0 },
-                        "${hit.seeders} seeds".takeIf { !hit.direct && !hit.external },
                         hit.addon.ifEmpty { null },
                     ).joinToString("  ·  "),
                     Modifier.padding(top = 2.dp),
@@ -961,7 +977,8 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
             // A direct link says nothing here: only what tells sources apart (a torrent's health, TorBox, another app).
             if (!hit.direct || hit.external || mbps >= HEAVY_MBPS) Column(horizontalAlignment = Alignment.End) {
                 if (!hit.direct || hit.external) Text(
-                    when { hit.external -> "Opens app"; instant -> "Instant"; else -> grade.label },
+                    // A torrent: its seed count itself, coloured by how healthy that is — no "Weak" or "No seeds".
+                    when { hit.external -> "Opens app"; instant -> "Instant"; else -> "${hit.seeders} seed${if (hit.seeders == 1) "" else "s"}" },
                     style = Type.meta.copy(color = if (hit.external) Ink.muted else if (instant) Ink.good else tint, fontWeight = FontWeight.Bold),
                 )
                 if (instant) Text("TorBox", style = Type.meta.copy(fontSize = 11.sp, color = Ink.faint))
