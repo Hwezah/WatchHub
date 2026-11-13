@@ -956,9 +956,10 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
             // No resolution tag: the pills above already sort the rows by it.
             Column(Modifier.weight(1f)) {
                 // The whole release name, on one line that scrolls through it — the codec and group at the end are what tell releases apart.
+                // A short gap (28 dp) before it comes round again, not a third of the row.
                 Text(
                     hit.name,
-                    Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, velocity = 40.dp),
+                    Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, spacing = androidx.compose.foundation.MarqueeSpacing(28.dp), velocity = 40.dp),
                     style = Type.label.copy(fontSize = 14.sp),
                     maxLines = 1,
                 )

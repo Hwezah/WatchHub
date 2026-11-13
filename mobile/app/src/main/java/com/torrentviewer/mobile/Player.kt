@@ -1825,7 +1825,7 @@ private fun StatsPanel(s: Stats?, progress: Progress?, file: TorrentFile?, durat
             Row(Modifier.padding(vertical = 2.dp)) {
                 Text(label, Modifier.width(70.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp))
                 // The file's name is long and is the one worth reading whole: it scrolls rather than being cut.
-                val scroll = if (label == "File") Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, velocity = 40.dp) else Modifier
+                val scroll = if (label == "File") Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, spacing = androidx.compose.foundation.MarqueeSpacing(28.dp), velocity = 40.dp) else Modifier
                 Text(value, scroll, style = Type.meta.copy(color = Color.White, fontSize = 12.sp), maxLines = 1, overflow = if (label == "File") TextOverflow.Clip else TextOverflow.Ellipsis)
             }
         }
