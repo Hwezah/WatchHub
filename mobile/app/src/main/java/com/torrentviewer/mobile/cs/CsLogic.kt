@@ -29,12 +29,15 @@ private val SCHEME = Regex("^https?://", RegexOption.IGNORE_CASE)
 private val CS_LINK = Regex("^(cloudstreamrepo://|https://cs\\.repo/\\??)", RegexOption.IGNORE_CASE)
 private val SHORTCODE = Regex("^[a-zA-Z0-9!_-]+$")
 
-/** Null when it is neither a link nor a shortcode. The same rules as CloudStream's RepositoryManager.parseRepoUrl. */
+/**
+ * Null when it is neither a link nor a shortcode. CloudStream's RepositoryManager.parseRepoUrl rules,
+ * except that a cs.repo wrapper is unwrapped before a plain link is taken as it is.
+ */
 fun repoInput(raw: String): RepoInput? {
     val s = raw.trim()
     return when {
-        SCHEME.containsMatchIn(s) -> RepoInput.Link(s)
         CS_LINK.containsMatchIn(s) -> s.replace(CS_LINK, "").let { RepoInput.Link(if (SCHEME.containsMatchIn(it)) it else "https://$it") }
+        SCHEME.containsMatchIn(s) -> RepoInput.Link(s)
         SHORTCODE.matches(s) -> RepoInput.Shortcode(s)
         else -> null
     }

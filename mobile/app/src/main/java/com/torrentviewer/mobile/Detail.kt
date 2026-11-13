@@ -189,6 +189,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var allEpisodes by rememberSaveable(title.imdb, season) { mutableStateOf(false) }
     /** "Download season" open: the season, and its packs (null while still looking). */
     var seasonPacks by remember(title.imdb) { mutableStateOf<Pair<Int, List<Hit>?>?>(null) }
+    /** A source's ⋯ open: the source, and the episode it is for. */
+    var actions by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
     val list = rememberLazyListState()
 
     fun findSources(ep: Episode?): Deferred<List<Hit>> {
@@ -200,8 +202,11 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         episodeId = ep?.id
         val run: suspend (OnHits) -> List<Hit> = { onHits ->
             try {
-                if (ep != null) searchEpisode(title, ep.season, ep.episode, onHits, searchLang())
-                else searchStreams(title.title, title.imdb, title.year?.take(4), lang = searchLang(), onHits = onHits, type = title.type)
+                // The Stremio addons' streams and the CloudStream plugins', side by side.
+                com.torrentviewer.mobile.cs.CsStreams.withPlugins(title, ep, onHits) { fromAddons ->
+                    if (ep != null) searchEpisode(title, ep.season, ep.episode, fromAddons, searchLang())
+                    else searchStreams(title.title, title.imdb, title.year?.take(4), lang = searchLang(), onHits = fromAddons, type = title.type)
+                }
             } finally {
                 if (mine == ticket) busy = false
             }
@@ -219,7 +224,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
 
     /** Nothing found; with a language picked, that is the likely reason, so it says so. */
     fun noneFound(what: String) = when {
-        !Addons.hasStreams -> Addons.NONE_YET
+        !Addons.hasStreams && com.torrentviewer.mobile.cs.CsPlugins.providers().isEmpty() -> Addons.NONE_YET
         lang.isEmpty() -> "No sources found for $what."
         else -> "No $what in ${langName(lang)} — change the language and try again."
     }
@@ -463,7 +468,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     )
                 }
             } else {
-                sources(title, episode, hits, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), language = searchLang()?.name, onDownload = { keep(it, null) }) { hit -> watch.stream(hit, title) }
+                sources(title, episode, hits, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), language = searchLang()?.name, onDownload = { keep(it, null) }, onMore = { actions = it to null }) { hit -> watch.stream(hit, title) }
             }
         }
         // Over the art, a round back button; once the page scrolls under it, a solid bar with the name.
@@ -487,7 +492,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, language = searchLang()?.name, onDownload = { hit ->
                     sheet = false
                     keep(hit, ep)
-                }) { hit ->
+                }, onMore = { actions = it to ep }) { hit ->
                     sheet = false
                     watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
                 }
@@ -514,13 +519,30 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         }
     }
 
+    // A source's actions, over the episode sheet if that is open.
+    actions?.let { (hit, ep) ->
+        SourceActions(
+            hit = hit,
+            heading = ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title,
+            all = hits.orEmpty(),
+            onPlay = { h ->
+                sheet = false
+                watch.stream(h, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
+            },
+            onReload = { findSources(ep) },
+            onTorrentDownload = { h -> keep(h, ep) },
+            say = { watch.notes.tryEmit(it) },
+            onDismiss = { actions = null },
+        )
+    }
+
     // "Download season": the packs to choose from, best first; a tap keeps that one.
     seasonPacks?.let { (s, packs) ->
         BottomSheet("Season $s packs", onDismiss = { seasonPacks = null }) {
             when {
                 packs == null -> Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Spinner(size = 24.dp)
-                    Text("   Asking your addons…", style = Type.body)
+                    Text("   Asking your addons and plugins…", style = Type.body)
                 }
                 packs.isEmpty() -> Note(
                     if (lang.isEmpty()) "No season $s pack found yet — download the episodes one by one."
@@ -581,6 +603,8 @@ private fun LazyListScope.sources(
     /** The language picked, by name: an empty list then says to change it. */
     language: String? = null,
     onDownload: (Hit) -> Unit,
+    /** The row's ⋯ / long-press: [SourceActions]. */
+    onMore: ((Hit) -> Unit)? = null,
     onPlay: (Hit) -> Unit,
 ) {
     val qualities = hits.orEmpty().mapNotNull { it.quality }.distinct().sortedBy { QUALITY_ORDER.indexOf(it).let { i -> if (i < 0) 9 else i } }
@@ -596,12 +620,12 @@ private fun LazyListScope.sources(
             when {
                 busy && shown.isEmpty() -> Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Spinner(size = 24.dp)
-                    Text("   Asking your addons…", style = Type.body)
+                    Text("   Asking your addons and plugins…", style = Type.body)
                 }
                 busy -> Note("${shown.size} so far · finding more…", Modifier.padding(bottom = 8.dp))
                 hits?.isEmpty() == true -> Note(
                     when {
-                        !Addons.hasStreams -> Addons.NONE_YET
+                        !Addons.hasStreams && com.torrentviewer.mobile.cs.CsPlugins.providers().isEmpty() -> Addons.NONE_YET
                         language != null -> "Nothing found in $language. Change the language and try again."
                         else -> "Nothing found. Try another episode, or add another addon in the Addons tab."
                     },
@@ -611,7 +635,7 @@ private fun LazyListScope.sources(
         }
     }
     items(shown.take(MAX_SOURCES), key = { "src-" + it.id }) { hit ->
-        Source(hit, modifier.padding(start = EDGE, end = EDGE, bottom = 8.dp), runtimeSeconds(title.runtime), onDownload = { onDownload(hit) }) { onPlay(hit) }
+        Source(hit, modifier.padding(start = EDGE, end = EDGE, bottom = 8.dp), runtimeSeconds(title.runtime), onDownload = { onDownload(hit) }, onMore = onMore?.let { more -> { more(hit) } }) { onPlay(hit) }
     }
 }
 
@@ -734,7 +758,7 @@ private const val TOO_HEAVY_MBPS = 80.0
  * With [runtimeSeconds], a release too big to stream as it plays says what it needs.
  */
 @Composable
-fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0, onDownload: (() -> Unit)? = null, onClick: () -> Unit) {
+fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0, onDownload: (() -> Unit)? = null, onMore: (() -> Unit)? = null, onClick: () -> Unit) {
     val grade = health(hit.seeders)
     // Cached on TorBox: it plays from TorBox's servers, so the swarm's health says nothing.
     val torbox by TorBox.key.collectAsState()
@@ -748,7 +772,7 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
         Health.WEAK -> Ink.warn
         Health.DEAD -> Ink.danger
     }
-    Tap(onClick, modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) { pressed ->
+    Tap(onClick, modifier.fillMaxWidth(), RoundedCornerShape(8.dp), onLongClick = onMore) { pressed ->
         Row(
             Modifier.background(if (pressed) Ink.surface2 else Ink.surface.copy(alpha = 0.92f)).padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -792,6 +816,8 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
             }
             // The download engine is a torrent client; a link is streamed only.
             if (onDownload != null && !hit.direct && !hit.external) Tap(onDownload, Modifier.padding(start = 4.dp), CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
+            // Everything else that can be done with it: play elsewhere, mirrors, copy, download (also a long-press).
+            if (onMore != null) Tap(onMore, Modifier.padding(start = 2.dp), CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
         }
     }
 }

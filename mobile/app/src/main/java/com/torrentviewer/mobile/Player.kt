@@ -1116,7 +1116,9 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
             finding = true
             found = null
             scope.launch {
-                found = runCatching {
+                // What the plugin found with this very link comes first: it was cut for it.
+                val withLink = com.torrentviewer.mobile.cs.CsStreams.subtitlesFor(watch.item?.uri)
+                found = withLink + runCatching {
                     // OpenSubtitles needs no key; SubDL joins in once the viewer has given theirs.
                     val ep = parseEpisode(file?.name.orEmpty())
                     findSubtitles(
