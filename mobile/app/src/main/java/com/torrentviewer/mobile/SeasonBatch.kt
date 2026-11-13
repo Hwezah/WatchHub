@@ -76,10 +76,8 @@ object SeasonBatch {
             for (ep in episodes) {
                 val pick = batchPick(sources(title, ep), quality)
                 val tag = episodeTag(ep.season, ep.episode)
-                if (pick != null) {
-                    if (pick.direct) downloadLink(context.applicationContext, pick, "${title.title} $tag")
-                    else Downloads.add(downloadJob(pick, title, ep))
-                }
+                // Torrents, files and HLS playlists all go to the Downloads tab.
+                if (pick != null) Downloads.add(downloadJob(pick, title, ep))
                 _state.value = _state.value?.let { s ->
                     s.copy(
                         done = s.done + 1,
@@ -125,7 +123,7 @@ fun BatchSheet(title: Title, season: Int, onDismiss: () -> Unit) {
                 if (mine.missed.isNotEmpty()) {
                     Note("Nothing at ${mine.quality} for episode${if (mine.missed.size == 1) "" else "s"} ${mine.missed.joinToString(", ")}.", Modifier.padding(top = 8.dp))
                 }
-                Text("Torrents appear in the Downloads tab; direct links in your notifications.", Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint))
+                Text("Each episode appears in the Downloads tab as it is found.", Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint))
                 if (!mine.finished) Button("Stop", { SeasonBatch.cancel() }, Modifier.padding(top = 14.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_x)
                 if (!mine.finished) return@Column
                 Text("Start another", Modifier.padding(top = 18.dp, bottom = 8.dp), style = Type.overline.copy(color = Ink.faint))

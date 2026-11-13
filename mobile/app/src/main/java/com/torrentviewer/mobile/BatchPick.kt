@@ -16,12 +16,14 @@ private val HEVC = Regex("(?i)(?<![a-z0-9])(x\\.?265|h\\.?265|hevc)(?![a-z0-9])"
 /** HEVC (x265): the same picture in roughly half the bytes of x264. */
 fun isHevc(hit: Hit) = HEVC.containsMatchIn(hit.name) || HEVC.containsMatchIn(hit.release)
 
-/** A link that is an HLS or DASH playlist rather than one file: it plays anywhere, but can't be saved as one download. */
-fun isPlaylist(hit: Hit) = hit.mime == MimeTypes.APPLICATION_M3U8 || hit.mime == MimeTypes.APPLICATION_MPD ||
-    Regex("\\.(m3u8|mpd)(\\?|$)", RegexOption.IGNORE_CASE).containsMatchIn(hit.uri)
+/** A link that is an HLS playlist (.m3u8): saved by joining its segments ([LinkFetch]). */
+fun isPlaylist(hit: Hit) = hit.mime == MimeTypes.APPLICATION_M3U8 || Regex("\\.m3u8(\\?|$)", RegexOption.IGNORE_CASE).containsMatchIn(hit.uri)
 
-/** Something that can be saved as a file: a torrent, or a direct link to one file. */
-fun canSave(hit: Hit) = !hit.external && !(hit.direct && isPlaylist(hit))
+/** A DASH manifest (.mpd): it plays, but separate video and audio tracks can't be saved as one file yet. */
+fun isDash(hit: Hit) = hit.mime == MimeTypes.APPLICATION_MPD || Regex("\\.mpd(\\?|$)", RegexOption.IGNORE_CASE).containsMatchIn(hit.uri)
+
+/** Something that can be saved as a file: a torrent, a direct file, or an HLS playlist. */
+fun canSave(hit: Hit) = !hit.external && !(hit.direct && isDash(hit))
 
 /** A torrent nobody seeds never finishes; a direct link has no swarm to need. */
 private fun alive(hit: Hit) = hit.direct || hit.seeders > 0

@@ -84,6 +84,13 @@ data class DownloadJob(
     val sequential: Boolean? = null,
     /** Episodes of a pack unticked by hand: kept out when the files are chosen again on restart. */
     val skipped: List<Int> = emptyList(),
+    /** A direct link rather than a torrent: saved by [LinkFetch], with these headers on every request. */
+    val link: Boolean = false,
+    val headers: Map<String, String> = emptyMap(),
+    /** The link is an HLS playlist: its segments are joined into one file. */
+    val playlist: Boolean = false,
+    /** The source's resolution ("720p"), to pick the playlist's matching variant. */
+    val quality: String? = null,
 ) {
     val label get() = titleName ?: title
 
@@ -91,6 +98,8 @@ data class DownloadJob(
         .put("imdb", imdb).put("kind", kind).put("tags", JSONArray(tags)).put("season", season)
         .put("fileIndices", JSONArray(files)).put("savedIndices", JSONArray(saved)).put("paused", paused).put("mobileData", mobileData).put("sequential", sequential)
         .put("skipped", JSONArray(skipped))
+        .put("link", link).put("playlist", playlist).put("quality", quality)
+        .put("headers", JSONObject().also { o -> headers.forEach { (k, v) -> o.put(k, v) } })
 
     companion object {
         fun from(o: JSONObject): DownloadJob {
@@ -111,6 +120,10 @@ data class DownloadJob(
                 paused = o.optBoolean("paused"),
                 mobileData = o.optBoolean("mobileData"),
                 sequential = if (o.has("sequential") && !o.isNull("sequential")) o.optBoolean("sequential") else null,
+                link = o.optBoolean("link"),
+                headers = o.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith { h.optString(it) } }.orEmpty(),
+                playlist = o.optBoolean("playlist"),
+                quality = o.str("quality"),
             )
         }
     }
@@ -168,6 +181,8 @@ object Downloads {
     private val lock = Any()
     private var session: SessionManager? = null
     private val handles = HashMap<String, TorrentHandle>()
+    /** Direct-link downloads running, by link. */
+    private val links = HashMap<String, kotlinx.coroutines.Job>()
     private val errors = HashMap<String, String>()
     private var poller: Job? = null
     private var wake: PowerManager.WakeLock? = null
@@ -303,7 +318,7 @@ object Downloads {
         _finished.value = readFinished().filter { it.file.exists() }
         val queue = readQueue()
         _live.value = queue.map { LiveDownload(it, if (it.paused) DlState.PAUSED else DlState.RESOLVING) }
-        queue.forEach(::begin)
+        queue.filter { !(it.link && it.paused) }.forEach(::begin)
     }
 
     /** Another episode out of a torrent already downloading widens it rather than starting it twice. */
@@ -337,7 +352,10 @@ object Downloads {
 
     fun pause(uri: String) {
         synchronized(lock) { handles[uri] }?.let { runCatching { it.pause() } }
+        // A link stops where it is; its work folder keeps the segments written so far.
+        synchronized(lock) { links.remove(uri) }?.cancel()
         update(uri) { it.copy(job = it.job.copy(paused = true), state = DlState.PAUSED, speed = 0) }
+        settle()
     }
 
     /** Resume on a download held for Wi-Fi is the viewer choosing mobile data for it. */
@@ -354,6 +372,8 @@ object Downloads {
             handles.remove(uri)
         }
         if (h != null) scope.launch { runCatching { session?.remove(h, SessionHandle.DELETE_FILES) } }
+        synchronized(lock) { links.remove(uri) }?.cancel()
+        scope.launch { linkWork(uri).deleteRecursively() }
         settle()
     }
 
@@ -368,6 +388,57 @@ object Downloads {
         }
         History.drop(f.file.path, Services.engine)
         writeFinished(_finished.value.filter { it.path != f.path })
+    }
+
+    /* ---------------------------------------------------------- direct links */
+
+    /** Where a link's segments and progress are kept until it is done. */
+    private fun linkWork(uri: String) = File(pieceDir(), "links/${Integer.toHexString(uri.hashCode())}")
+
+    /**
+     * A direct link — a single file, or an HLS playlist joined into one — saved to Movies/Watchly like
+     * a torrent's file, with the same Wi-Fi rule, pause, resume and notification.
+     */
+    private fun beginLink(job: DownloadJob) {
+        if (job.paused) return
+        startService()
+        val run = scope.launch {
+            try {
+                // Wi-Fi only, unless told to use mobile data for this one.
+                while (wifiOnly && onMetered() && !job.mobileData && !(_live.value.find { it.job.uri == job.uri }?.job?.mobileData ?: false)) {
+                    update(job.uri) { it.copy(state = DlState.WIFI) }
+                    notifyProgress()
+                    kotlinx.coroutines.delay(5000)
+                }
+                update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null) }
+                val work = linkWork(job.uri)
+                val result = LinkFetch.download(job.uri, job.headers, job.quality, job.playlist, work) { done, total, rate ->
+                    update(job.uri) { it.copy(state = DlState.DOWNLOADING, files = listOf(DlFile(0, job.label, maxOf(total, done), done, false)), speed = rate) }
+                    notifyProgress()
+                }
+                val dest = destOf(job, job.label, safe(job.label) + "." + result.ext)
+                dest.parentFile?.mkdirs()
+                if (!result.file.renameTo(dest)) {
+                    result.file.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
+                }
+                work.deleteRecursively()
+                writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, job.poster, job.label, job.imdb, job.kind)) + _finished.value.filter { it.path != dest.path })
+                synchronized(lock) {
+                    _live.value = _live.value.filter { it.job.uri != job.uri }
+                    writeQueue(jobs())
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "link download failed: ${e.message}")
+                errors[job.uri] = e.message ?: "Couldn't save that link"
+                update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
+            } finally {
+                synchronized(lock) { links.remove(job.uri) }
+                settle()
+            }
+        }
+        synchronized(lock) { links[job.uri] = run }
     }
 
     /* -------------------------------------------------------------- engine */
@@ -419,6 +490,7 @@ object Downloads {
     }.getOrNull()
 
     private fun begin(job: DownloadJob) {
+        if (job.link) return beginLink(job)
         scope.launch {
             try {
                 startService()

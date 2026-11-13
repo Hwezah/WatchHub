@@ -25,17 +25,19 @@ class BatchPickTest {
         assertEquals("Show.S01E01.720p.WEB.x264", batchPick(hits.filter { "HEVC" !in it.name && "x265" !in it.name || "1080p" in it.name }, "720p")!!.name)
     }
 
-    /** Trailers, samples, packs, dead torrents and playlists are passed over. */
+    /** Trailers, samples, packs, DASH manifests and dead torrents are passed over; an HLS playlist is fine, after known sizes. */
     @Test fun skipsWhatIsNotAnEpisodeFile() {
         val trailer = hit("Show.S01E01.720p.trailer", "720p", 9 * mb)
         val pack = hit("Show.S01.720p.x265", "720p", 5000 * mb, scope = Scope.SEASON)
         val dead = hit("Show.S01E01.720p.x265.dead", "720p", 200 * mb, seeders = 0)
         val alive = hit("Show.S01E01.720p.x264", "720p", 800 * mb)
         val playlist = hit("Plugin 720p", "720p", 0, uri = "https://cdn.example/master.m3u8")
-        assertEquals(alive, batchPick(listOf(trailer, pack, dead, alive, playlist), "720p"))
-        // A dead torrent still beats nothing.
-        assertEquals(dead, batchPick(listOf(trailer, pack, dead, playlist), "720p"))
-        assertNull(batchPick(listOf(trailer, pack, playlist), "720p"))
+        val dash = hit("Plugin DASH 720p", "720p", 0, uri = "https://cdn.example/manifest.mpd")
+        assertEquals(alive, batchPick(listOf(trailer, pack, dead, alive, playlist, dash), "720p"))
+        // A playlist that will download beats a dead torrent; a dead torrent still beats nothing.
+        assertEquals(playlist, batchPick(listOf(trailer, pack, dead, playlist), "720p"))
+        assertEquals(dead, batchPick(listOf(trailer, pack, dead, dash), "720p"))
+        assertNull(batchPick(listOf(trailer, pack, dash), "720p"))
     }
 
     /** A direct file link of unknown size is kept after every known size. */

@@ -57,6 +57,10 @@ import com.composables.icons.lucide.R as L
 
 /** A release to keep, labelled the way History labels a stream of it. */
 fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null) = DownloadJob(
+    link = hit.direct,
+    headers = if (hit.direct) hit.headers else emptyMap(),
+    playlist = hit.direct && isPlaylist(hit),
+    quality = hit.quality,
     uri = hit.uri,
     title = hit.name,
     titleName = if (episode != null && from != null) "${from.title} · ${episodeTag(episode.season, episode.episode)}" else from?.title,
@@ -197,8 +201,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     when (row.state) {
-                        DlState.RESOLVING -> "Finding peers…"
-                        DlState.DOWNLOADING -> listOfNotNull("$pct%", speed(row.speed), "${row.peers} peers").joinToString("  ·  ")
+                        DlState.RESOLVING -> if (row.job.link) "Starting…" else "Finding peers…"
+                        DlState.DOWNLOADING -> listOfNotNull("$pct%", speed(row.speed), "${row.peers} peers".takeIf { !row.job.link }).joinToString("  ·  ")
                         DlState.PAUSED -> "Paused  ·  $pct%"
                         DlState.WIFI -> "Waiting for Wi-Fi  ·  $pct%"
                         DlState.FAILED -> row.error ?: "Failed"

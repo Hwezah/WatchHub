@@ -36,8 +36,9 @@ import com.torrentviewer.core.Type
 import com.torrentviewer.mobile.cs.CsStreams
 import com.composables.icons.lucide.R as L
 
-/** The best link that can be saved as one file: the highest quality that isn't a playlist. */
-fun bestDownloadable(hits: List<Hit>): Hit? = hits.filter { it.direct && !isPlaylist(it) }.maxByOrNull { rankOf(it.quality) }
+/** For Auto download: the highest quality that can be saved, a single file before a playlist (it needs no joining), a link before a torrent. */
+fun bestDownloadable(hits: List<Hit>): Hit? = hits.filter { canSave(it) && it.scope == com.torrentviewer.core.Scope.EPISODE }
+    .maxWithOrNull(compareBy<Hit>({ rankOf(it.quality) }, { it.direct }, { !isPlaylist(it) }))
 
 private fun rankOf(q: String?): Int = when {
     q == null -> 0
@@ -57,7 +58,8 @@ fun SourceActions(
     all: List<Hit>,
     onPlay: (Hit) -> Unit,
     onReload: () -> Unit,
-    onTorrentDownload: (Hit) -> Unit,
+    /** Into the Downloads tab: torrents, files and HLS playlists alike. */
+    onDownload: (Hit) -> Unit,
     say: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -76,20 +78,31 @@ fun SourceActions(
             if (hit.external) {
                 Action(L.drawable.lucide_ic_external_link, "Open in its app") { onDismiss(); onPlay(hit) }
             }
-            Action(L.drawable.lucide_ic_download, "Auto download", "The best quality source that saves as one file") {
+            Action(L.drawable.lucide_ic_download, "Auto download", "The best quality source that can be saved") {
                 val best = bestDownloadable(all)
-                when {
-                    best != null -> say(downloadLink(context, best, heading))
-                    all.any { !it.direct && !it.external } -> { onDismiss(); onTorrentDownload(all.first { !it.direct && !it.external }) }
-                    else -> say("None of these sources saves as one file — they're streaming playlists.")
+                if (best == null) say("None of these sources can be saved.")
+                else {
+                    onDismiss()
+                    onDownload(best)
+                    say("Downloading ${best.quality ?: "the best source"} — see Downloads")
                 }
             }
-            Action(L.drawable.lucide_ic_download, "Download mirror", if (link && isPlaylist(hit)) "A streaming playlist (HLS): not downloadable yet" else null) {
+            Action(
+                L.drawable.lucide_ic_download, "Download mirror",
                 when {
-                    link && isPlaylist(hit) -> say("This source is a streaming playlist (HLS). Downloading those isn't supported yet — try Auto download.")
-                    link -> say(downloadLink(context, hit, heading))
+                    link && isDash(hit) -> "A DASH stream: can't be saved yet"
+                    link && isPlaylist(hit) -> "A streaming playlist (HLS): saved as one .ts file"
+                    else -> null
+                },
+            ) {
+                when {
                     hit.external -> say("This one opens in another app.")
-                    else -> { onDismiss(); onTorrentDownload(hit) }
+                    link && isDash(hit) -> say("DASH streams can't be saved yet — pick another source.")
+                    else -> {
+                        onDismiss()
+                        onDownload(hit)
+                        say("Downloading — see Downloads")
+                    }
                 }
             }
             Action(L.drawable.lucide_ic_captions, "Download subtitles", if (subs.isEmpty()) "None came with this source" else "${subs.size} with this source") {
@@ -178,16 +191,6 @@ private fun openInPlayer(context: Context, hit: Hit, title: String): Boolean {
 
 /** A file name Android's downloader accepts. */
 private fun fileName(s: String) = s.replace(Regex("[^\\p{L}\\p{N} ._()-]+"), " ").replace(Regex("\\s+"), " ").trim().take(80).ifEmpty { "video" }
-
-/**
- * Hands one file to Android's own downloader, headers and all: a notification shows the progress and
- * the file lands in Downloads/WatchHub. What to tell the viewer comes back.
- */
-fun downloadLink(context: Context, hit: Hit, title: String): String {
-    val ext = Regex("\\.(mp4|mkv|webm|avi|mov|m4v|ts)(\\?|$)", RegexOption.IGNORE_CASE).find(hit.uri)?.groupValues?.get(1) ?: "mp4"
-    val name = fileName(listOfNotNull(title, hit.quality).joinToString(" ")) + ".$ext"
-    return enqueue(context, hit.uri, name, hit.headers, title)?.let { "Downloading $name — see the notification" } ?: "Couldn't start the download."
-}
 
 /** Every subtitle that came with a source, beside where its video would go. */
 private fun downloadSubs(context: Context, subs: List<Sub>, title: String): String {

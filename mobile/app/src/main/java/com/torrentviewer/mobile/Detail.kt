@@ -517,8 +517,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     downloadSheet = false
                     keep(hit, ep)
                 }) { hit ->
-                    // A link streams only; the download engine is a torrent client.
-                    if (hit.direct || hit.external) watch.notes.tryEmit("That one is a link and streams only. Pick a torrent to download.")
+                    if (!canSave(hit)) watch.notes.tryEmit("That one can't be saved — pick another source.")
                     else {
                         downloadSheet = false
                         keep(hit, ep)
@@ -541,7 +540,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 watch.stream(h, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
             },
             onReload = { findSources(ep) },
-            onTorrentDownload = { h -> keep(h, ep) },
+            onDownload = { h -> Downloads.add(downloadJob(h, title, ep)) },
             say = { watch.notes.tryEmit(it) },
             onDismiss = { actions = null },
         )
@@ -825,8 +824,8 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
                 if (instant) Text("TorBox", style = Type.meta.copy(fontSize = 11.sp, color = Ink.faint))
                 if (mbps >= HEAVY_MBPS) Text("Needs ${mbps.toInt()} Mb/s", style = Type.meta.copy(fontSize = 11.sp, color = if (mbps >= TOO_HEAVY_MBPS) Ink.danger else Ink.warn))
             }
-            // The download engine is a torrent client; a link is streamed only.
-            if (onDownload != null && !hit.direct && !hit.external) Tap(onDownload, Modifier.padding(start = 4.dp), CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
+            // Torrents, files and HLS playlists download; a DASH manifest or another app's link doesn't.
+            if (onDownload != null && canSave(hit)) Tap(onDownload, Modifier.padding(start = 4.dp), CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
             // Everything else that can be done with it: play elsewhere, mirrors, copy, download (also a long-press).
             if (onMore != null) Tap(onMore, Modifier.padding(start = 2.dp), CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
         }
