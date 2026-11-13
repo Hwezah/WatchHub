@@ -248,8 +248,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
         // This download's own order, over the default above.
         val inOrder = Downloads.inOrder(row.job)
-        // Evenly spaced across the card, the pair centred in it.
-        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+        // A pair: from the start, not spread (only three or more pills share the width).
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip("Fastest", !inOrder, onClick = { onOrder(false) })
             Chip("In order", inOrder, onClick = { onOrder(true) })
         }

@@ -22,8 +22,12 @@ object PluginSheetSpacing : FragmentManager.FragmentLifecycleCallbacks() {
         if (f.javaClass.classLoader === PluginSheetSpacing::class.java.classLoader) return
         val gap = (GAP_DP * v.resources.displayMetrics.density).toInt()
         space(v, gap)
+        (v as? ViewGroup)?.let { evenPills(it, gap) }
         // Idempotent: a row already spaced has a margin, so a later pass leaves it be.
-        v.viewTreeObserver.addOnGlobalLayoutListener { space(v, gap) }
+        v.viewTreeObserver.addOnGlobalLayoutListener {
+            space(v, gap)
+            (v as? ViewGroup)?.let { evenPills(it, gap) }
+        }
     }
 
     private fun named(v: View, part: String): Boolean {
@@ -38,32 +42,48 @@ object PluginSheetSpacing : FragmentManager.FragmentLifecycleCallbacks() {
     private fun isRow(c: View) = c.visibility == View.VISIBLE && c.background != null && (c.isClickable || named(c, "CardView"))
 
     /**
-     * A row of pill buttons (Select All, Deselect All…): each as wide as the others, sharing the row's width,
-     * with a gap between, and its words centred. Only a horizontal row where every child is a button.
+     * Rows of pill buttons (Select All, Deselect All…), as the app's own: every pill in the sheet as wide as
+     * the widest, words centred; three or more in a row share its width, a pair sits from the start. Only a
+     * horizontal row where every child is a button. Widths are known once laid out, so this runs on each layout
+     * pass and changes nothing once they match.
      */
-    private fun evenPills(v: ViewGroup, gap: Int) {
-        if (v !is LinearLayout || v.orientation != LinearLayout.HORIZONTAL || v.childCount < 2) return
-        val pills = (0 until v.childCount).map(v::getChildAt).filter { it.visibility != View.GONE }
-        if (pills.size < 2 || !pills.all(::isRow)) return
-        pills.forEachIndexed { i, c ->
-            val lp = c.layoutParams as? LinearLayout.LayoutParams ?: return@forEachIndexed
-            // Done already: its width is the row's share.
-            if (lp.width == 0 && lp.weight == 1f) return@forEachIndexed
-            lp.width = 0
-            lp.weight = 1f
-            lp.marginStart = if (i == 0) 0 else gap / 2
-            lp.marginEnd = if (i == pills.lastIndex) 0 else gap / 2
-            c.layoutParams = lp
-            when (c) {
-                is android.widget.TextView -> c.gravity = android.view.Gravity.CENTER
-                is LinearLayout -> c.gravity = android.view.Gravity.CENTER
+    private fun evenPills(root: ViewGroup, gap: Int) {
+        val rows = mutableListOf<List<View>>()
+        fun find(v: View) {
+            if (v !is ViewGroup) return
+            if (v is LinearLayout && v.orientation == LinearLayout.HORIZONTAL) {
+                val pills = (0 until v.childCount).map(v::getChildAt).filter { it.visibility != View.GONE }
+                if (pills.size >= 2 && pills.all(::isRow)) rows += pills
+            }
+            for (i in 0 until v.childCount) find(v.getChildAt(i))
+        }
+        find(root)
+        val widest = rows.flatten().maxOfOrNull { it.width } ?: return
+        if (widest <= 0) return
+        rows.forEach { pills ->
+            pills.forEachIndexed { i, c ->
+                val lp = c.layoutParams as? LinearLayout.LayoutParams ?: return@forEachIndexed
+                val spread = pills.size >= 3
+                val start = if (i == 0) 0 else if (spread) gap / 2 else gap
+                val end = if (spread && i != pills.lastIndex) gap / 2 else 0
+                val changed = (spread && (lp.width != 0 || lp.weight != 1f)) || lp.marginStart != start || lp.marginEnd != end
+                if (changed) {
+                    if (spread) { lp.width = 0; lp.weight = 1f }
+                    lp.marginStart = start
+                    lp.marginEnd = end
+                    c.layoutParams = lp
+                }
+                if (!spread && c.minimumWidth < widest) c.minimumWidth = widest
+                when (c) {
+                    is android.widget.TextView -> if (c.gravity != android.view.Gravity.CENTER) c.gravity = android.view.Gravity.CENTER
+                    is LinearLayout -> if (c.gravity != android.view.Gravity.CENTER) c.gravity = android.view.Gravity.CENTER
+                }
             }
         }
     }
 
     private fun space(v: View, gap: Int) {
         if (v !is ViewGroup) return
-        evenPills(v, gap)
         val list = (v is LinearLayout && v.orientation == LinearLayout.VERTICAL) || named(v, "RecyclerView")
         for (i in 0 until v.childCount) {
             val c = v.getChildAt(i)

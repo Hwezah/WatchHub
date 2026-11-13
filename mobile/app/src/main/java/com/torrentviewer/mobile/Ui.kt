@@ -659,7 +659,8 @@ fun spreadOut(min: Dp = 8.dp): Arrangement.Horizontal = object : Arrangement.Hor
 
     override fun androidx.compose.ui.unit.Density.arrange(totalSize: Int, sizes: IntArray, layoutDirection: androidx.compose.ui.unit.LayoutDirection, outPositions: IntArray) {
         val floor = spacing.roundToPx()
-        val gap = if (sizes.size > 1) maxOf(floor, (totalSize - sizes.sum()) / (sizes.size - 1)) else 0
+        // Two (or one) aren't spread: they sit from the start, [spacing] apart. Three or more share the width.
+        val gap = if (sizes.size > 2) maxOf(floor, (totalSize - sizes.sum()) / (sizes.size - 1)) else floor
         var x = 0
         sizes.forEachIndexed { i, w ->
             outPositions[i] = x
