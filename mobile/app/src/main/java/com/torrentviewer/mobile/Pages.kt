@@ -25,6 +25,7 @@ import com.torrentviewer.core.SUB_SIZES
 import com.torrentviewer.core.langName
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -391,10 +392,45 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
 
 private enum class Shelfs(val label: String) { HISTORY("History"), LATER("My List"), FAVORITE("Favourites") }
 
+private enum class LibrarySection(val label: String) { WISHLIST("Wishlist"), DOWNLOADS("Downloads") }
+
+/**
+ * The Library's two tabs, spread across the width: plain words, the chosen one bright with a line under it
+ * (a little below the word, as wide as it); a red dot by Downloads while one is running.
+ */
+@Composable
+private fun LibraryTabs(on: LibrarySection, running: Boolean, onPick: (LibrarySection) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+        LibrarySection.entries.forEach { s ->
+            val chosen = s == on
+            Column(
+                Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Max).clip(RoundedCornerShape(6.dp))
+                    .then(Modifier.clickable { onPick(s) }).padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(s.label, style = Type.title.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium, color = if (chosen) Ink.text else Ink.muted))
+                    if (s == LibrarySection.DOWNLOADS && running) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.accent))
+                }
+                Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (chosen) Ink.accent else Color.Transparent))
+            }
+        }
+    }
+}
+
 /** Everything played (the only way back to a magnet watched once), and the two saved lists. */
 @Composable
 fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownloads: () -> Unit) {
     val downloading by Downloads.live.collectAsState()
+    /** The Library's two halves: what is watched and wanted, and what is on (or coming to) this phone. */
+    var section by rememberSaveable { mutableStateOf(LibrarySection.WISHLIST) }
+    if (section == LibrarySection.DOWNLOADS) {
+        DownloadsScreen(watch, onBack = null) {
+            Heading("Library")
+            LibraryTabs(section, downloading.isNotEmpty()) { section = it }
+        }
+        return
+    }
     val stremio by Stremio.connected.collectAsState()
     val stremioLibrary by Stremio.library.collectAsState()
     /** Per profile; the guest is offered nothing it would lose on exit. */
@@ -426,14 +462,8 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
                     if (shelf == Shelfs.HISTORY && items.isNotEmpty()) Tap({ clearing = true }, shape = CircleShape) {
                         Lc(L.drawable.lucide_ic_trash_2, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp)
                     }
-                    // Downloads live here now, off the tab bar; the dot says one is running.
-                    Tap(onDownloads, shape = CircleShape) {
-                        Box {
-                            Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.download, size = 22.dp)
-                            if (downloading.isNotEmpty()) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(8.dp).clip(CircleShape).background(Ink.accent))
-                        }
-                    }
                 }
+                LibraryTabs(section, downloading.isNotEmpty()) { section = it }
                 // Where the history is, the history's sync is offered.
                 if (Stremio.available && !stremio && !stremioLater) {
                     StremioSection(me, onLater = {

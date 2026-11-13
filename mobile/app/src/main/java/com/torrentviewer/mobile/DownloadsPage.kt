@@ -77,16 +77,18 @@ fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null) = DownloadJob(
 
 /** What is downloading, and what is kept on this phone to watch without a connection. */
 @Composable
-fun DownloadsScreen(watch: Watch, onBack: () -> Unit) {
+fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable () -> Unit)? = null) {
     val live by Downloads.live.collectAsState()
     val finished by Downloads.finished.collectAsState()
     var cancelling by remember { mutableStateOf<LiveDownload?>(null) }
     var deleting by remember { mutableStateOf<Finished?>(null) }
 
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp)) {
+        // Inside the Library, its heading and tabs; opened on its own, a heading with a close.
         item {
-            Heading("Downloads") {
-                Tap(onBack, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Ink.muted, size = 22.dp) }
+            if (header != null) Column { header() }
+            else Heading("Downloads") {
+                if (onBack != null) Tap(onBack, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Ink.muted, size = 22.dp) }
             }
         }
         if (live.isEmpty() && finished.isEmpty()) item {
