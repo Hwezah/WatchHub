@@ -170,6 +170,8 @@ fun Button(
     tint: Color = Ink.text,
     /** Beside a line of text in a row, where the full height towers over it. */
     compact: Boolean = false,
+    /** A solid fill with white words instead of [primary]'s red glow: the download buttons' green ([Ink.download]). */
+    fill: Color? = null,
 ) {
     val filled = on == true
     val disc by animateFloatAsState(if (filled) 1f else 0f, if (filled) spring(dampingRatio = 0.55f, stiffness = 420f) else tween(180), label = "disc")
@@ -183,16 +185,17 @@ fun Button(
     Tap(onClick, modifier, RoundedCornerShape(8.dp)) { pressed ->
         val bg by animateColorAsState(
             when {
+                fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
                 primary -> if (pressed) Ink.accent.copy(alpha = 0.8f) else Ink.accent
                 // A tint of the text colour: grey on either page.
                 else -> tint.copy(alpha = if (pressed) 0.22f else 0.12f)
             },
             Motion.effects(), label = "bg",
         )
-        val fg = if (primary) Color.White else tint
+        val fg = if (primary || fill != null) Color.White else tint
         Row(
             // The primary one — Play, Watch — a grainy red glow, a shade deeper while pressed; the rest a flat tint.
-            (if (primary) Modifier.glow(accentGlow(), 0.85f, 1.1f).background(Color.Black.copy(alpha = if (pressed) 0.18f else 0f)) else Modifier.background(bg))
+            (if (primary && fill == null) Modifier.glow(accentGlow(), 0.85f, 1.1f).background(Color.Black.copy(alpha = if (pressed) 0.18f else 0f)) else Modifier.background(bg))
                 .height(if (compact) 34.dp else 46.dp).padding(horizontal = if (compact) 14.dp else 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,

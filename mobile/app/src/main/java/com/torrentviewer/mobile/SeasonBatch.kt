@@ -103,7 +103,8 @@ object SeasonBatch {
  * built-in subtitles, source — each offering only what was found, and what each episode would get.
  */
 @Composable
-fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -> Unit) {
+fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -> Unit, external: Boolean = false) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(title.imdb, season) { SeasonBatch.begin(title, season) }
     val scanned by SeasonBatch.scan.collectAsState()
     val scan = scanned?.takeIf { it.titleImdb == title.imdb && it.season == season }
@@ -187,15 +188,27 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 )
             }
 
+            val many = "${picks.size} episode${if (picks.size == 1) "" else "s"}"
             Button(
-                if (picks.isEmpty()) "Nothing matches" else "Download ${picks.size} episode${if (picks.size == 1) "" else "s"}",
+                when {
+                    picks.isEmpty() -> "Nothing matches"
+                    external -> "Send $many to a downloader"
+                    else -> "Download $many"
+                },
                 {
                     if (picks.isEmpty()) return@Button
+                    if (external) {
+                        // Another app's downloader: every pick's link at once, in episode order.
+                        if (sendLinks(context, picks.map { it.second }, "${title.title} · season $season")) onDismiss()
+                        else say("No app on this phone can take those links.")
+                        return@Button
+                    }
                     SeasonBatch.download(title, picks)
-                    say("Downloading ${picks.size} episodes of season $season — see Downloads")
+                    say("Downloading $many of season $season — see Downloads")
                     onDismiss()
                 },
-                Modifier.padding(top = 16.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_download, primary = picks.isNotEmpty(),
+                Modifier.padding(top = 16.dp).fillMaxWidth(), icon = if (external) L.drawable.lucide_ic_external_link else L.drawable.lucide_ic_download,
+                fill = Ink.download.takeIf { picks.isNotEmpty() },
             )
             if (scan.done) Solo(Modifier.padding(top = 10.dp)) { m -> Chip("Ask every source again", false, onClick = { SeasonBatch.begin(title, season, again = true) }, m, compact = true) }
         }

@@ -429,7 +429,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
                     // Downloads live here now, off the tab bar; the dot says one is running.
                     Tap(onDownloads, shape = CircleShape) {
                         Box {
-                            Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.muted, size = 22.dp)
+                            Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.download, size = 22.dp)
                             if (downloading.isNotEmpty()) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(8.dp).clip(CircleShape).background(Ink.accent))
                         }
                     }

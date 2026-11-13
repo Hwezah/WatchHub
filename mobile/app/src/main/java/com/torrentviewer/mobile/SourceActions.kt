@@ -172,7 +172,8 @@ fun SourceActions(
 private fun Action(icon: Int, label: String, hint: String? = null, onClick: () -> Unit) {
     Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Lc(icon, tint = Ink.muted, size = 20.dp)
+            // Every download is green, here as on the buttons.
+            Lc(icon, tint = if (icon == L.drawable.lucide_ic_download) Ink.download else Ink.muted, size = 20.dp)
             Column(Modifier.padding(start = 16.dp)) {
                 Text(label, style = Type.body.copy(fontWeight = FontWeight.SemiBold))
                 hint?.let { Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp)) }
@@ -241,30 +242,40 @@ private fun enqueue(context: Context, url: String, name: String, headers: Map<St
 @Composable
 fun DownloadChoice(hit: Hit, heading: String, onInternal: () -> Unit, say: (String) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    DownloadChoice(
+        listOfNotNull(hit.quality, com.torrentviewer.core.bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null }).joinToString("  ·  ").ifEmpty { hit.name },
+        onInternal = onInternal,
+        onExternal = { if (openInDownloader(context, hit, heading)) onDismiss() else say("No app on this phone can take that link.") },
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * The same choice for an episode or a season, before any source is picked: the internal downloader takes
+ * Settings → Preferred download (a season opens the batch sheet set to it); an external one is handed the
+ * pick's link, or a season's links at once. [detail] says what will be picked.
+ */
+@Composable
+fun DownloadChoice(
+    detail: String,
+    onInternal: () -> Unit,
+    onExternal: () -> Unit,
+    onDismiss: () -> Unit,
+    internalNote: String = "Saved in the Downloads tab. Resumes after a pause, keeps to Wi-Fi if you set it, and gets a fresh link if this one expires.",
+    externalNote: String = "1DM, ADM or another downloader on your phone — Android shows the ones you have. Start it soon: links like these can expire.",
+) {
     androidx.compose.ui.window.Dialog(onDismiss) {
         Column(
             Modifier.widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Ink.surface).padding(18.dp),
         ) {
             Text("Download", style = Type.title.copy(fontWeight = FontWeight.Bold))
-            Text(
-                listOfNotNull(hit.quality, com.torrentviewer.core.bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null }).joinToString("  ·  ")
-                    .ifEmpty { hit.name },
-                Modifier.padding(top = 2.dp, bottom = 14.dp), style = Type.meta.copy(color = Ink.faint), maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            ChoiceTile(
-                L.drawable.lucide_ic_download, "Use Internal App Downloader",
-                "Saved in the Downloads tab. Resumes after a pause, keeps to Wi-Fi if you set it, and gets a fresh link if this one expires.",
-            ) {
+            Text(detail, Modifier.padding(top = 2.dp, bottom = 14.dp), style = Type.meta.copy(color = Ink.faint), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            ChoiceTile(L.drawable.lucide_ic_download, "Use Internal App Downloader", internalNote, Ink.download) {
                 onDismiss()
                 onInternal()
             }
             Spacer(Modifier.height(10.dp))
-            ChoiceTile(
-                L.drawable.lucide_ic_external_link, "Choose External Downloader",
-                "1DM, ADM or another downloader on your phone — Android shows the ones you have. Start it soon: links like these can expire.",
-            ) {
-                if (openInDownloader(context, hit, heading)) onDismiss() else say("No app on this phone can take that link.")
-            }
+            ChoiceTile(L.drawable.lucide_ic_external_link, "Choose External Downloader", externalNote, onClick = onExternal)
             Text(
                 "Cancel", Modifier.align(Alignment.End).padding(top = 14.dp).clip(RoundedCornerShape(8.dp))
                     .clickable(onClick = onDismiss).padding(horizontal = 10.dp, vertical = 6.dp),
@@ -275,13 +286,13 @@ fun DownloadChoice(hit: Hit, heading: String, onInternal: () -> Unit, say: (Stri
 }
 
 @Composable
-private fun ChoiceTile(icon: Int, title: String, excerpt: String, onClick: () -> Unit) {
+private fun ChoiceTile(icon: Int, title: String, excerpt: String, tint: androidx.compose.ui.graphics.Color = Ink.text, onClick: () -> Unit) {
     Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(14.dp)) { pressed ->
         Row(
             Modifier.fillMaxWidth().background(Ink.text.copy(alpha = if (pressed) 0.12f else 0.06f)).padding(14.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Lc(icon, Modifier.padding(top = 2.dp), tint = Ink.text, size = 22.dp)
+            Lc(icon, Modifier.padding(top = 2.dp), tint = tint, size = 22.dp)
             Column(Modifier.padding(start = 12.dp)) {
                 Text(title, style = Type.body.copy(fontWeight = FontWeight.SemiBold))
                 Text(excerpt, Modifier.padding(top = 3.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp))
@@ -294,8 +305,8 @@ private fun ChoiceTile(icon: Int, title: String, excerpt: String, onClick: () ->
  * Hands the link to whichever downloader the viewer picks, through Android's chooser: the file's link (a
  * torrent's magnet) as a VIEW, with its name and — for apps that read them — its headers and Referer.
  */
-private fun openInDownloader(context: Context, hit: Hit, title: String): Boolean {
-    val link = if (hit.direct) hit.uri else magnetOf(hit) ?: hit.uri
+fun openInDownloader(context: Context, hit: Hit, title: String): Boolean {
+    val link = downloadLink(hit)
     val referer = hit.headers.entries.firstOrNull { it.key.equals("referer", true) }?.value
     val view = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(Uri.parse(link), if (link.startsWith("magnet:", true)) null else hit.mime ?: "video/*")
@@ -306,4 +317,20 @@ private fun openInDownloader(context: Context, hit: Hit, title: String): Boolean
         referer?.let { putExtra("referer", it) }
     }
     return runCatching { context.startActivity(Intent.createChooser(view, "Download with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+}
+
+/** A link a downloader can take: the file's own, or a torrent's magnet. */
+fun downloadLink(hit: Hit) = if (hit.direct) hit.uri else magnetOf(hit) ?: hit.uri
+
+/**
+ * A season's links for another downloader, all at once: shared as text, one link a line, which 1DM, ADM and
+ * most others read as a batch. Headers can't go along, so a link that needs them may be refused there.
+ */
+fun sendLinks(context: Context, hits: List<Hit>, title: String): Boolean {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, title)
+        putExtra(Intent.EXTRA_TEXT, hits.joinToString("\n", transform = ::downloadLink))
+    }
+    return runCatching { context.startActivity(Intent.createChooser(send, "Send links to").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
 }

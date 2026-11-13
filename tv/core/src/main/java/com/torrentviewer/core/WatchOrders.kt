@@ -159,6 +159,26 @@ object Tmdb {
         }
     }
 
+    private val episodeLists = java.util.concurrent.ConcurrentHashMap<String, List<Episode>>()
+
+    /**
+     * A series' aired episodes, every season, for one Cinemeta has no list for yet (a new show): without
+     * them the page can't offer episodes or a season download. Empty with no key, unknown, or no answer.
+     */
+    suspend fun episodes(imdb: String): List<Episode> {
+        if (key.isEmpty()) return emptyList()
+        episodeLists[imdb]?.let { return it }
+        return withContext(Dispatchers.Default) {
+            runCatching {
+                val id = JSONObject(get("/find/$imdb?external_source=imdb_id")).optJSONArray("tv_results")?.optJSONObject(0)?.optInt("id")
+                    ?: return@withContext emptyList()
+                val today = isoNow().take(10)
+                parseTmdbSeasons(get("/tv/$id")).flatMap { s -> runCatching { parseTmdbSeason(get("/tv/$id/season/$s"), imdb, today) }.getOrDefault(emptyList()) }
+                    .also { if (it.isNotEmpty()) episodeLists[imdb] = it }
+            }.getOrDefault(emptyList())
+        }
+    }
+
     private val people = java.util.concurrent.ConcurrentHashMap<Int, TmdbPerson>()
 
     /** Already asked for this run: going back to a person's page lands where it was, not on an empty one. */

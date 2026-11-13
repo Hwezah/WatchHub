@@ -95,6 +95,8 @@ import com.torrentviewer.core.runtimeSeconds
 import com.torrentviewer.core.searchEpisode
 import com.torrentviewer.core.absoluteNumbers
 import com.torrentviewer.core.continueEpisode
+import com.torrentviewer.core.episodesFromReleases
+import com.torrentviewer.core.looksLikeSeries
 import com.torrentviewer.core.parseEpisode
 import com.torrentviewer.core.seasonsIn
 import com.torrentviewer.core.searchStreams
@@ -128,7 +130,17 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var title by remember(initial.imdb) { mutableStateOf(initial) }
-    LaunchedEffect(initial.imdb) { Meta.title(initial.imdb, initial.kind)?.let { title = it } }
+    /** The episode list's lookups are done: a series still without one is searched as a whole, and its releases name the episodes. */
+    var episodesChecked by remember(initial.imdb) { mutableStateOf(false) }
+    LaunchedEffect(initial.imdb) {
+        // Some addon catalogues list a series as a film; Cinemeta then has no film by that id, but has the series.
+        val found = Meta.title(initial.imdb, initial.kind) ?: if (initial.kind == "movie") Meta.title(initial.imdb, "tv")?.takeIf { it.isSeries } else null
+        found?.let { title = it }
+        // A new series Cinemeta lists no episodes for yet: TMDB's, so it has episodes and a season download.
+        val t = title
+        if (t.isSeries && t.episodes.isEmpty()) com.torrentviewer.core.Tmdb.episodes(t.imdb).takeIf { it.isNotEmpty() }?.let { title = t.copy(episodes = it) }
+        episodesChecked = true
+    }
     // Rating, cast and what's like it. Without a key or a connection the page is as it was.
     val tmdb by produceState<com.torrentviewer.core.TmdbTitle?>(null, initial.imdb) { value = com.torrentviewer.core.Tmdb.title(initial.imdb, initial.kind) }
     val certificate = tmdb?.certificate
@@ -195,6 +207,11 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var batchFor by remember(title.imdb) { mutableStateOf<Int?>(null) }
     /** A source's ⬇ asked: where to download it (this app or another), for that source and its episode. */
     var downloadFor by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
+    /** An episode's ⬇ or a season's Download asked: this app's downloader, or another app's. */
+    var askEpisode by remember(title.imdb) { mutableStateOf<Episode?>(null) }
+    var askSeason by remember(title.imdb) { mutableStateOf<Int?>(null) }
+    /** The batch sheet hands its picks to another app's downloader instead of this one's. */
+    var batchExternal by remember(title.imdb) { mutableStateOf(false) }
     /** A source's ⋯ open: the source, and the episode it is for. */
     var actions by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
     val list = rememberLazyListState()
@@ -241,7 +258,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
      * already on screen when they're this one's, else a fresh search — decided when every source has
      * answered, or after [QUICK_PICK_MS] with what has.
      */
-    fun quickDownload(ep: Episode?) {
+    fun quickDownload(ep: Episode?, external: Boolean = false) {
         val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource) }
         val what = ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title
         val loaded = hits?.takeIf { !busy && episode?.id == ep?.id }
@@ -259,14 +276,17 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             }
             val pick = preferredPick(all, prefs)
             if (pick == null) watch.notes.tryEmit("Nothing that can be saved was found for $what.")
-            else {
+            else if (external) {
+                if (!openInDownloader(context, pick, what)) watch.notes.tryEmit("No app on this phone can take that link.")
+            } else {
                 Downloads.add(downloadJob(pick, title, ep))
                 watch.notes.tryEmit("Downloading $what · ${describePick(pick)}")
             }
         }
     }
 
-    fun downloadEpisode(ep: Episode) = quickDownload(ep)
+    /** An episode's ⬇: first, which downloader; then the release Settings → Preferred download picks. */
+    fun downloadEpisode(ep: Episode) { askEpisode = ep }
 
     /**
      * A whole season in one go: the best pack that is that season, else a complete-series
@@ -299,7 +319,29 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     LaunchedEffect(title.imdb, title.episodes.size) { NewEpisodes.markSeen(title) }
 
     // A film has one thing to look for: look on arrival.
-    LaunchedEffect(title.imdb, title.kind, lang) { if (!title.isSeries) findSources(null) }
+    // A series with no episode list anywhere is searched as a whole, as a film is.
+    LaunchedEffect(title.imdb, title.kind, lang, episodesChecked) {
+        if (!title.isSeries || (episodesChecked && title.episodes.isEmpty())) findSources(null)
+    }
+    // Once the whole-title search is in: a "film" whose releases are a series' becomes that series, and a
+    // series with no episode list gets one from what its releases name — so either has episodes and a season download.
+    LaunchedEffect(busy, title.imdb, title.kind) {
+        val found = hits
+        if (busy || found.isNullOrEmpty() || episode != null) return@LaunchedEffect
+        val names = found.flatMap { listOf(it.release, it.name) }.filter { it.isNotBlank() }
+        val t = title
+        if (!t.isSeries) {
+            if (!looksLikeSeries(found.map { it.release.ifBlank { it.name } })) return@LaunchedEffect
+            val series = Meta.title(t.imdb, "tv")?.takeIf { it.isSeries } ?: t.copy(kind = "tv", type = "series")
+            val eps = series.episodes.ifEmpty { com.torrentviewer.core.Tmdb.episodes(series.imdb) }.ifEmpty { episodesFromReleases(series.imdb, names) }
+            if (eps.isEmpty()) return@LaunchedEffect
+            hits = null
+            title = series.copy(episodes = eps)
+        } else if (t.episodes.isEmpty()) {
+            val eps = episodesFromReleases(t.imdb, names)
+            if (eps.isNotEmpty()) { hits = null; title = t.copy(episodes = eps) }
+        }
+    }
 
     /** What the big button plays: the episode last looked at, where the series was left, or the first of the season. */
     val upNext = episode ?: continueAt ?: if (through) numbered.firstOrNull()?.first else episodes.firstOrNull()
@@ -464,9 +506,9 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             Text("Episodes", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
                             season?.let { s ->
                                 // The whole season, episode by episode, with filters over what was found.
-                                Tap({ batchFor = s }, shape = RoundedCornerShape(6.dp)) {
+                                Tap({ askSeason = s }, shape = RoundedCornerShape(6.dp)) {
                                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Lc(L.drawable.lucide_ic_download, tint = Ink.muted, size = 16.dp)
+                                        Lc(L.drawable.lucide_ic_download, tint = Ink.download, size = 16.dp)
                                         Text("  Download season $s", style = Type.meta.copy(fontWeight = FontWeight.SemiBold))
                                     }
                                 }
@@ -564,7 +606,31 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     // The trailer plays here, in a card over the page, rather than in YouTube.
     trailerId?.let { id -> TrailerSheet(id, title.title) { trailerId = null } }
 
-    batchFor?.let { s -> BatchSheet(title, s, say = { watch.notes.tryEmit(it) }, onDismiss = { batchFor = null }) }
+    batchFor?.let { s -> BatchSheet(title, s, say = { watch.notes.tryEmit(it) }, onDismiss = { batchFor = null }, external = batchExternal) }
+
+    // What one-tap downloads go by, for the choice's line: "720p · x265 · MKV".
+    fun preferred(): String = com.torrentviewer.core.SettingsStore.value.value.let { st ->
+        listOf(st.dlQuality, st.dlCodec, st.dlFormat, if (st.dlSubs) "subtitles" else "", if (st.dlSource == "Link") "direct link" else st.dlSource.lowercase())
+            .filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { "the best that can be saved" }
+    }
+    askEpisode?.let { ep ->
+        DownloadChoice(
+            "${episodeTag(ep.season, ep.episode)} · picks your preferred ${preferred()}, or the nearest found",
+            onInternal = { quickDownload(ep) },
+            onExternal = { askEpisode = null; quickDownload(ep, external = true) },
+            onDismiss = { askEpisode = null },
+        )
+    }
+    askSeason?.let { s ->
+        DownloadChoice(
+            "Season $s · every episode, filters set to your preferred ${preferred()}",
+            onInternal = { batchExternal = false; batchFor = s },
+            onExternal = { askSeason = null; batchExternal = true; batchFor = s },
+            onDismiss = { askSeason = null },
+            internalNote = "Pick resolution, codec, format, subtitles and source, see what each episode gets, then everything goes to the Downloads tab.",
+            externalNote = "The same filters, then every episode's link goes to 1DM, ADM or another downloader in one go.",
+        )
+    }
 
     downloadFor?.let { (hit, ep) ->
         DownloadChoice(
@@ -799,7 +865,7 @@ private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?,
             }
             // Every release for this episode, to pick one by hand.
             Tap(onSources, shape = CircleShape) { Lc(L.drawable.lucide_ic_list_video, Modifier.padding(10.dp), tint = Ink.muted, size = 22.dp) }
-            Tap(onDownload, shape = CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(10.dp), tint = Ink.muted, size = 22.dp) }
+            Tap(onDownload, shape = CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(10.dp), tint = Ink.download, size = 22.dp) }
         }
         ep.overview?.let { Text(it, Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 2, overflow = TextOverflow.Ellipsis) }
     }
@@ -865,7 +931,7 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
                 if (mbps >= HEAVY_MBPS) Text("Needs ${mbps.toInt()} Mb/s", style = Type.meta.copy(fontSize = 11.sp, color = if (mbps >= TOO_HEAVY_MBPS) Ink.danger else Ink.warn))
             }
             // Torrents, files and HLS playlists download; a DASH manifest or another app's link doesn't.
-            if (onDownload != null && canSave(hit)) Tap(onDownload, Modifier.padding(start = 4.dp), CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
+            if (onDownload != null && canSave(hit)) Tap(onDownload, Modifier.padding(start = 4.dp), CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.download, size = 20.dp) }
             // Everything else that can be done with it: play elsewhere, mirrors, copy, download (also a long-press).
             if (onMore != null) Tap(onMore, Modifier.padding(start = 2.dp), CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
         }

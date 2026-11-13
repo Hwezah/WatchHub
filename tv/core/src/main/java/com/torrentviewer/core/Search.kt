@@ -685,3 +685,15 @@ fun rankSubtitles(subs: List<Sub>, language: String, fileName: String): List<Sub
         .distinctBy { (it.language + it.release).lowercase().ifEmpty { it.url } }
         .sortedByDescending { (words(it.release) intersect playing).size }
 }
+
+private val SEASON_MARK = Regex("""\bs\d{1,2}(?:e\d{1,4})?\b|\bseasons?[ ._-]?\d{1,2}\b|\b\d{1,2}x\d{2}\b""", RegexOption.IGNORE_CASE)
+
+/**
+ * Whether a "film"'s releases are really a series' (S01E02, S01, Season 1 in most names): some addon
+ * catalogues list a series as a movie, and its page would then miss its episodes and season download.
+ */
+fun looksLikeSeries(names: List<String>): Boolean {
+    if (names.isEmpty()) return false
+    val marked = names.count { SEASON_MARK.containsMatchIn(it) }
+    return marked >= 2 && marked * 2 >= names.size
+}

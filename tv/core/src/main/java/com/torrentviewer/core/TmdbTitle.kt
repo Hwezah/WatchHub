@@ -76,3 +76,32 @@ fun parseTmdbPerson(json: String): TmdbPerson {
 private val KIDS_CERTIFICATES = setOf("G", "PG", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "TV-PG")
 
 fun tooOldForKids(certificate: String?): Boolean = certificate != null && certificate !in KIDS_CERTIFICATES
+
+/** A series' seasons from /tv/{id}: each real season's number (no "Specials", season 0) that has episodes. */
+fun parseTmdbSeasons(json: String): List<Int> =
+    JSONObject(json).optJSONArray("seasons")?.objects().orEmpty()
+        .filter { it.optInt("season_number") > 0 && it.optInt("episode_count") > 0 }
+        .map { it.optInt("season_number") }.distinct().sorted()
+
+/**
+ * A season's episodes from /tv/{id}/season/{n}, as Cinemeta would give them ("tt…:1:2" ids), for series
+ * Cinemeta has no episode list for yet. Only episodes aired by [today] (yyyy-MM-dd): one not out has no sources.
+ */
+fun parseTmdbSeason(json: String, imdb: String, today: String): List<Episode> {
+    val o = JSONObject(json)
+    val season = o.optInt("season_number")
+    return o.optJSONArray("episodes")?.objects().orEmpty().mapNotNull { e ->
+        val n = e.optInt("episode_number").takeIf { it > 0 } ?: return@mapNotNull null
+        val aired = e.str("air_date")?.takeIf { it <= today } ?: return@mapNotNull null
+        Episode("$imdb:$season:$n", season, n, e.str("name") ?: "Episode $n", e.str("overview"), image("w500", e.str("still_path")), aired)
+    }.sortedBy { it.episode }
+}
+
+/**
+ * The last resort for a series nobody lists episodes for: the episodes its releases name ("S01E04"), so a
+ * season can still be downloaded one episode at a time. Ids as Cinemeta's.
+ */
+fun episodesFromReleases(imdb: String, names: List<String>): List<Episode> =
+    names.mapNotNull(::parseEpisode).filter { it.season > 0 && it.episode > 0 }.distinct()
+        .sortedWith(compareBy({ it.season }, { it.episode }))
+        .map { Episode("$imdb:${it.season}:${it.episode}", it.season, it.episode, "Episode ${it.episode}", null, null, null) }

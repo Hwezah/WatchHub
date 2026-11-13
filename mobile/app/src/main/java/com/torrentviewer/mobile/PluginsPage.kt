@@ -240,9 +240,9 @@ private fun OfferedRow(w: PluginWrapper, busy: androidx.compose.runtime.MutableS
         }
         when {
             working -> Spinner(size = 22.dp, modifier = Modifier.padding(8.dp))
-            have == null -> RoundTap(L.drawable.lucide_ic_circle_arrow_down, ::install)
+            have == null -> RoundTap(L.drawable.lucide_ic_circle_arrow_down, ::install, Ink.download)
             else -> {
-                if (p.version > have.version) RoundTap(L.drawable.lucide_ic_refresh_cw, ::install)
+                if (p.version > have.version) RoundTap(L.drawable.lucide_ic_refresh_cw, ::install, Ink.download)
                 if (CsPlugins.loaded(have) && CsPlugins.settingsOf(have) != null) {
                     RoundTap(L.drawable.lucide_ic_sliders_horizontal) { CsPlugins.openSettings(have)?.let { watch.notes.tryEmit(it) } }
                 }
@@ -258,8 +258,8 @@ private fun OfferedRow(w: PluginWrapper, busy: androidx.compose.runtime.MutableS
 }
 
 @Composable
-private fun RoundTap(icon: Int, onClick: () -> Unit) {
-    Tap(onClick, shape = androidx.compose.foundation.shape.CircleShape) { Lc(icon, Modifier.padding(8.dp), tint = Ink.text, size = 22.dp) }
+private fun RoundTap(icon: Int, onClick: () -> Unit, tint: androidx.compose.ui.graphics.Color = Ink.text) {
+    Tap(onClick, shape = androidx.compose.foundation.shape.CircleShape) { Lc(icon, Modifier.padding(8.dp), tint = tint, size = 22.dp) }
 }
 
 /** An installed plugin: running (and how many sources it added), or the reason it didn't start; and Remove. */
