@@ -35,7 +35,9 @@ both feeding one sources list.
 - Release builds are **not minified** (plugins call library classes by name, as in CloudStream).
 - The app ships with no repositories; a plugin is third-party code running with app permissions.
 
-Known gaps: HLS downloads (only single-file links download, via Android's DownloadManager); plugin
+Downloads: torrents, single-file links and HLS playlists all go through `Downloads` (link jobs run
+`LinkFetch`: variant at the source's resolution, segments joined into .ts/.mp4, AES-128 decrypted,
+resumable). Known gaps: DASH, DRM, live streams and HLS variants with separate audio can't be saved; plugin
 links usually expire, so Continue Watching may need a fresh "Reload links"; provider home pages and
 provider search are not shown yet; libVLC sends only User-Agent/Referer headers.
 
