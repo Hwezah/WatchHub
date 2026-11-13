@@ -541,8 +541,16 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
 private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier.navigationBarsPadding().padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(50)).background(Ink.surface.copy(alpha = 0.86f)).grain()
-            .border(1.dp, Ink.text.copy(alpha = 0.08f), RoundedCornerShape(50))
+            // Solid and dark, so nothing shows through, but still glass: a faint lift at the top fading to the page's
+            // black, the grain over it, and a rim catching light along the top edge.
+            .clip(RoundedCornerShape(50))
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.55f), Ink.bg)))
+            .grain()
+            .border(
+                1.dp,
+                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Ink.text.copy(alpha = 0.16f), Ink.text.copy(alpha = 0.04f))),
+                RoundedCornerShape(50),
+            )
             .padding(6.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
