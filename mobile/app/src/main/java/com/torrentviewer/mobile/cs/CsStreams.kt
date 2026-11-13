@@ -47,8 +47,20 @@ import java.util.concurrent.ConcurrentHashMap
 object CsStreams {
     private const val TAG = "CsStreams"
 
-    /** Search, load and loadLinks together, per provider, unless the plugin says it needs longer. */
-    private const val PROVIDER_MS = 35_000L
+    /**
+     * Search, load and loadLinks together, per provider, unless the plugin says it needs longer. Aggregators
+     * like StreamPlay ask dozens of sites in turn and keep finding links for a minute or two (CloudStream waits
+     * for all of them); links show as they come, so a long wait costs nothing.
+     */
+    private const val PROVIDER_MS = 150_000L
+
+    /** How each provider's last search went, by its name, for the plugin list: "38 links in 64s", "didn't find this title"… */
+    private val _outcomes = kotlinx.coroutines.flow.MutableStateFlow<Map<String, String>>(emptyMap())
+    val outcomes: kotlinx.coroutines.flow.StateFlow<Map<String, String>> = _outcomes
+
+    private fun report(provider: String, outcome: String) {
+        synchronized(_outcomes) { _outcomes.value = _outcomes.value + (provider to outcome) }
+    }
 
     private val SERIES_TYPES = setOf(TvType.TvSeries, TvType.Anime, TvType.AsianDrama, TvType.OVA, TvType.Cartoon, TvType.Documentary)
     private val FILM_TYPES = setOf(TvType.Movie, TvType.AnimeMovie, TvType.Torrent, TvType.Cartoon, TvType.Documentary)
@@ -106,28 +118,43 @@ object CsStreams {
             for (p in providers) launch(Dispatchers.IO) {
                 val start = System.currentTimeMillis()
                 val limit = maxOf(PROVIDER_MS, (p.loadLinksTimeoutMs ?: 0L) + 15_000L)
+                var links = 0
                 val done = withTimeoutOrNull(limit) {
                     runCatching {
                         one(p, title, ep, absolute) { hit ->
                             val added = synchronized(found) { found.none { it.uri == hit.uri } && found.add(hit) }
-                            if (added) onHits(now())
+                            if (added) {
+                                links++
+                                onHits(now())
+                            }
                         }
                     }.onFailure { Log.w(TAG, "${p.name}: ${it::class.java.simpleName} ${it.message}") }
                 }
-                Log.i("releases", "${p.name} (plugin) ${System.currentTimeMillis() - start}ms${if (done == null) " timed out" else ""}")
+                val secs = (System.currentTimeMillis() - start) / 1000
+                val what = ep?.let { com.torrentviewer.core.episodeTag(it.season, it.episode) } ?: title.title
+                report(
+                    p.name,
+                    when {
+                        done == null -> "$what: $links links, still looking after ${secs}s (stopped)"
+                        done.isFailure -> "$what: $links links, then failed — ${done.exceptionOrNull()?.let { it.message ?: it::class.java.simpleName }}"
+                        links == 0 -> "$what: ${done.getOrNull() ?: "no links"} (${secs}s)"
+                        else -> "$what: $links links in ${secs}s"
+                    },
+                )
+                Log.i("releases", "${p.name} (plugin) ${secs}s, $links links${if (done == null) " timed out" else ""}")
             }
         }
         return now()
     }
 
-    /** One provider: its page for the title, the episode on it, and every link found there. */
-    private suspend fun one(p: MainAPI, title: Title, ep: Episode?, absolute: Int?, emit: (Hit) -> Unit) {
+    /** One provider: its page for the title, the episode on it, and every link found there. Null, or why nothing came. */
+    private suspend fun one(p: MainAPI, title: Title, ep: Episode?, absolute: Int?, emit: (Hit) -> Unit): String? {
         val series = ep != null
-        val url = loadUrl(p, title, series) ?: return
-        val load = p.load(url) ?: return
+        val url = loadUrl(p, title, series) ?: return "didn't find this title"
+        val load = p.load(url) ?: return "its page didn't load"
         // A plugin that knows the title's IMDb id and gives another found a different title.
         val said = load.syncData["imdb"]?.takeIf { it.startsWith("tt") }
-        if (said != null && title.imdb.startsWith("tt") && said != title.imdb) return
+        if (said != null && title.imdb.startsWith("tt") && said != title.imdb) return "found a different title"
         val targets: List<Pair<String, String?>> = when (load) {
             is MovieLoadResponse -> if (series) emptyList() else listOf(load.dataUrl to null)
             is LiveStreamLoadResponse -> listOf(load.dataUrl to null)
@@ -139,10 +166,11 @@ object CsStreams {
             }
             is TorrentLoadResponse -> {
                 (load.magnet ?: load.torrent)?.let { emit(hitOf(p, it, load.name, null, ExtractorLinkType.MAGNET, emptyMap(), title, series)) }
-                emptyList()
+                return null
             }
             else -> emptyList()
         }
+        if (targets.isEmpty()) return if (series) "this episode isn't on its page" else "its page has no film to play"
         for ((data, label) in targets) {
             val found = mutableListOf<Sub>()
             p.loadLinks(
@@ -154,6 +182,7 @@ object CsStreams {
                 },
             )
         }
+        return null
     }
 
     /** The provider's own page for the title: straight from the IMDb id where it can, else its search's best match. */

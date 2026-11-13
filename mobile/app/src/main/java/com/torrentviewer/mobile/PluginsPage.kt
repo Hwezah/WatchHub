@@ -287,6 +287,13 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
             Text("${p.internalName}  ·  v${p.version}", style = Type.body.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
             // A failure in full: the missing class it names is what tells what to add.
             Text(state, style = Type.meta.copy(color = tint, fontSize = 12.sp), maxLines = if (tint == Ink.accent) 10 else 3, overflow = TextOverflow.Ellipsis)
+            // How its last search went, per provider: links found, or why none came — to see why sources are few.
+            val outcomes by com.torrentviewer.mobile.cs.CsStreams.outcomes.collectAsState()
+            val mine = CsPlugins.providers().filter { it.sourcePlugin == java.io.File(p.filePath).absolutePath }.mapNotNull { pr -> outcomes[pr.name]?.let { "${pr.name} — $it" } }
+            if (mine.isNotEmpty()) Text(
+                "Last search: " + mine.joinToString("\n"), Modifier.padding(top = 4.dp),
+                style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 6, overflow = TextOverflow.Ellipsis,
+            )
         }
         Spacer(Modifier.width(8.dp))
         // The plugin's own settings — accounts, which sources it asks, languages — as CloudStream's sliders icon.

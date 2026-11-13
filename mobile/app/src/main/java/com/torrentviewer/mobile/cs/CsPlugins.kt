@@ -59,9 +59,12 @@ object CsPlugins {
         CsStore.load()
         // Old Androids' TLS fails on many sites; CloudStream bundles Conscrypt for that too.
         runCatching { Security.insertProviderAt(org.conscrypt.Conscrypt.newProvider(), 1) }
+        // The sites plugins scrape are slow: a 10-second read (OkHttp's default) must not end a provider's search.
         app.baseClient = OkHttpClient.Builder()
             .followRedirects(true)
             .followSslRedirects(true)
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(40, java.util.concurrent.TimeUnit.SECONDS)
             .cache(Cache(File(appContext.cacheDir, "cs_http_cache"), 50L * 1024 * 1024))
             .build()
         AppScope.launch(Dispatchers.IO) {
