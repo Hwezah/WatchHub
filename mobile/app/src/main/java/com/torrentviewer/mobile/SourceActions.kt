@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -265,10 +268,18 @@ fun DownloadChoice(
     internalNote: String = "Saved in the Downloads tab. Resumes after a pause, keeps to Wi-Fi if you set it, and gets a fresh link if this one expires.",
     externalNote: String = "1DM, ADM or another downloader on your phone — Android shows the ones you have. Start it soon: links like these can expire.",
 ) {
-    androidx.compose.ui.window.Dialog(onDismiss) {
+    androidx.compose.ui.window.Dialog(onDismiss, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        // Low on the screen, resting just a notch above the tab bar (about 70 dp over the system's own bar);
+        // a tap on the dimmed page around it closes it.
+        Box(
+            Modifier.fillMaxSize().clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = onDismiss)
+                .navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 82.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
         Column(
-            // Lifted a notch, so it floats clear of the tab bar rather than resting on it.
-            Modifier.offset(y = (-44).dp).widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Ink.surface).padding(18.dp),
+            Modifier.widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Ink.surface)
+                .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
+                .padding(18.dp),
         ) {
             Text("Download", style = Type.title.copy(fontWeight = FontWeight.Bold))
             Text(detail, Modifier.padding(top = 2.dp, bottom = 14.dp), style = Type.meta.copy(color = Ink.faint), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -283,6 +294,7 @@ fun DownloadChoice(
                     .clickable(onClick = onDismiss).padding(horizontal = 10.dp, vertical = 6.dp),
                 style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.muted),
             )
+        }
         }
     }
 }
