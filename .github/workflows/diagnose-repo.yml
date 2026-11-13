@@ -4,12 +4,11 @@ name: Diagnose a CloudStream repository
 # repo.json, its plugin lists and one .cs3 file, printing what each step answered.
 
 on:
+  # Runs when this file is pushed (hand-run workflows only work from the default branch).
+  push:
+    branches: ["ccr-*"]
+    paths: [".github/workflows/diagnose-repo.yml"]
   workflow_dispatch:
-    inputs:
-      shortcode:
-        description: Repository shortcode
-        required: true
-        default: phisherrepo
 
 jobs:
   diagnose:
@@ -18,7 +17,7 @@ jobs:
       - name: Follow the repository
         shell: bash
         env:
-          CODE: ${{ github.event.inputs.shortcode }}
+          CODE: phisherrepo
         run: |
           UA="Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
           echo "== cutt.ly/$CODE (as the app asks: no redirects followed)"
