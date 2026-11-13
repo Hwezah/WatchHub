@@ -55,18 +55,22 @@ object CsStore {
 /** A repo.json or plugins.json. Quiet: a repository being down isn't the phone being offline. */
 suspend fun fetchText(url: String): String = Net.get(url, 20_000, quiet = true)
 
-/** Where a shortcode such as "phisherrepo" leads, without following the redirect; null for no such code. */
+/**
+ * Where a shortcode such as "phisherrepo" leads; null for no such code. The shortener answers with a
+ * redirect, or — to some clients — a page with the link in it, which is read for the first .json link.
+ */
 suspend fun resolveShortcode(code: String): String? = withContext(Dispatchers.IO) {
     val lookup = shortcodeLookup(code)
     val conn = (URL(lookup).openConnection() as HttpURLConnection).apply {
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
-        setRequestProperty("User-Agent", "Mozilla/5.0")
+        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36")
     }
     try {
-        conn.responseCode
+        val code = conn.responseCode
         shortcodeTarget(lookup, conn.getHeaderField("Location"))
+            ?: if (code in 200..299) shortcodeInPage(conn.inputStream.use { it.readBytes().take(256 * 1024).toByteArray().decodeToString() }) else null
     } finally {
         conn.disconnect()
     }

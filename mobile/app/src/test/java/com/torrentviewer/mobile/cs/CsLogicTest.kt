@@ -94,3 +94,11 @@ class CsLogicTest {
         assertEquals(p, pluginData(p.toJson()))
     }
 }
+
+class ShortcodePageTest {
+    @org.junit.Test fun linkInAPage() {
+        val page = """<html><a href="https://cutt.ly/x.json">x</a> Go to <a href="https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/refs/heads/builds/repo.json">repo</a></html>"""
+        org.junit.Assert.assertEquals("https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/refs/heads/builds/repo.json", shortcodeInPage(page))
+        org.junit.Assert.assertNull(shortcodeInPage("<html>Not found</html>"))
+    }
+}

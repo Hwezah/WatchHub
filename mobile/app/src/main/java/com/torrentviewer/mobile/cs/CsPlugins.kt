@@ -95,7 +95,7 @@ object CsPlugins {
         val url = when (input) {
             is RepoInput.Link -> input.url
             is RepoInput.Shortcode -> runCatching { resolveShortcode(input.code) }.getOrNull()
-                ?: throw IllegalArgumentException("No repository is called \"${input.code}\"")
+                ?: throw IllegalArgumentException("No repository is called \"${input.code}\" — check the spelling, or paste the repository's link instead")
         }
         val repo = RepositoryManager.parseRepository(url) ?: throw IllegalArgumentException("Couldn't read a repository at that link")
         val data = RepositoryData(repo.iconUrl, repo.name, url, repo.description)

@@ -55,6 +55,10 @@ fun shortcodeTarget(lookup: String, location: String?): String? {
     return to
 }
 
+/** A shortener's page that shows the link rather than redirecting: the first repository-looking .json link in it. */
+fun shortcodeInPage(html: String): String? =
+    Regex("""https?://[^\s"'<>]+?\.json""").findAll(html).map { it.value }.firstOrNull { !it.contains("cutt.ly") && !it.contains("py.md") }
+
 /** A repo.json; null when it isn't one (no name, or no plugin lists). */
 fun parseRepository(json: String): Repository? = runCatching {
     val o = JSONObject(json)
