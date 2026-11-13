@@ -1,5 +1,11 @@
 package com.torrentviewer.mobile
 
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.clickable
 import android.app.DownloadManager
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -227,3 +233,77 @@ private fun enqueue(context: Context, url: String, name: String, headers: Map<St
     runCatching { dm.enqueue(request().setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "WatchHub/$name")) }.getOrNull()
         ?: dm.enqueue(request().setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, name))
 }.getOrNull()
+
+/**
+ * A source's ⬇: where to download it — this app's downloader, or one of the phone's own (1DM, ADM…),
+ * offered by Android's app picker. A small card in the middle of the screen.
+ */
+@Composable
+fun DownloadChoice(hit: Hit, heading: String, onInternal: () -> Unit, say: (String) -> Unit, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    androidx.compose.ui.window.Dialog(onDismiss) {
+        Column(
+            Modifier.widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Ink.surface).padding(18.dp),
+        ) {
+            Text("Download", style = Type.title.copy(fontWeight = FontWeight.Bold))
+            Text(
+                listOfNotNull(hit.quality, com.torrentviewer.core.bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null }).joinToString("  ·  ")
+                    .ifEmpty { hit.name },
+                Modifier.padding(top = 2.dp, bottom = 14.dp), style = Type.meta.copy(color = Ink.faint), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            ChoiceTile(
+                L.drawable.lucide_ic_download, "Use Internal App Downloader",
+                "Saved in the Downloads tab. Resumes after a pause, keeps to Wi-Fi if you set it, and gets a fresh link if this one expires.",
+            ) {
+                onDismiss()
+                onInternal()
+            }
+            Spacer(Modifier.height(10.dp))
+            ChoiceTile(
+                L.drawable.lucide_ic_external_link, "Choose External Downloader",
+                "1DM, ADM or another downloader on your phone — Android shows the ones you have. Start it soon: links like these can expire.",
+            ) {
+                if (openInDownloader(context, hit, heading)) onDismiss() else say("No app on this phone can take that link.")
+            }
+            Text(
+                "Cancel", Modifier.align(Alignment.End).padding(top = 14.dp).clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onDismiss).padding(horizontal = 10.dp, vertical = 6.dp),
+                style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.muted),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChoiceTile(icon: Int, title: String, excerpt: String, onClick: () -> Unit) {
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(14.dp)) { pressed ->
+        Row(
+            Modifier.fillMaxWidth().background(Ink.text.copy(alpha = if (pressed) 0.12f else 0.06f)).padding(14.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Lc(icon, Modifier.padding(top = 2.dp), tint = Ink.text, size = 22.dp)
+            Column(Modifier.padding(start = 12.dp)) {
+                Text(title, style = Type.body.copy(fontWeight = FontWeight.SemiBold))
+                Text(excerpt, Modifier.padding(top = 3.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp))
+            }
+        }
+    }
+}
+
+/**
+ * Hands the link to whichever downloader the viewer picks, through Android's chooser: the file's link (a
+ * torrent's magnet) as a VIEW, with its name and — for apps that read them — its headers and Referer.
+ */
+private fun openInDownloader(context: Context, hit: Hit, title: String): Boolean {
+    val link = if (hit.direct) hit.uri else magnetOf(hit) ?: hit.uri
+    val referer = hit.headers.entries.firstOrNull { it.key.equals("referer", true) }?.value
+    val view = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(Uri.parse(link), if (link.startsWith("magnet:", true)) null else hit.mime ?: "video/*")
+        if (link.startsWith("magnet:", true)) data = Uri.parse(link)
+        putExtra("title", title)
+        putExtra(Intent.EXTRA_TITLE, title)
+        if (hit.headers.isNotEmpty()) putExtra("headers", hit.headers.flatMap { listOf(it.key, it.value) }.toTypedArray())
+        referer?.let { putExtra("referer", it) }
+    }
+    return runCatching { context.startActivity(Intent.createChooser(view, "Download with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+}

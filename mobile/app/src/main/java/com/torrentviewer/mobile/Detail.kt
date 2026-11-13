@@ -193,6 +193,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var trailerId by remember(title.imdb) { mutableStateOf<String?>(null) }
     /** The batch download sheet's season, while it is open. */
     var batchFor by remember(title.imdb) { mutableStateOf<Int?>(null) }
+    /** A source's ⬇ asked: where to download it (this app or another), for that source and its episode. */
+    var downloadFor by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
     /** A source's ⋯ open: the source, and the episode it is for. */
     var actions by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
     val list = rememberLazyListState()
@@ -516,7 +518,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     )
                 }
             } else {
-                sources(title, episode, hits, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), language = searchLang()?.name, onDownload = { keep(it, null) }, onMore = { actions = it to null }) { hit -> watch.stream(hit, title) }
+                sources(title, episode, hits, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }) { hit -> watch.stream(hit, title) }
             }
         }
         // Over the art, a round back button; once the page scrolls under it, a solid bar with the name.
@@ -537,10 +539,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         val ep = episode
         BottomSheet(ep?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: "Sources", onDismiss = { sheet = false }) {
             LazyColumn {
-                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, language = searchLang()?.name, onDownload = { hit ->
-                    sheet = false
-                    keep(hit, ep)
-                }, onMore = { actions = it to ep }) { hit ->
+                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }) { hit ->
                     sheet = false
                     watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
                 }
@@ -570,6 +569,13 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     trailerId?.let { id -> TrailerSheet(id, title.title) { trailerId = null } }
 
     batchFor?.let { s -> BatchSheet(title, s, say = { watch.notes.tryEmit(it) }, onDismiss = { batchFor = null }) }
+
+    downloadFor?.let { (hit, ep) ->
+        DownloadChoice(
+            hit, ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title,
+            onInternal = { keep(hit, ep) }, say = { watch.notes.tryEmit(it) }, onDismiss = { downloadFor = null },
+        )
+    }
 
     // A source's actions, over the episode sheet if that is open.
     actions?.let { (hit, ep) ->
