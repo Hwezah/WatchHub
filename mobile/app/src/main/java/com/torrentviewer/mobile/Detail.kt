@@ -189,6 +189,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var allEpisodes by rememberSaveable(title.imdb, season) { mutableStateOf(false) }
     /** "Download season" open: the season, and its packs (null while still looking). */
     var seasonPacks by remember(title.imdb) { mutableStateOf<Pair<Int, List<Hit>?>?>(null) }
+    /** The batch download sheet's season, while it is open. */
+    var batchFor by remember(title.imdb) { mutableStateOf<Int?>(null) }
     /** A source's ⋯ open: the source, and the episode it is for. */
     var actions by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
     val list = rememberLazyListState()
@@ -429,6 +431,10 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                         Text("  Download season $s", style = Type.meta.copy(fontWeight = FontWeight.SemiBold))
                                     }
                                 }
+                                // Batch: the whole season at one resolution, an episode at a time.
+                                Tap({ batchFor = s }, Modifier.padding(start = 2.dp), CircleShape) {
+                                    Lc(L.drawable.lucide_ic_layers, Modifier.padding(6.dp), tint = Ink.muted, size = 18.dp)
+                                }
                             }
                         }
                         LazyRow(contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -521,6 +527,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             }
         }
     }
+
+    batchFor?.let { s -> BatchSheet(title, s, onDismiss = { batchFor = null }) }
 
     // A source's actions, over the episode sheet if that is open.
     actions?.let { (hit, ep) ->

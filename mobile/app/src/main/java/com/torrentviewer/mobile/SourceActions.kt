@@ -27,7 +27,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.media3.common.MimeTypes
 import com.torrentviewer.core.Hit
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
@@ -36,10 +35,6 @@ import com.torrentviewer.core.Sub
 import com.torrentviewer.core.Type
 import com.torrentviewer.mobile.cs.CsStreams
 import com.composables.icons.lucide.R as L
-
-/** A link that is an HLS or DASH playlist rather than one file: it plays anywhere, but can't be saved as one download. */
-fun isPlaylist(hit: Hit) = hit.mime == MimeTypes.APPLICATION_M3U8 || hit.mime == MimeTypes.APPLICATION_MPD ||
-    Regex("\\.(m3u8|mpd)(\\?|$)", RegexOption.IGNORE_CASE).containsMatchIn(hit.uri)
 
 /** The best link that can be saved as one file: the highest quality that isn't a playlist. */
 fun bestDownloadable(hits: List<Hit>): Hit? = hits.filter { it.direct && !isPlaylist(it) }.maxByOrNull { rankOf(it.quality) }
