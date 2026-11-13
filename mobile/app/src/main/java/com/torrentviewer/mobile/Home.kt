@@ -485,9 +485,15 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
 
 @Composable
 private fun HeroButtons(t: Title, inList: Boolean, onOpen: (Title) -> Unit, modifier: Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button("Watch", { onOpen(t) }, Modifier.widthIn(min = 132.dp), icon = L.drawable.lucide_ic_play, primary = true)
+    // An upright phone: the two share the full width, edge to edge; elsewhere they sit side by side.
+    val spread = isPortraitPhone()
+    Row(if (spread) modifier.fillMaxWidth() else modifier, horizontalArrangement = Arrangement.spacedBy(if (spread) 14.dp else 10.dp)) {
+        val each = if (spread) Modifier.weight(1f) else Modifier.widthIn(min = 132.dp)
+        Button("Watch", { onOpen(t) }, each, icon = L.drawable.lucide_ic_play, primary = true, balanced = true)
         // Wide enough for "In My List", and the details screen's toggle: a green disc springs in behind the tick.
-        Button(if (inList) "In My List" else "My List", { SavedStore.toggle(t) }, Modifier.widthIn(min = 132.dp), icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList)
+        Button(
+            if (inList) "In My List" else "My List", { SavedStore.toggle(t) }, each,
+            icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList, balanced = true,
+        )
     }
 }

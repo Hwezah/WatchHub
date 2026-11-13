@@ -172,6 +172,8 @@ fun Button(
     compact: Boolean = false,
     /** A solid fill with white words instead of [primary]'s red glow: the download buttons' green ([Ink.download]). */
     fill: Color? = null,
+    /** The words in the very middle, the icon beside them: as much space after them as the icon takes before. */
+    balanced: Boolean = false,
 ) {
     val filled = on == true
     val disc by animateFloatAsState(if (filled) 1f else 0f, if (filled) spring(dampingRatio = 0.55f, stiffness = 420f) else tween(180), label = "disc")
@@ -217,6 +219,7 @@ fun Button(
                 Spacer(Modifier.width(8.dp))
             }
             Text(label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (balanced && icon != null) Spacer(Modifier.width(32.dp))
         }
     }
 }
