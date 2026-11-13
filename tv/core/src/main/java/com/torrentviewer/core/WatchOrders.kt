@@ -140,6 +140,25 @@ object Tmdb {
         }
     }
 
+    private val trailers = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * A YouTube trailer for a title Cinemeta has none for: TMDB's videos, an official trailer first, then any
+     * trailer, then a teaser. Null with no key, nothing found, or no answer.
+     */
+    suspend fun trailer(imdb: String, kind: String): String? {
+        if (key.isEmpty()) return null
+        trailers[imdb]?.let { return it }
+        return withContext(Dispatchers.Default) {
+            runCatching {
+                val tv = kind == "tv"
+                val id = JSONObject(get("/find/$imdb?external_source=imdb_id"))
+                    .optJSONArray(if (tv) "tv_results" else "movie_results")?.optJSONObject(0)?.optInt("id") ?: return@withContext null
+                pickTrailer(get(if (tv) "/tv/$id/videos" else "/movie/$id/videos"))?.also { trailers[imdb] = it }
+            }.getOrNull()
+        }
+    }
+
     private val people = java.util.concurrent.ConcurrentHashMap<Int, TmdbPerson>()
 
     /** Already asked for this run: going back to a person's page lands where it was, not on an empty one. */
@@ -207,4 +226,17 @@ fun orderLine(order: WatchOrder, seen: Set<String>): String {
 fun totalRuntime(titles: List<Title>): String? {
     val minutes = titles.sumOf { (runtimeSeconds(it.runtime) / 60).toInt() }
     return if (minutes > 0) "${minutes / 60}h ${minutes % 60}m" else null
+}
+
+/** TMDB's /videos answer → the best YouTube key: an official trailer, then any trailer, then a teaser. */
+fun pickTrailer(json: String): String? {
+    val videos = runCatching { JSONObject(json).optJSONArray("results")?.objects() }.getOrNull().orEmpty()
+        .filter { it.optString("site").equals("YouTube", true) && !it.str("key").isNullOrBlank() }
+    fun rank(v: JSONObject) = when {
+        v.optString("type") == "Trailer" && v.optBoolean("official") -> 0
+        v.optString("type") == "Trailer" -> 1
+        v.optString("type") == "Teaser" -> 2
+        else -> 9
+    }
+    return videos.filter { rank(it) < 9 }.minByOrNull(::rank)?.str("key")
 }

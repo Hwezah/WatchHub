@@ -37,6 +37,19 @@ jobs:
       - name: Accept Android SDK licences
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
 
+      # Optional keys, from the repository's secrets: TMDB (suggestions, cast, ratings, trailers) and SubDL
+      # (online subtitles). Without them those features are simply left out, as before.
+      - name: Keys from secrets
+        working-directory: mobile
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+          SUBDL_KEY: ${{ secrets.SUBDL_KEY }}
+        run: |
+          : > .env
+          [ -n "$TMDB_KEY" ] && echo "TMDB_KEY=$TMDB_KEY" >> .env
+          [ -n "$SUBDL_KEY" ] && echo "SUBDL_KEY=$SUBDL_KEY" >> .env
+          echo "keys set: $(cut -d= -f1 .env | tr '\n' ' ')"
+
       - name: Unit tests
         working-directory: mobile
         run: ./gradlew --no-daemon testDebugUnitTest
