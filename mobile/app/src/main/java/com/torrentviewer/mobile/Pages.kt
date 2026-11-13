@@ -665,6 +665,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_radio, "Streaming", "Storage, buffer and trackers", "cache magnet") { page = "Streaming" },
                         Entry(L.drawable.lucide_ic_play, "Playback", "Player, languages and subtitles", "vlc media3 skip intro audio") { page = "Playback" },
                         Entry(L.drawable.lucide_ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
+                        Entry(L.drawable.lucide_ic_shield, "Secure DNS", "For plugins: look sites up past your provider's blocks", "doh dns over https cloudflare google blocked network") { page = "Secure DNS" },
                         Entry(L.drawable.lucide_ic_sliders_horizontal, "Preferred download", "What one-tap Download picks: resolution, codec, format…", "720p x265 hevc mkv mp4 quality codec") { page = "Preferred download" },
                     ),
                     listOf(
@@ -949,6 +950,19 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         PrefRow("Format", listOf("" to "Any", "MKV" to "MKV", "MP4" to "MP4"), settings.dlFormat) { set(settings.copy(dlFormat = it)) }
         PrefRow("Subtitles", listOf("" to "Any", "subs" to "With subs"), if (settings.dlSubs) "subs" else "") { set(settings.copy(dlSubs = it == "subs")) }
         PrefRow("Source", listOf("" to "Any", "Torrent" to "Torrent", "Link" to "Direct link"), settings.dlSource) { set(settings.copy(dlSource = it)) }
+        }
+
+        if (page == "Secure DNS") Panel {
+        Text(
+            "Many internet providers block streaming sites by their names, so plugins find few links or none. With " +
+                "Secure DNS, plugins look sites up over HTTPS at Cloudflare or Google instead — as CloudStream's own " +
+                "setting does. Only the plugins' traffic uses it. If a lookup fails, the phone's own is used.",
+            Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
+        )
+        PrefRow("Provider", com.torrentviewer.mobile.cs.SECURE_DNS, settings.secureDns) {
+            set(settings.copy(secureDns = it))
+            com.torrentviewer.mobile.cs.SecureDns.clear()
+        }
         }
 
         if (page == "Home screen") Panel {

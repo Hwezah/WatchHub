@@ -65,6 +65,8 @@ object CsPlugins {
             .followSslRedirects(true)
             .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(40, java.util.concurrent.TimeUnit.SECONDS)
+            // Settings → Secure DNS: names looked up over HTTPS, past a provider's blocks, as CloudStream does.
+            .dns(SecureDns)
             .cache(Cache(File(appContext.cacheDir, "cs_http_cache"), 50L * 1024 * 1024))
             .build()
         AppScope.launch(Dispatchers.IO) {

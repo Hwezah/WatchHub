@@ -177,6 +177,8 @@ data class Settings(
     val dlSubs: Boolean = false,
     /** "Torrent", "Link" or "" for either. */
     val dlSource: String = "",
+    /** The phone's plugins: names looked up over HTTPS ("cloudflare", "google"), past a provider's DNS blocks; "" is the system's. */
+    val secureDns: String = "",
 )
 
 /** Subtitle text; [size] is one of [SUB_SIZES]' keys. The Expo build's names and values. */
@@ -247,6 +249,7 @@ object SettingsStore {
         dlFormat = if (o.has("dlFormat")) o.optString("dlFormat") else "MKV",
         dlSubs = o.optBoolean("dlSubs"),
         dlSource = o.optString("dlSource"),
+        secureDns = o.optString("secureDns"),
     )
 
     /** Over what is stored, not instead of it: the TV and the phone each keep fields the other never reads. */
@@ -260,6 +263,7 @@ object SettingsStore {
             .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro).put("navStyle", next.navStyle)
             .put("builtInHome", next.builtInHome).put("hiddenShelves", JSONArray(next.hiddenShelves))
             .put("dlQuality", next.dlQuality).put("dlCodec", next.dlCodec).put("dlFormat", next.dlFormat).put("dlSubs", next.dlSubs).put("dlSource", next.dlSource)
+            .put("secureDns", next.secureDns)
         Kv.setGlobal("settings", o.toString())
         Kv.set(GENRES_KEY, JSONArray(next.genres).toString())
     }
