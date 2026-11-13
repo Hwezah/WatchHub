@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -225,21 +226,23 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                     style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint),
                     maxLines = 1,
                 )
-                // Right under the sizes, a thin green line filling as the bytes arrive.
-                ProgressLine(row.ratio, Modifier.padding(top = 6.dp).clip(CircleShape), height = 2.dp, color = Ink.download)
             }
             when (row.state) {
                 DlState.PAUSED, DlState.FAILED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
                 DlState.WIFI -> Unit
                 else -> Tap(onPause, shape = CircleShape) { Lc(L.drawable.lucide_ic_pause, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
             }
-            Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
+            // Its tap area reaches into the card's padding, so the ✕ sits as far from the right edge as the poster from the left.
+            Tap(onCancel, Modifier.offset(x = 10.dp), CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 24.dp) }
         }
+        // Under the row, across the whole card from padding to padding: a thin green line filling as the bytes arrive.
+        ProgressLine(row.ratio, Modifier.padding(top = 10.dp).clip(CircleShape), height = 2.dp, color = Ink.download)
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
         // This download's own order, over the default above.
         val inOrder = Downloads.inOrder(row.job)
-        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Evenly spaced across the card, the pair centred in it.
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             Chip("Fastest", !inOrder, onClick = { onOrder(false) })
             Chip("In order", inOrder, onClick = { onOrder(true) })
         }
