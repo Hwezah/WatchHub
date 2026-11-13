@@ -467,7 +467,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                     Artwork(t.wide, t.title, Modifier.fillMaxSize().bottomScrim(0.35f), fill = false)
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = EDGE, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
-                            TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center))
+                            TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
                         }
                         Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp))
                         HeroButtons(t, inList, onOpen, Modifier.padding(top = 16.dp))
