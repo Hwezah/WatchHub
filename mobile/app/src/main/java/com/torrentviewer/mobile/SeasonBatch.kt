@@ -37,6 +37,7 @@ import com.torrentviewer.mobile.cs.CsStreams
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -49,6 +50,8 @@ data class SeasonScan(
     val episodes: List<Episode>,
     /** By episode id, once that episode has answered. */
     val found: Map<String, List<Hit>> = emptyMap(),
+    /** When the scan started: its links are at least this old, and renewed before they start if too old. */
+    val at: Long = System.currentTimeMillis(),
 ) {
     val checked get() = found.size
     val done get() = found.size >= episodes.size
@@ -93,7 +96,8 @@ object SeasonBatch {
 
     /** Queues every picked release; how many went. */
     fun download(title: Title, picks: List<Pair<Episode, Hit>>): Int {
-        picks.forEach { (ep, hit) -> Downloads.add(downloadJob(hit, title, ep)) }
+        val at = _scan.value?.at ?: System.currentTimeMillis()
+        picks.forEach { (ep, hit) -> Downloads.add(downloadJob(hit, title, ep, foundAt = at)) }
         return picks.size
     }
 }
@@ -130,6 +134,9 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
         filter = f
     }
     var showPlan by remember { mutableStateOf(false) }
+    /** Fresh links being fetched before they go to another app. */
+    var sending by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     BottomSheet("Download season $season", onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 12.dp)) {
@@ -154,7 +161,10 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             ) { filter = filter.copy(subsOnly = it != null) }
             FilterRow("Source", filterOptions(all, filter.copy(source = null)) { it.source }, filter.source, label = { if (it == "Link") "Direct link" else it }) { filter = filter.copy(source = it) }
 
-            val plan = scan.episodes.mapNotNull { ep -> scan.found[ep.id]?.let { ep to batchPick(it, filter) } }
+            // For another app: links that need no headers first, since a shared link can't carry them.
+            val plan = scan.episodes.mapNotNull { ep ->
+                scan.found[ep.id]?.let { hits -> ep to batchPick(if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits, filter) }
+            }
             val picks = plan.mapNotNull { (ep, hit) -> hit?.let { ep to it } }
             val missing = plan.filter { it.second == null }.map { it.first.episode }
             val known = picks.sumOf { it.second.size }
@@ -192,15 +202,32 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             Button(
                 when {
                     picks.isEmpty() -> "Nothing matches"
+                    sending -> "Getting fresh links…"
                     external -> "Send $many to a downloader"
                     else -> "Download $many"
                 },
                 {
                     if (picks.isEmpty()) return@Button
                     if (external) {
-                        // Another app's downloader: every pick's link at once, in episode order.
-                        if (sendLinks(context, picks.map { it.second }, "${title.title} · season $season")) onDismiss()
-                        else say("No app on this phone can take those links.")
+                        if (sending) return@Button
+                        sending = true
+                        // Another app's downloader: every pick's link at once, in episode order — each asked for
+                        // again first, since the ones found while the season was checked may have expired already.
+                        scope.launch {
+                            val gate = Semaphore(3)
+                            val fresh = kotlinx.coroutines.coroutineScope {
+                                picks.map { (ep, hit) ->
+                                    async {
+                                        gate.withPermit {
+                                            refreshPick(SeasonBatch.sources(title, ep), "", hit.addon.ifEmpty { null }, hit.name, hit.quality) ?: hit
+                                        }
+                                    }
+                                }.map { it.await() }
+                            }
+                            sending = false
+                            if (sendLinks(context, fresh, "${title.title} · season $season")) onDismiss()
+                            else say("No app on this phone can take those links.")
+                        }
                         return@Button
                     }
                     SeasonBatch.download(title, picks)

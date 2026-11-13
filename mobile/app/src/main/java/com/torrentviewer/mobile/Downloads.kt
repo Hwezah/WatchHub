@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
 import org.json.JSONObject
 import org.libtorrent4j.Priority
@@ -99,6 +100,8 @@ data class DownloadJob(
     val epNumber: Int? = null,
     /** Fresh links fetched so far for this download. */
     val refreshes: Int = 0,
+    /** When the link was found (ms). Plugin links carry tokens that expire: an old one is renewed before it starts. 0: unknown. */
+    val fetchedAt: Long = 0,
 ) {
     val label get() = titleName ?: title
 
@@ -107,7 +110,7 @@ data class DownloadJob(
         .put("fileIndices", JSONArray(files)).put("savedIndices", JSONArray(saved)).put("paused", paused).put("mobileData", mobileData).put("sequential", sequential)
         .put("skipped", JSONArray(skipped))
         .put("link", link).put("playlist", playlist).put("quality", quality)
-        .put("source", source).put("linkName", linkName).put("epSeason", epSeason).put("epNumber", epNumber).put("refreshes", refreshes)
+        .put("source", source).put("linkName", linkName).put("epSeason", epSeason).put("epNumber", epNumber).put("refreshes", refreshes).put("fetchedAt", fetchedAt)
         .put("headers", JSONObject().also { o -> headers.forEach { (k, v) -> o.put(k, v) } })
 
     companion object {
@@ -138,6 +141,7 @@ data class DownloadJob(
                 epSeason = if (o.has("epSeason") && !o.isNull("epSeason")) o.optInt("epSeason") else null,
                 epNumber = if (o.has("epNumber") && !o.isNull("epNumber")) o.optInt("epNumber") else null,
                 refreshes = o.optInt("refreshes"),
+                fetchedAt = o.optLong("fetchedAt"),
             )
         }
     }
@@ -424,6 +428,39 @@ object Downloads {
                     notifyProgress()
                     kotlinx.coroutines.delay(5000)
                 }
+                // A season's episodes take turns: file hosts refuse (403) a phone pulling many files at once.
+                update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Waiting for its turn…", speed = 0) }
+                linkSlots.withPermit { runLink(job) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } finally {
+                // Only this run's entry: a renewed link with the same address has already put its own.
+                val me = coroutineContext[kotlinx.coroutines.Job]
+                synchronized(lock) { if (links[job.uri] === me) links.remove(job.uri) }
+                settle()
+            }
+        }
+        synchronized(lock) { links[job.uri] = run }
+    }
+
+    /** Link downloads at once; the rest wait. One at a time is slow, more than two gets refused. */
+    private val linkSlots = kotlinx.coroutines.sync.Semaphore(2)
+
+    /** A link older than this is renewed before it starts: plugin links' tokens last minutes, not hours. */
+    private const val LINK_FRESH_MS = 4 * 60 * 1000L
+
+    private suspend fun runLink(job: DownloadJob) {
+            try {
+                // Found a while ago (a season's batch, a restart): ask for today's link first, same source and name if it's there.
+                if (job.imdb != null && job.fetchedAt > 0 && System.currentTimeMillis() - job.fetchedAt > LINK_FRESH_MS) {
+                    update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Getting a fresh link…", speed = 0) }
+                    val fresh = runCatching { LinkRefresh.fresh(job, tried(job), allowSame = true) }.getOrNull()
+                    if (fresh != null) {
+                        // Not a failure: it doesn't count against the automatic refreshes.
+                        replaceLink(job.copy(refreshes = job.refreshes - 1), fresh, failed = false)
+                        return
+                    }
+                }
                 update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null) }
                 val work = linkWork(job.uri)
                 val result = LinkFetch.download(job.uri, job.headers, job.quality, job.playlist, work) { done, total, rate ->
@@ -453,17 +490,12 @@ object Downloads {
                     val fresh = runCatching { LinkRefresh.fresh(job, tried(job)) }.onFailure { Log.w(TAG, "refresh: ${it.message}") }.getOrNull()
                     if (fresh != null) {
                         replaceLink(job, fresh)
-                        return@launch
+                        return
                     }
                 }
                 errors[job.uri] = (if (dead && job.imdb != null) "No fresh link found — " else "") + (e.message ?: "Couldn't save that link")
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
-            } finally {
-                synchronized(lock) { links.remove(job.uri) }
-                settle()
             }
-        }
-        synchronized(lock) { links[job.uri] = run }
     }
 
     /** Fresh links tried per download before it is left failed. */
@@ -495,8 +527,8 @@ object Downloads {
         }
     }
 
-    private fun replaceLink(old: DownloadJob, hit: Hit) {
-        failedLinks.merge(old.label, setOf(old.uri)) { a, b -> a + b }
+    private fun replaceLink(old: DownloadJob, hit: Hit, failed: Boolean = true) {
+        if (failed) failedLinks.merge(old.label, setOf(old.uri)) { a, b -> a + b }
         val next = old.copy(
             uri = hit.uri,
             link = hit.direct,
@@ -506,6 +538,7 @@ object Downloads {
             source = hit.addon.ifEmpty { old.source },
             linkName = hit.name,
             refreshes = old.refreshes + 1,
+            fetchedAt = System.currentTimeMillis(),
         )
         Log.i(TAG, "fresh link for ${old.label} from ${hit.addon}")
         scope.launch { linkWork(old.uri).deleteRecursively() }

@@ -24,7 +24,7 @@ fun refreshPick(hits: List<Hit>, oldUri: String, source: String?, name: String?,
 
 object LinkRefresh {
     /** A fresh source for [job]'s film or episode, or null when it can't be placed or nothing is found. */
-    suspend fun fresh(job: DownloadJob, tried: Set<String> = emptySet()): Hit? {
+    suspend fun fresh(job: DownloadJob, tried: Set<String> = emptySet(), allowSame: Boolean = false): Hit? {
         val imdb = job.imdb ?: return null
         val title = Meta.title(imdb, job.kind ?: "movie") ?: return null
         // The addons' answers are kept for the session; this needs new ones.
@@ -41,6 +41,7 @@ object LinkRefresh {
                 }
             }.getOrDefault(emptyList())
         }
-        return refreshPick(hits, job.uri, job.source, job.linkName, job.quality, tried)
+        // [allowSame]: renewing a link that hasn't failed, so the same address (when it doesn't expire) is fine.
+        return refreshPick(hits, if (allowSame) "" else job.uri, job.source, job.linkName, job.quality, tried)
     }
 }

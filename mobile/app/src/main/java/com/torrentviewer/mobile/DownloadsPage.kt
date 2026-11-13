@@ -57,7 +57,8 @@ import com.torrentviewer.core.speed
 import com.composables.icons.lucide.R as L
 
 /** A release to keep, labelled the way History labels a stream of it. */
-fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null) = DownloadJob(
+fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null, foundAt: Long = System.currentTimeMillis()) = DownloadJob(
+    fetchedAt = if (hit.direct) foundAt else 0,
     link = hit.direct,
     headers = if (hit.direct) hit.headers else emptyMap(),
     playlist = hit.direct && isPlaylist(hit),
