@@ -239,6 +239,13 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         }
     }
 
+    /** The sources' ↻: every addon and plugin asked again, not their answers kept from earlier. */
+    fun reloadSources(ep: Episode?) {
+        if (busy) return
+        com.torrentviewer.core.forgetStreams()
+        findSources(ep)
+    }
+
     /** Keep a release on the phone, in the Downloads tab. */
     fun keep(hit: Hit, ep: Episode?) {
         Downloads.add(downloadJob(hit, title, ep))
@@ -557,7 +564,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     )
                 }
             } else {
-                sources(title, episode, hits, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }) { hit -> watch.stream(hit, title) }
+                sources(title, episode, hits, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> watch.stream(hit, title) }
             }
         }
         // Over the art, a round back button; once the page scrolls under it, a solid bar with the name.
@@ -578,7 +585,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         val ep = episode
         BottomSheet(ep?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: "Sources", onDismiss = { sheet = false }) {
             LazyColumn {
-                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }) { hit ->
+                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
                     sheet = false
                     watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
                 }
@@ -733,15 +740,19 @@ private fun LazyListScope.sources(
     onDownload: (Hit) -> Unit,
     /** The row's ⋯ / long-press: [SourceActions]. */
     onMore: ((Hit) -> Unit)? = null,
+    /** Asks every addon and plugin again: the pill left of All. */
+    onReload: (() -> Unit)? = null,
     onPlay: (Hit) -> Unit,
 ) {
     val qualities = hits.orEmpty().mapNotNull { it.quality }.distinct().sortedBy { QUALITY_ORDER.indexOf(it).let { i -> if (i < 0) 9 else i } }
     item(key = "sources-head") {
         Column(modifier.padding(start = EDGE, end = EDGE, top = if (heading) 26.dp else 4.dp)) {
             if (heading) Text("Sources", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
-            if (qualities.size > 1) {
+            if (qualities.size > 1 || (onReload != null && hits != null)) {
                 // Spread across the row like the season pills; with many, 8 dp gaps and a sideways scroll.
                 SpreadRow(Modifier.padding(bottom = 12.dp)) {
+                    // Reload first: never lit like a chosen pill; spinning while links are still coming in.
+                    if (onReload != null) ReloadPill(busy, onReload)
                     Chip("All", quality == null, onClick = { onQuality(null) })
                     qualities.forEach { q -> Chip(q, quality == q, onClick = { onQuality(q) }) }
                 }
@@ -949,3 +960,17 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
 
 /** One-tap Download waits this long at most for every source to answer, then takes the best of what has. */
 private const val QUICK_PICK_MS = 15_000L
+
+/** The sources' reload pill: the plain (never chosen) pill look, a ↻ — a spinner while links are still arriving. */
+@Composable
+private fun ReloadPill(busy: Boolean, onClick: () -> Unit) {
+    Tap(onClick, shape = CircleShape) { pressed ->
+        Row(
+            Modifier.background(Ink.text.copy(alpha = if (pressed) 0.18f else 0.08f)).height(36.dp).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (busy) Spinner(size = 16.dp, color = Ink.muted) else Lc(L.drawable.lucide_ic_refresh_cw, tint = Ink.muted, size = 16.dp)
+            Text(if (busy) "  Finding" else "  Reload", style = Type.label.copy(fontSize = 14.sp, color = Ink.muted, fontWeight = FontWeight.Medium))
+        }
+    }
+}
