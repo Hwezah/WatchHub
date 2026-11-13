@@ -108,6 +108,26 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     val scanned by SeasonBatch.scan.collectAsState()
     val scan = scanned?.takeIf { it.titleImdb == title.imdb && it.season == season }
     var filter by remember(title.imdb, season) { mutableStateOf(BatchFilter()) }
+    // Opens with Settings → Preferred download chosen, each where the season has it, once its sources are in.
+    var preset by remember(title.imdb, season) { mutableStateOf(false) }
+    LaunchedEffect(scan?.done) {
+        val s = scan ?: return@LaunchedEffect
+        if (!s.done || preset) return@LaunchedEffect
+        preset = true
+        // Already chosen by hand while the season was being checked: left as chosen.
+        if (filter != BatchFilter()) return@LaunchedEffect
+        val st = com.torrentviewer.core.SettingsStore.value.value
+        val want = DownloadPrefs(st.dlQuality, st.dlCodec, st.dlFormat, st.dlSubs, st.dlSource).asFilter()
+        val all = s.found.values.flatten()
+        fun has(f: BatchFilter) = all.any { batchable(it) && f.accepts(traitsOf(it)) }
+        // Each preference kept only if something is left with it and the ones before it.
+        var f = BatchFilter()
+        listOf<(BatchFilter) -> BatchFilter>(
+            { it.copy(quality = want.quality) }, { it.copy(codec = want.codec) }, { it.copy(format = want.format) },
+            { it.copy(subsOnly = want.subsOnly) }, { it.copy(source = want.source) },
+        ).forEach { step -> step(f).takeIf(::has)?.let { f = it } }
+        filter = f
+    }
     var showPlan by remember { mutableStateOf(false) }
 
     BottomSheet("Download season $season", onDismiss) {

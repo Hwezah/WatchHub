@@ -614,6 +614,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_radio, "Streaming", "Storage, buffer and trackers", "cache magnet") { page = "Streaming" },
                         Entry(L.drawable.lucide_ic_play, "Playback", "Player, languages and subtitles", "vlc media3 skip intro audio") { page = "Playback" },
                         Entry(L.drawable.lucide_ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
+                        Entry(L.drawable.lucide_ic_sliders_horizontal, "Preferred download", "What one-tap Download picks: resolution, codec, format…", "720p x265 hevc mkv mp4 quality codec") { page = "Preferred download" },
                     ),
                     listOf(
                         Entry(L.drawable.lucide_ic_link, "Integrations", "Simkl and MDBList", "tracking watched sync") { page = "Integrations" },
@@ -886,6 +887,20 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 }
             }
         }
+        }
+
+        if (page == "Preferred download") Panel {
+        Text(
+            "The download buttons on films and episodes pick one release for you: the nearest resolution to yours, a single " +
+                "file before a streaming playlist (HLS), then your codec, format, subtitles and source, then the lightest. " +
+                "Season downloads open with these chosen. Nothing under 25 MB (trailers, samples) is ever picked.",
+            Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
+        )
+        PrefRow("Resolution", listOf("" to "Any", "4K" to "4K", "1080p" to "1080p", "720p" to "720p", "480p" to "480p"), settings.dlQuality) { set(settings.copy(dlQuality = it)) }
+        PrefRow("Codec", listOf("" to "Any", "x265" to "x265 (HEVC)", "x264" to "x264 (AVC)", "AV1" to "AV1"), settings.dlCodec) { set(settings.copy(dlCodec = it)) }
+        PrefRow("Format", listOf("" to "Any", "MKV" to "MKV", "MP4" to "MP4"), settings.dlFormat) { set(settings.copy(dlFormat = it)) }
+        PrefRow("Subtitles", listOf("" to "Any", "subs" to "With subs"), if (settings.dlSubs) "subs" else "") { set(settings.copy(dlSubs = it == "subs")) }
+        PrefRow("Source", listOf("" to "Any", "Torrent" to "Torrent", "Link" to "Direct link"), settings.dlSource) { set(settings.copy(dlSource = it)) }
         }
 
         if (page == "Home screen") Panel {
@@ -1384,6 +1399,15 @@ private fun TrackerSection(t: com.torrentviewer.core.Tracker) {
             }
         }
         note?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint)) }
+    }
+}
+
+/** One preference: its name, then a chip per value, the chosen one lit. */
+@Composable
+private fun PrefRow(name: String, options: List<Pair<String, String>>, chosen: String, onPick: (String) -> Unit) {
+    Text(name, Modifier.padding(bottom = 8.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
+    Row(Modifier.padding(bottom = 20.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { (value, label) -> Chip(label, chosen == value, onClick = { onPick(value) }) }
     }
 }
 

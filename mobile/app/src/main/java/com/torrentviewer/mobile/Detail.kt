@@ -234,10 +234,37 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     }
 
     /** An episode's Download: its releases to pick from, as a film's. */
-    fun downloadEpisode(ep: Episode) {
-        if (episode?.id != ep.id) findSources(ep)
-        downloadSheet = true
+    /**
+     * One tap, one download: the release that best fits Settings → Preferred download, from the sources
+     * already on screen when they're this one's, else a fresh search — decided when every source has
+     * answered, or after [QUICK_PICK_MS] with what has.
+     */
+    fun quickDownload(ep: Episode?) {
+        val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource) }
+        val what = ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title
+        val loaded = hits?.takeIf { !busy && episode?.id == ep?.id }
+        if (loaded == null) watch.notes.tryEmit("Finding the best ${prefs.quality.ifEmpty { "source" }} for $what…")
+        scope.launch {
+            val all = loaded ?: run {
+                var latest = emptyList<Hit>()
+                val search: suspend (OnHits) -> List<Hit> = { onHits ->
+                    com.torrentviewer.mobile.cs.CsStreams.withPlugins(title, ep, onHits) { fromAddons ->
+                        if (ep != null) searchEpisode(title, ep.season, ep.episode, fromAddons)
+                        else searchStreams(title.title, title.imdb, title.year?.take(4), onHits = fromAddons, type = title.type)
+                    }
+                }
+                kotlinx.coroutines.withTimeoutOrNull(QUICK_PICK_MS) { runCatching { search { latest = it } }.getOrDefault(latest) } ?: latest
+            }
+            val pick = preferredPick(all, prefs)
+            if (pick == null) watch.notes.tryEmit("Nothing that can be saved was found for $what.")
+            else {
+                Downloads.add(downloadJob(pick, title, ep))
+                watch.notes.tryEmit("Downloading $what · ${describePick(pick)}")
+            }
+        }
     }
+
+    fun downloadEpisode(ep: Episode) = quickDownload(ep)
 
     /**
      * A whole season in one go: the best pack that is that season, else a complete-series
@@ -369,7 +396,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         // Green tick for My List, red heart for Like — each fills its disc when on.
                         Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My List" else "My List", { SavedStore.toggle(title) }, modifier = share, on = inList, onColor = Ink.good)
                         Action(L.drawable.lucide_ic_heart, if (liked) "Liked" else "Like", { SavedStore.toggle(title, "favorite") }, modifier = share, on = liked, onColor = Ink.accent)
-                        if (!title.isSeries) Action(L.drawable.lucide_ic_download, "Download", { downloadSheet = true }, modifier = share)
+                        if (!title.isSeries) Action(L.drawable.lucide_ic_download, "Download", { quickDownload(null) }, modifier = share)
                         title.trailer?.let { id -> Action(L.drawable.lucide_ic_film, "Trailer", { trailerOpen = true }, modifier = share) }
                         Action(L.drawable.lucide_ic_message_square_text, "Reviews", { reviews = true }, modifier = share)
                     }
@@ -856,3 +883,6 @@ private val SpreadOut = object : Arrangement.Horizontal {
         }
     }
 }
+
+/** One-tap Download waits this long at most for every source to answer, then takes the best of what has. */
+private const val QUICK_PICK_MS = 15_000L

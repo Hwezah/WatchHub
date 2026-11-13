@@ -75,11 +75,13 @@ fun batchCandidates(hits: List<Hit>, filter: BatchFilter): List<Hit> = hits.filt
 fun batchCandidates(hits: List<Hit>, quality: String): List<Hit> = batchCandidates(hits, BatchFilter(quality = quality))
 
 /**
- * What a batch keeps for one episode: one that can download at all first, then — when no codec was
- * picked — HEVC, then the smallest known size (an unknown size after every known one), then the bigger swarm.
+ * What a batch keeps for one episode: one that can download at all first, then a single file before an
+ * HLS playlist (which some download apps handle badly), then — when no codec was picked — HEVC, then
+ * the smallest known size (an unknown size after every known one), then the bigger swarm.
  */
 fun batchPick(hits: List<Hit>, filter: BatchFilter): Hit? = batchCandidates(hits, filter).sortedWith(
     compareByDescending<Hit> { alive(it) }
+        .thenByDescending { !(it.direct && isPlaylist(it)) }
         .thenByDescending { filter.codec == null && isHevc(it) }
         .thenBy { if (it.size > 0) 0 else 1 }
         .thenBy { it.size }
@@ -106,3 +108,53 @@ fun filterOptions(all: List<Hit>, filter: BatchFilter, of: (Traits) -> String?):
 
 /** For each episode, its pick under [filter], or null where nothing matches. */
 fun <K> batchPlan(byEpisode: Map<K, List<Hit>>, filter: BatchFilter): Map<K, Hit?> = byEpisode.mapValues { (_, hits) -> batchPick(hits, filter) }
+
+/** One-tap Download's preferences (Settings → Preferred download). Empty strings, and false, are "any". */
+data class DownloadPrefs(val quality: String = "720p", val codec: String = "x265", val format: String = "MKV", val subs: Boolean = false, val source: String = "") {
+    /** As a batch filter, for the batch sheet to open with — every preference a hard choice there. */
+    fun asFilter() = BatchFilter(quality.ifEmpty { null }, codec.ifEmpty { null }, format.ifEmpty { null }, subs, source.ifEmpty { null })
+}
+
+/**
+ * How far [quality] is from the preferred [wanted]: 0 for it, then the nearest below (a smaller file),
+ * then the nearest above, unknown last. With no preference every resolution is equal.
+ */
+fun resolutionDistance(quality: String?, wanted: String): Int {
+    if (wanted.isEmpty()) return 0
+    val w = heightOf(wanted) ?: return 0
+    val h = heightOf(quality) ?: return 100_000
+    return if (h <= w) w - h else 10_000 + (h - w)
+}
+
+/**
+ * One-tap Download: never fails to pick while anything can be saved. Ranked, in order: nearest
+ * resolution; can download at all; a single file before an HLS playlist; codec, format, subtitles and
+ * source as preferred; the lightest known size (unknown after every known one); the bigger swarm.
+ */
+fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
+    val candidates = hits.filter(::batchable)
+    if (candidates.isEmpty()) return null
+    val traits = candidates.associateWith(::traitsOf)
+    fun t(h: Hit) = traits.getValue(h)
+    return candidates.sortedWith(
+        compareBy<Hit> { resolutionDistance(it.quality, prefs.quality) }
+            .thenByDescending { alive(it) }
+            .thenByDescending { !(it.direct && isPlaylist(it)) }
+            .thenByDescending { prefs.codec.isNotEmpty() && t(it).codec == prefs.codec }
+            .thenByDescending { prefs.format.isNotEmpty() && t(it).format == prefs.format }
+            .thenByDescending { prefs.subs && t(it).subs }
+            .thenByDescending { prefs.source.isNotEmpty() && t(it).source == prefs.source }
+            .thenBy { if (it.size > 0) 0 else 1 }
+            .thenBy { it.size }
+            .thenByDescending { it.seeders },
+    ).first()
+}
+
+/** What a pick was, for the one-line message: "720p · x265 · MKV · 412 MB · HdHub". */
+fun describePick(hit: Hit): String {
+    val t = traitsOf(hit)
+    return listOfNotNull(
+        hit.quality, t.codec.takeIf { it != UNKNOWN }, t.format.takeIf { it != UNKNOWN },
+        com.torrentviewer.core.bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null },
+    ).joinToString(" · ")
+}

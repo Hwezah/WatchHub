@@ -167,6 +167,16 @@ data class Settings(
     val builtInHome: Boolean = true,
     /** Addon catalogues kept off Home, by their shelf key ([Addon.shelfKey]); the addon still gives streams. */
     val hiddenShelves: List<String> = emptyList(),
+    /**
+     * The phone's one-tap Download: what it prefers, in order, before the lightest file. "" is any.
+     * Preferences, not filters — the nearest match is always taken.
+     */
+    val dlQuality: String = "720p",
+    val dlCodec: String = "x265",
+    val dlFormat: String = "MKV",
+    val dlSubs: Boolean = false,
+    /** "Torrent", "Link" or "" for either. */
+    val dlSource: String = "",
 )
 
 /** Subtitle text; [size] is one of [SUB_SIZES]' keys. The Expo build's names and values. */
@@ -232,6 +242,11 @@ object SettingsStore {
         navStyle = o.optString("navStyle").takeIf { it == "pill" } ?: "bar",
         builtInHome = o.optBoolean("builtInHome", true),
         hiddenShelves = o.strings("hiddenShelves"),
+        dlQuality = if (o.has("dlQuality")) o.optString("dlQuality") else "720p",
+        dlCodec = if (o.has("dlCodec")) o.optString("dlCodec") else "x265",
+        dlFormat = if (o.has("dlFormat")) o.optString("dlFormat") else "MKV",
+        dlSubs = o.optBoolean("dlSubs"),
+        dlSource = o.optString("dlSource"),
     )
 
     /** Over what is stored, not instead of it: the TV and the phone each keep fields the other never reads. */
@@ -244,6 +259,7 @@ object SettingsStore {
             .put("subSize", next.subtitles.size).put("subColor", if (next.subtitles.yellow) "yellow" else "white").put("subBackground", next.subtitles.box)
             .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro).put("navStyle", next.navStyle)
             .put("builtInHome", next.builtInHome).put("hiddenShelves", JSONArray(next.hiddenShelves))
+            .put("dlQuality", next.dlQuality).put("dlCodec", next.dlCodec).put("dlFormat", next.dlFormat).put("dlSubs", next.dlSubs).put("dlSource", next.dlSource)
         Kv.setGlobal("settings", o.toString())
         Kv.set(GENRES_KEY, JSONArray(next.genres).toString())
     }
