@@ -474,12 +474,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         }
                         // Spread end to end, first season at the left edge and last at the right; with many, the
                         // gaps close to 8 dp and the row scrolls sideways.
-                        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
-                            val room = maxWidth - EDGE * 2
-                            Row(
-                                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = EDGE).widthIn(min = room),
-                                horizontalArrangement = SpreadOut,
-                            ) { seasons.forEach { s ->
+                        SpreadRow(Modifier.padding(horizontal = EDGE)) {
+                            run { seasons.forEach { s ->
                                 Chip("Season $s", s == season, onClick = {
                                     season = s
                                     // Retire whatever search is out: it belongs to the season being left.
@@ -671,12 +667,9 @@ private fun LazyListScope.sources(
             if (heading) Text("Sources", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
             if (qualities.size > 1) {
                 // Spread across the row like the season pills; with many, 8 dp gaps and a sideways scroll.
-                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                    val room = maxWidth
-                    Row(Modifier.horizontalScroll(rememberScrollState()).widthIn(min = room), horizontalArrangement = SpreadOut) {
-                        Chip("All", quality == null, onClick = { onQuality(null) })
-                        qualities.forEach { q -> Chip(q, quality == q, onClick = { onQuality(q) }) }
-                    }
+                SpreadRow(Modifier.padding(bottom = 12.dp)) {
+                    Chip("All", quality == null, onClick = { onQuality(null) })
+                    qualities.forEach { q -> Chip(q, quality == q, onClick = { onQuality(q) }) }
                 }
             }
             when {
@@ -731,7 +724,7 @@ private fun CastRow(names: List<String>) {
     Column(Modifier.padding(top = 18.dp)) {
         Text("Cast", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold))
         // Spread across the row when few; 14 dp apart and scrolling when many.
-        LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = spreadOut(14.dp)) {
+        LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = spreadArrangement(14.dp)) {
             items(names.take(12)) { name ->
                 val photo by produceState<String?>(null, name) { value = castPhoto(name) }
                 Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally) {

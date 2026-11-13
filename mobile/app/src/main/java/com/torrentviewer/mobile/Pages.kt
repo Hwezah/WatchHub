@@ -424,7 +424,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
                 }
                 if (stremio) Text("✓ Signed in to Stremio — your library and where you stopped are below", Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint))
                 // End to end, like the other pill rows.
-                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                SpreadRow(Modifier.padding(bottom = 6.dp)) {
                     Shelfs.entries.forEach { s -> Chip(s.label, s == shelf, onClick = { shelf = s }) }
                 }
             }
@@ -748,21 +748,21 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
 
         if (page == "Playback") Panel {
         Section("Player","Media3 hands a file it can't play to VLC by itself. VLC from the start plays the most formats and full ASS subtitle styling.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SpreadRow {
                 Chip("Media3", !settings.vlcPlayer, onClick = { set(settings.copy(vlcPlayer = false)) })
                 Chip("VLC", settings.vlcPlayer, onClick = { set(settings.copy(vlcPlayer = true)) })
             }
         }
 
         Section("Skip intro", "Where an episode's intro is known, jump past it by itself instead of showing the Skip intro button. Once per episode — seek back to watch it.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SpreadRow {
                 Chip("Automatically", settings.autoSkipIntro, onClick = { set(settings.copy(autoSkipIntro = true)) })
                 Chip("Show the button", !settings.autoSkipIntro, onClick = { set(settings.copy(autoSkipIntro = false)) })
             }
         }
 
         Section("Languages", "A matching track comes on by itself when a video opens; picking one yourself wins. Online subtitle search looks in the subtitle language.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SpreadRow {
                 Chip("Audio: " + if (settings.audioLang.isEmpty()) "file's default" else langName(settings.audioLang), settings.audioLang.isNotEmpty(), onClick = { picking = "audio" })
                 Chip("Subtitles: " + if (settings.subLang.isEmpty()) "off" else langName(settings.subLang), settings.subLang.isNotEmpty(), onClick = { picking = "subs" })
             }
@@ -840,7 +840,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         Section("Network", "Wi-Fi only holds a download on mobile data — it waits, and carries on when Wi-Fi is back. Use mobile data on a waiting download to let that one through.") {
             var wifiOnly by remember { mutableStateOf(Downloads.wifiOnly) }
             var sdCard by remember { mutableStateOf(Downloads.sdCard) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SpreadRow {
                 Chip("Wi-Fi only", wifiOnly, onClick = { wifiOnly = true; Downloads.wifiOnly = true })
                 Chip("Any network", !wifiOnly, onClick = { wifiOnly = false; Downloads.wifiOnly = false })
             }
@@ -849,7 +849,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 "Fastest takes pieces from wherever the swarm has them. In order fills each file from the start, so you can watch it while it downloads — but it is slower.",
                 Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SpreadRow {
                 Chip("Fastest", !sequential, onClick = { sequential = false; Downloads.sequential = false })
                 Chip("In order", sequential, onClick = { sequential = true; Downloads.sequential = true })
             }
@@ -865,7 +865,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     "Battery saving can slow or stop downloads with the screen off. Let Watchly run in the background to keep them going.",
                     Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
                 )
-                Chip("Allow background downloads", false, onClick = { Downloads.askUnrestricted(context) })
+                Solo { m -> Chip("Allow background downloads", false, onClick = { Downloads.askUnrestricted(context) }, m) }
             }
             if (Downloads.hasCard) {
                 Text(
@@ -873,7 +873,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         if (Downloads.busy || watch.phase != Phase.IDLE) " Switchable once nothing is downloading or playing." else "",
                     Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SpreadRow {
                     listOf(false to "Phone", true to "SD card").forEach { (card, label) ->
                         Chip(label, sdCard == card, onClick = {
                             if (Downloads.busy || watch.phase != Phase.IDLE) watch.notes.tryEmit("Finish or stop downloads and playback first.")
@@ -934,7 +934,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
 
         if (page == "Appearance") Panel {
         Section("Theme", "Light or dark pages, or whichever the phone is set to. The player stays dark either way.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SpreadRow {
                 listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (mode, label) ->
                     Chip(label, settings.themeMode == mode, onClick = { set(settings.copy(themeMode = mode)) })
                 }
@@ -942,7 +942,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
 
         Section("Navigation", "The tabs along the bottom edge, or a pill floating over the page.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SpreadRow {
                 listOf("bar" to "Bar", "pill" to "Pill").forEach { (style, label) ->
                     Chip(label, settings.navStyle == style, onClick = { set(settings.copy(navStyle = style)) })
                 }
@@ -1200,7 +1200,7 @@ fun AddonsScreen(watch: Watch) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = EDGE).padding(bottom = 32.dp)) {
         Heading("Addons")
         // End to end: each the page's margin from its edge, the space between them.
-        Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        SpreadRow(Modifier.padding(bottom = 16.dp)) {
             Chip("Stremio addons", !plugins, onClick = { plugins = false })
             Chip("CloudStream plugins", plugins, onClick = { plugins = true })
         }
@@ -1403,7 +1403,7 @@ private fun TrackerSection(t: com.torrentviewer.core.Tracker) {
 @Composable
 private fun PrefRow(name: String, options: List<Pair<String, String>>, chosen: String, onPick: (String) -> Unit) {
     Text(name, Modifier.padding(bottom = 8.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
-    Row(Modifier.padding(bottom = 20.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    SpreadRow(Modifier.padding(bottom = 20.dp)) {
         options.forEach { (value, label) -> Chip(label, chosen == value, onClick = { onPick(value) }) }
     }
 }

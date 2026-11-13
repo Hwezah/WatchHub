@@ -58,23 +58,6 @@ import com.composables.icons.lucide.R as L
  */
 private val ZOOMS = listOf(1f to "Fit", 1.125f to "Fill", 1.34f to "Crop bars")
 
-/**
- * The YouTube embed, filling its frame edge to edge: no page margin, the iframe the frame's exact size,
- * black behind it, and scaled from the centre by [zoom]. Loaded with a youtube.com base so the embed has
- * the origin it now asks for (without one it refuses to play).
- */
-private fun embedHtml(id: String, zoom: Float) = """
-<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<style>
-html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden}
-#frame{position:fixed;inset:0;overflow:hidden;background:#000}
-iframe{position:absolute;top:50%;left:50%;width:100%;height:100%;border:0;
- transform:translate(-50%,-50%) scale($zoom);transform-origin:center center;transition:transform .25s ease}
-</style></head><body><div id="frame">
-<iframe id="yt" src="https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&fs=0"
- allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>
-</div></body></html>
-""".trimIndent()
 
 /**
  * A trailer played here rather than in YouTube: a card floating a few dp off the screen's edges with a
@@ -87,6 +70,7 @@ fun TrailerSheet(youtubeId: String, title: String, onDismiss: () -> Unit) {
     var full by remember { mutableStateOf(false) }
     var zoom by remember { mutableIntStateOf(0) }
     val activity = LocalActivity.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     // A phone: a sheet on the bottom edge. A tablet or wider: a card in the middle.
     val wide = androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >= 600
 
@@ -133,6 +117,12 @@ fun TrailerSheet(youtubeId: String, title: String, onDismiss: () -> Unit) {
                         Text("Trailer", style = Type.title.copy(fontWeight = FontWeight.Bold))
                         Text(title, style = Type.meta.copy(color = Ink.muted), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    // For the few trailers whose owner allows YouTube only.
+                    Round(L.drawable.lucide_ic_external_link) {
+                        runCatching {
+                            ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$youtubeId")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    }
                     Round(L.drawable.lucide_ic_zoom_in) { zoom = (zoom + 1) % ZOOMS.size }
                     Round(L.drawable.lucide_ic_maximize) { full = true }
                     Round(L.drawable.lucide_ic_x, onClick = onDismiss)
@@ -166,32 +156,51 @@ private fun Round(icon: Int, dark: Boolean = false, onClick: () -> Unit) {
     }
 }
 
+/**
+ * The zoom, as a style on the embed's own <video>: scaled from its centre inside the player, which clips it.
+ * Re-applied whenever the page (re)loads, since the player builds its video element late.
+ */
+private fun zoomScript(zoom: Float) = """
+(function(z){var d=document;var s=d.getElementById('wh-zoom');if(!s){s=d.createElement('style');s.id='wh-zoom';(d.head||d.documentElement).appendChild(s);}
+s.textContent='html,body{background:#000!important;margin:0!important;overflow:hidden!important}'+
+'video{transform:scale('+z+')!important;transform-origin:center center!important;transition:transform .25s ease}';})($zoom);
+""".trimIndent()
+
+/**
+ * YouTube's embed page, opened directly — not inside an iframe of a made-up youtube.com page, which YouTube
+ * now refuses ("Error 152/153"): it wants every embed to name the app it plays in, so the request carries
+ * this app's identity (https://<package>) as Referer and origin, as YouTube's rules for apps ask.
+ */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun YouTubeView(id: String, zoom: Float) {
     var web by remember { mutableStateOf<WebView?>(null) }
+    val current = androidx.compose.runtime.rememberUpdatedState(zoom)
     AndroidView(
         factory = { ctx ->
+            val origin = "https://${ctx.packageName}"
             WebView(ctx).apply {
                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 setBackgroundColor(AndroidColor.BLACK)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.mediaPlaybackRequiresUserGesture = false
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
                 webChromeClient = WebChromeClient()
-                webViewClient = WebViewClient()
-                loadDataWithBaseURL("https://www.youtube.com/", embedHtml(id, zoom), "text/html", "utf-8", null)
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView, url: String?) {
+                        view.evaluateJavascript(zoomScript(current.value), null)
+                    }
+                }
+                val url = "https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3" +
+                    "&origin=${java.net.URLEncoder.encode(origin, "UTF-8")}&widget_referrer=${java.net.URLEncoder.encode(origin, "UTF-8")}"
+                loadUrl(url, mapOf("Referer" to "$origin/"))
                 web = this
             }
         },
         modifier = Modifier.fillMaxSize(),
     )
     // A new zoom scales the playing video in place, rather than reloading it.
-    LaunchedEffect(zoom) {
-        web?.evaluateJavascript("var f=document.getElementById('yt');if(f)f.style.transform='translate(-50%,-50%) scale($zoom)';", null)
-    }
+    LaunchedEffect(zoom) { web?.evaluateJavascript(zoomScript(zoom), null) }
     DisposableEffect(Unit) {
         onDispose {
             web?.apply {

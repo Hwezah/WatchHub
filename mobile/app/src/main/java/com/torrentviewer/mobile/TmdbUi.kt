@@ -84,7 +84,7 @@ fun PeopleRow(people: List<CastMember>, onPerson: ((CastMember) -> Unit)?) {
     Column(Modifier.padding(top = 18.dp)) {
         Text("Cast", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold))
         // Spread across the row when few; 12 dp apart and scrolling when many.
-        LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = spreadOut(12.dp)) {
+        LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = spreadArrangement(12.dp)) {
             items(people, key = { it.id }) { person ->
                 Tap({ onPerson?.invoke(person) }, Modifier.width(84.dp)) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {

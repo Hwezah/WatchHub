@@ -2,6 +2,7 @@
 
 package com.torrentviewer.mobile
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.selection.toggleable
 import android.app.Activity
@@ -227,7 +228,10 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
             else -> Ink.text.copy(alpha = 0.08f)
         }
         val fg = if (on) Color.White else Ink.muted
-        Row(Modifier.background(bg).height(if (compact) 32.dp else 36.dp).padding(horizontal = if (compact) 11.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.background(bg).height(if (compact) 32.dp else 36.dp).padding(horizontal = if (compact) 11.dp else 16.dp),
+            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+        ) {
             if (icon != null) {
                 Lc(icon, tint = fg, size = 16.dp)
                 Spacer(Modifier.width(8.dp))
@@ -660,3 +664,50 @@ fun spreadOut(min: Dp = 8.dp): Arrangement.Horizontal = object : Arrangement.Hor
 
 /** The pill rows' arrangement: [spreadOut] with an 8 dp floor. */
 val SpreadOut: Arrangement.Horizontal = spreadOut()
+
+/** A phone held upright: where rows of buttons spread end to end and a lone one is centred. Not sideways, not a tablet. */
+@Composable
+fun isPortraitPhone(): Boolean {
+    val c = androidx.compose.ui.platform.LocalConfiguration.current
+    return c.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT && c.smallestScreenWidthDp < 600
+}
+
+/** [spreadOut] on an upright phone; elsewhere plain [min] gaps from the start. For lazy rows. */
+@Composable
+fun spreadArrangement(min: Dp = 8.dp): Arrangement.Horizontal = if (isPortraitPhone()) spreadOut(min) else Arrangement.spacedBy(min)
+
+/**
+ * A row of buttons or pills: on an upright phone spread end to end, gaps closing to [min] and then
+ * scrolling sideways; elsewhere [min] apart from the start, scrolling if they don't fit.
+ */
+@Composable
+fun SpreadRow(modifier: Modifier = Modifier, min: Dp = 8.dp, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    if (isPortraitPhone()) {
+        androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
+            val room = maxWidth
+            Row(
+                Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).widthIn(min = room),
+                horizontalArrangement = spreadOut(min), verticalAlignment = Alignment.CenterVertically, content = content,
+            )
+        }
+    } else {
+        Row(
+            modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(min), verticalAlignment = Alignment.CenterVertically, content = content,
+        )
+    }
+}
+
+/**
+ * A button on its own: on an upright phone centred and at least 70% of the screen wide (the button takes
+ * the modifier it's handed); elsewhere where it stands.
+ */
+@Composable
+fun Solo(modifier: Modifier = Modifier, button: @Composable (Modifier) -> Unit) {
+    if (isPortraitPhone()) {
+        val min = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp * 0.7f).dp
+        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { button(Modifier.widthIn(min = min)) }
+    } else {
+        Box(modifier) { button(Modifier) }
+    }
+}

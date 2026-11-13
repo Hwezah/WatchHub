@@ -197,7 +197,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 },
                 Modifier.padding(top = 16.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_download, primary = picks.isNotEmpty(),
             )
-            if (scan.done) Chip("Ask every source again", false, onClick = { SeasonBatch.begin(title, season, again = true) }, Modifier.padding(top = 10.dp).align(Alignment.CenterHorizontally), compact = true)
+            if (scan.done) Solo(Modifier.padding(top = 10.dp)) { m -> Chip("Ask every source again", false, onClick = { SeasonBatch.begin(title, season, again = true) }, m, compact = true) }
         }
     }
 }
@@ -213,7 +213,7 @@ private fun codecLabel(c: String) = when (c) {
 private fun FilterRow(name: String, options: List<Pair<String, Int>>, chosen: String?, label: (String) -> String = { it }, onPick: (String?) -> Unit) {
     if (options.isEmpty() && chosen == null) return
     Text(name, Modifier.padding(top = 8.dp, bottom = 6.dp), style = Type.overline.copy(color = Ink.faint))
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    SpreadRow {
         Chip("Any", chosen == null, onClick = { onPick(null) }, compact = true)
         options.forEach { (value, n) ->
             Chip("${label(value)} · $n", chosen == value, onClick = { onPick(if (chosen == value) null else value) }, compact = true)
