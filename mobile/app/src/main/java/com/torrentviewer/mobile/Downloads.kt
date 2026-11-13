@@ -449,7 +449,8 @@ object Downloads {
                 val dead = e is LinkExpiredException || e is java.net.UnknownHostException || e is java.net.ConnectException
                 if (dead && job.refreshes < MAX_REFRESHES && job.imdb != null) {
                     update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Link expired — getting a fresh one…", speed = 0) }
-                    val fresh = runCatching { LinkRefresh.fresh(job) }.onFailure { Log.w(TAG, "refresh: ${it.message}") }.getOrNull()
+                    failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
+                    val fresh = runCatching { LinkRefresh.fresh(job, tried(job)) }.onFailure { Log.w(TAG, "refresh: ${it.message}") }.getOrNull()
                     if (fresh != null) {
                         replaceLink(job, fresh)
                         return@launch
@@ -469,7 +470,33 @@ object Downloads {
     private const val MAX_REFRESHES = 2
 
     /** Swaps a dead link for [hit] — a fresh one for the same video — and starts it. */
+    /** Per download (by its name): every link that failed it, so a refresh or a retry never goes back to one. */
+    private val failedLinks = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+
+    private fun tried(job: DownloadJob) = failedLinks[job.label].orEmpty()
+
+    /**
+     * The ↻ on a failed download. A link from a known title: the sources are asked again in the background and
+     * the next fresh link at the same resolution — never one that already failed — takes over, from the start.
+     * A torrent, or a link with no title to search: tried again as it is.
+     */
+    fun retry(uri: String) {
+        val job = _live.value.find { it.job.uri == uri }?.job ?: return
+        if (!job.link || job.imdb == null) return resume(uri)
+        failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
+        update(uri) { it.copy(state = DlState.RESOLVING, error = "Finding a fresh ${job.quality ?: ""} link…".replace("  ", " "), speed = 0) }
+        scope.launch {
+            val fresh = runCatching { LinkRefresh.fresh(job, tried(job)) }.onFailure { Log.w(TAG, "retry: ${it.message}") }.getOrNull()
+            // A retry by hand starts the automatic refreshes over.
+            if (fresh != null) replaceLink(job.copy(refreshes = -1), fresh)
+            else update(uri) {
+                it.copy(state = DlState.FAILED, error = "No other ${job.quality ?: "working"} source right now — try again later", speed = 0)
+            }
+        }
+    }
+
     private fun replaceLink(old: DownloadJob, hit: Hit) {
+        failedLinks.merge(old.label, setOf(old.uri)) { a, b -> a + b }
         val next = old.copy(
             uri = hit.uri,
             link = hit.direct,

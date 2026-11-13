@@ -100,6 +100,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 row,
                 onPause = { Downloads.pause(row.job.uri) },
                 onResume = { Downloads.resume(row.job.uri) },
+                onRetry = { Downloads.retry(row.job.uri) },
                 onCancel = { cancelling = row },
                 onWanted = { index, on -> Downloads.setWanted(row.job.uri, index, on) },
                 onOrder = { Downloads.setOrder(row.job.uri, it) },
@@ -191,7 +192,7 @@ private fun Label(text: String) {
  * listed in episode order, each with its own progress and a circle to skip it or put it back.
  */
 @Composable
-private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Unit, onCancel: () -> Unit, onWanted: (Int, Boolean) -> Unit, onOrder: (Boolean) -> Unit) {
+private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Unit, onRetry: () -> Unit, onCancel: () -> Unit, onWanted: (Int, Boolean) -> Unit, onOrder: (Boolean) -> Unit) {
     val pct = (row.ratio * 100).toInt()
     val pack = row.files.size > 1
     val wanted = row.files.filter { it.wanted }
@@ -229,9 +230,13 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                     maxLines = 1,
                 )
             }
-            when (row.state) {
-                DlState.PAUSED, DlState.FAILED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
-                DlState.WIFI -> Unit
+            when {
+                row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
+                // Failed: ↻ asks the sources again for the next fresh link at this resolution.
+                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { Lc(L.drawable.lucide_ic_refresh_cw, Modifier.padding(10.dp), tint = Ink.download, size = 20.dp) }
+                // Looking for a fresh link: a small spinner where the button was.
+                row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(10.dp)) { com.torrentviewer.core.Spinner(size = 20.dp, color = Ink.download) }
+                row.state == DlState.WIFI -> Unit
                 else -> Tap(onPause, shape = CircleShape) { Lc(L.drawable.lucide_ic_pause, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
             }
             // Its tap area reaches into the card's padding, so the ✕ sits as far from the right edge as the poster from the left.

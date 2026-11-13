@@ -10,10 +10,11 @@ import com.torrentviewer.mobile.cs.CsStreams
  * The same source again, from a fresh search: plugin links (and many debrid ones) carry a token that
  * expires within hours, so a download that failed on its link asks the sources again and carries on.
  * Never the link that just failed. In order: the same source and link name, then the same source at the
- * same resolution, then the best that can be saved at that resolution ([batchPick]).
+ * same resolution, then the best that can be saved at that resolution ([batchPick]). Never one in [tried]
+ * either — the links that already failed for this download — so each retry moves on to the next source.
  */
-fun refreshPick(hits: List<Hit>, oldUri: String, source: String?, name: String?, quality: String?): Hit? {
-    val ok = hits.filter { it.uri != oldUri && batchable(it) }
+fun refreshPick(hits: List<Hit>, oldUri: String, source: String?, name: String?, quality: String?, tried: Set<String> = emptySet()): Hit? {
+    val ok = hits.filter { it.uri != oldUri && it.uri !in tried && batchable(it) }
     if (source != null) {
         ok.firstOrNull { it.addon == source && it.name == name }?.let { return it }
         ok.filter { it.addon == source && it.quality == quality }.let { batchPick(it, BatchFilter()) }?.let { return it }
@@ -23,7 +24,7 @@ fun refreshPick(hits: List<Hit>, oldUri: String, source: String?, name: String?,
 
 object LinkRefresh {
     /** A fresh source for [job]'s film or episode, or null when it can't be placed or nothing is found. */
-    suspend fun fresh(job: DownloadJob): Hit? {
+    suspend fun fresh(job: DownloadJob, tried: Set<String> = emptySet()): Hit? {
         val imdb = job.imdb ?: return null
         val title = Meta.title(imdb, job.kind ?: "movie") ?: return null
         // The addons' answers are kept for the session; this needs new ones.
@@ -40,6 +41,6 @@ object LinkRefresh {
                 }
             }.getOrDefault(emptyList())
         }
-        return refreshPick(hits, job.uri, job.source, job.linkName, job.quality)
+        return refreshPick(hits, job.uri, job.source, job.linkName, job.quality, tried)
     }
 }

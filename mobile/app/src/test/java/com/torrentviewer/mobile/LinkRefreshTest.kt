@@ -37,4 +37,13 @@ class LinkRefreshTest {
     @Test fun neverTheDeadLinkAgain() {
         assertNull(refreshPick(listOf(link("HubCloud 1080p", "HDhub4u", "1080p", old)), old, "HDhub4u", "HubCloud 1080p", "1080p"))
     }
+
+    @Test fun eachRetryMovesOnPastEveryLinkThatFailed() {
+        val hits = listOf(
+            link("Pixeldrain 1080p", "HDhub4u", "1080p", "https://pd.example/1080"),
+            link("Other 1080p", "MoviesMod", "1080p", "https://mm.example/1080.mp4", 900 * mb),
+        )
+        assertEquals("https://mm.example/1080.mp4", refreshPick(hits, old, "HDhub4u", "HubCloud 1080p", "1080p", setOf("https://pd.example/1080"))!!.uri)
+        assertNull(refreshPick(hits, old, "HDhub4u", "HubCloud 1080p", "1080p", setOf("https://pd.example/1080", "https://mm.example/1080.mp4")))
+    }
 }
