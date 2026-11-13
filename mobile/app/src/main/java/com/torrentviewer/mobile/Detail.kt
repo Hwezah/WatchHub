@@ -757,12 +757,16 @@ private fun LazyListScope.sources(
                     qualities.forEach { q -> Chip(q, quality == q, onClick = { onQuality(q) }) }
                 }
             }
+            // The progress line: centred on an upright phone, from the start elsewhere.
+            val centre = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart
             when {
-                busy && shown.isEmpty() -> Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Spinner(size = 24.dp)
-                    Text("   Asking your addons and plugins…", style = Type.body)
+                busy && shown.isEmpty() -> Box(Modifier.fillMaxWidth(), contentAlignment = centre) {
+                    Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Spinner(size = 24.dp)
+                        Text("   Asking your addons and plugins…", style = Type.body)
+                    }
                 }
-                busy -> Note("${shown.size} so far · finding more…", Modifier.padding(bottom = 8.dp))
+                busy -> Box(Modifier.fillMaxWidth(), contentAlignment = centre) { Note("${shown.size} so far · finding more…", Modifier.padding(bottom = 8.dp)) }
                 hits?.isEmpty() == true -> Note(
                     when {
                         !Addons.hasStreams && com.torrentviewer.mobile.cs.CsPlugins.providers().isEmpty() -> Addons.NONE_YET
