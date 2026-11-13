@@ -16,6 +16,7 @@ import android.os.Environment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -266,7 +267,8 @@ fun DownloadChoice(
 ) {
     androidx.compose.ui.window.Dialog(onDismiss) {
         Column(
-            Modifier.widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Ink.surface).padding(18.dp),
+            // Lifted a notch, so it floats clear of the tab bar rather than resting on it.
+            Modifier.offset(y = (-44).dp).widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Ink.surface).padding(18.dp),
         ) {
             Text("Download", style = Type.title.copy(fontWeight = FontWeight.Bold))
             Text(detail, Modifier.padding(top = 2.dp, bottom = 14.dp), style = Type.meta.copy(color = Ink.faint), maxLines = 2, overflow = TextOverflow.Ellipsis)
