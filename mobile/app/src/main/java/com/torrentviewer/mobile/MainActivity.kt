@@ -78,6 +78,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         Services.init(applicationContext)
         com.torrentviewer.mobile.cs.CsPlugins.attach(this)
+        // Plugins' settings sheets: a little space between their stacked option rows.
+        supportFragmentManager.registerFragmentLifecycleCallbacks(com.torrentviewer.mobile.cs.PluginSheetSpacing, true)
         // The TV's red glares at arm's length on a phone screen: a deeper one.
         Ink.accent = Color(0xFFB81D24)
         // The page before the first frame, so a light theme never opens on a flash of dark.
