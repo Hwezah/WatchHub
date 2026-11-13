@@ -105,9 +105,13 @@ fun SourceActions(
                     if (!ok) say("No browser could open it.")
                 }
             }
-            Action(L.drawable.lucide_ic_copy, "Copy to clipboard") {
-                val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clip.setPrimaryClip(ClipData.newPlainText(heading, hit.uri))
+            val magnet = magnetOf(hit)
+            if (magnet != null) Action(L.drawable.lucide_ic_magnet, "Copy magnet link", "For any torrent app") {
+                copy(context, heading, magnet)
+                say("Magnet link copied")
+            }
+            if (!hit.uri.startsWith("magnet:", true)) Action(L.drawable.lucide_ic_copy, "Copy link") {
+                copy(context, heading, hit.uri)
                 say("Link copied")
             }
             if (link) {
@@ -144,6 +148,21 @@ private fun Action(icon: Int, label: String, hint: String? = null, onClick: () -
             }
         }
     }
+}
+
+private fun copy(context: Context, label: String, text: String) {
+    val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clip.setPrimaryClip(ClipData.newPlainText(label, text))
+}
+
+/**
+ * The source as a magnet link: a torrent's own, or one rebuilt from the info hash a debrid link
+ * carries in its path (Torrentio's ".../resolve/<service>/<key>/<hash>/..."). Null when there is none.
+ */
+fun magnetOf(hit: Hit): String? = when {
+    hit.uri.startsWith("magnet:", true) -> hit.uri
+    hit.direct -> com.torrentviewer.core.linkHash(hit.uri)?.let { com.torrentviewer.core.magnetFor(it, hit.release) }
+    else -> null
 }
 
 /** A link opened in another video app with its type, title and — for players that read them (MX, Just Player) — its headers. */

@@ -265,6 +265,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     var sendAll by remember { mutableStateOf(false) }
     /** A stremio:// link that wants to add an addon, until the viewer says yes or no. */
     var pendingAddon by remember { mutableStateOf<String?>(null) }
+    /** A magnet or .torrent another app handed over: streamed or downloaded, as the viewer picks. */
+    var captured by remember { mutableStateOf<String?>(null) }
 
     // Another app handed us a torrent, or an addon page's Install button a stremio:// link,
     // or the TV's QR page its watchly:// link asking for the addons.
@@ -292,10 +294,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             return@LaunchedEffect
         }
         if (!isTorrentSource(raw)) return@LaunchedEffect
-        val path = runCatching { withContext(Dispatchers.IO) { watch.engine.importSource(raw) } }
-            .getOrElse { return@LaunchedEffect watch.fail(it.message ?: "Couldn't read that file.") }
-        val item = History.put(Item(path, titleOf(raw), System.currentTimeMillis()))
-        watch.resume(item)
+        // Asked first: stream it now, or keep it with the app's own torrent downloader.
+        captured = raw
     }
 
     // Before anything else, for everyone, whatever they already have here, and again whenever the
@@ -418,6 +418,33 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         }
 
         // An addon decides what the app is offered to play, so one from a link is added only on a yes.
+        captured?.let { raw ->
+            Sheet(
+                title = titleOf(raw).ifBlank { "This torrent" },
+                options = listOf(
+                    Option("stream", "Stream now", "Starts playing while it downloads"),
+                    Option("download", "Download", "Kept on this phone — see the Downloads tab"),
+                    Option("", "Cancel"),
+                ),
+                selected = null,
+                onPick = { pick ->
+                    captured = null
+                    AppScope.launch {
+                        val path = runCatching { withContext(Dispatchers.IO) { watch.engine.importSource(raw) } }
+                            .getOrElse { return@launch watch.fail(it.message ?: "Couldn't read that torrent.") }
+                        when (pick) {
+                            "stream" -> watch.resume(History.put(Item(path, titleOf(raw), System.currentTimeMillis())))
+                            "download" -> {
+                                Downloads.add(DownloadJob(uri = path, title = titleOf(raw), titleName = null, poster = null, imdb = null, kind = null, tags = emptyList()))
+                                watch.notes.tryEmit("Downloading ${titleOf(raw)} — see Downloads")
+                            }
+                        }
+                    }
+                },
+                onDismiss = { captured = null },
+            )
+        }
+
         pendingAddon?.let { link ->
             Sheet(
                 title = "Add this addon?",
