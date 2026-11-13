@@ -656,9 +656,13 @@ private fun LazyListScope.sources(
         Column(modifier.padding(start = EDGE, end = EDGE, top = if (heading) 26.dp else 4.dp)) {
             if (heading) Text("Sources", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
             if (qualities.size > 1) {
-                Row(Modifier.padding(bottom = 12.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip("All", quality == null, onClick = { onQuality(null) })
-                    qualities.forEach { q -> Chip(q, quality == q, onClick = { onQuality(q) }) }
+                // Spread across the row like the season pills; with many, 8 dp gaps and a sideways scroll.
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                    val room = maxWidth
+                    Row(Modifier.horizontalScroll(rememberScrollState()).widthIn(min = room), horizontalArrangement = SpreadOut) {
+                        Chip("All", quality == null, onClick = { onQuality(null) })
+                        qualities.forEach { q -> Chip(q, quality == q, onClick = { onQuality(q) }) }
+                    }
                 }
             }
             when {
