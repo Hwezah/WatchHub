@@ -189,6 +189,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var allEpisodes by rememberSaveable(title.imdb, season) { mutableStateOf(false) }
     /** "Download season" open: the season, and its packs (null while still looking). */
     var seasonPacks by remember(title.imdb) { mutableStateOf<Pair<Int, List<Hit>?>?>(null) }
+    /** The trailer playing in its card, over the page. */
+    var trailerOpen by remember(title.imdb) { mutableStateOf(false) }
     /** The batch download sheet's season, while it is open. */
     var batchFor by remember(title.imdb) { mutableStateOf<Int?>(null) }
     /** A source's ⋯ open: the source, and the episode it is for. */
@@ -366,7 +368,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My List" else "My List", { SavedStore.toggle(title) }, modifier = share, on = inList, onColor = Ink.good)
                         Action(L.drawable.lucide_ic_heart, if (liked) "Liked" else "Like", { SavedStore.toggle(title, "favorite") }, modifier = share, on = liked, onColor = Ink.accent)
                         if (!title.isSeries) Action(L.drawable.lucide_ic_download, "Download", { downloadSheet = true }, modifier = share)
-                        title.trailer?.let { id -> Action(L.drawable.lucide_ic_film, "Trailer", { openUrl(context, "https://www.youtube.com/watch?v=$id") }, modifier = share) }
+                        title.trailer?.let { id -> Action(L.drawable.lucide_ic_film, "Trailer", { trailerOpen = true }, modifier = share) }
                         Action(L.drawable.lucide_ic_message_square_text, "Reviews", { reviews = true }, modifier = share)
                     }
                     // No language chip: sources are searched in any language (the owner's choice); the batch sheet's filters narrow them.
@@ -520,6 +522,9 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             }
         }
     }
+
+    // The trailer plays here, in a card over the page, rather than in YouTube.
+    if (trailerOpen) title.trailer?.let { id -> TrailerSheet(id, title.title) { trailerOpen = false } }
 
     batchFor?.let { s -> BatchSheet(title, s, say = { watch.notes.tryEmit(it) }, onDismiss = { batchFor = null }) }
 
