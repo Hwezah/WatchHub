@@ -1203,7 +1203,8 @@ fun AddonsScreen(watch: Watch) {
     var plugins by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = EDGE).padding(bottom = 32.dp)) {
         Heading("Addons")
-        Row(Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // End to end: each the page's margin from its edge, the space between them.
+        Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Chip("Stremio addons", !plugins, onClick = { plugins = false })
             Chip("CloudStream plugins", plugins, onClick = { plugins = true })
         }
