@@ -607,7 +607,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_users, "Switch profile", "Change to a different profile", onClick = onSwitchProfile),
                     ),
                     listOf(
-                        Entry(L.drawable.lucide_ic_palette, "Appearance", "Theme and home screen genres", "light dark") { page = "Appearance" },
+                        Entry(L.drawable.lucide_ic_palette, "Appearance", "Theme, navigation and home screen genres", "light dark pill bar tabs") { page = "Appearance" },
                     ),
                     listOf(
                         Entry(L.drawable.lucide_ic_radio, "Streaming", "Storage, buffer and trackers", "cache magnet") { page = "Streaming" },
@@ -892,6 +892,14 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (mode, label) ->
                     Chip(label, settings.themeMode == mode, onClick = { set(settings.copy(themeMode = mode)) })
+                }
+            }
+        }
+
+        Section("Navigation", "The tabs along the bottom edge, or a pill floating over the page.") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("bar" to "Bar", "pill" to "Pill").forEach { (style, label) ->
+                    Chip(label, settings.navStyle == style, onClick = { set(settings.copy(navStyle = style)) })
                 }
             }
         }

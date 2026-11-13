@@ -290,7 +290,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 if (!wide) {
                     Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
                         Artwork(title.wide, title.title, Modifier.fillMaxSize().bottomScrim(0.6f), fill = false)
-                        TitleMark(title, Modifier.align(Alignment.BottomStart).padding(horizontal = EDGE).widthIn(max = 260.dp), maxHeight = 72.dp, style = Type.display)
+                        // Centred under the art, which is cropped from its centre.
+                        TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
                     }
                 }
                 Column(
@@ -299,7 +300,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     ),
                 ) {
                     if (wide) TitleMark(title, Modifier.widthIn(max = 320.dp).padding(bottom = 12.dp), maxHeight = 80.dp, style = Type.display)
-                    Facts(title.copy(genres = title.genres.take(2)))
+                    if (wide) Facts(title.copy(genres = title.genres.take(2)))
+                    else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Facts(title.copy(genres = title.genres.take(2))) }
                     // On any release here, or on a connected account from another device; a series shows it per episode.
                     val finished = history.filter { it.imdb == title.imdb && it.ratio >= com.torrentviewer.core.WATCHED_AT }.maxOfOrNull { it.at }
                     val seenIt = !title.isSeries && (finished != null || title.imdb in stremio.films)
@@ -433,8 +435,14 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                 }
                             }
                         }
-                        LazyRow(contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(seasons) { s ->
+                        // Spread end to end, first season at the left edge and last at the right; with many, the
+                        // gaps close to 8 dp and the row scrolls sideways.
+                        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val room = maxWidth - EDGE * 2
+                            Row(
+                                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = EDGE).widthIn(min = room),
+                                horizontalArrangement = SpreadOut,
+                            ) { seasons.forEach { s ->
                                 Chip("Season $s", s == season, onClick = {
                                     season = s
                                     // Retire whatever search is out: it belongs to the season being left.
@@ -443,7 +451,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                     hits = null
                                     episode = null
                                 })
-                            }
+                            } }
                         }
                     }
                 }
@@ -827,6 +835,24 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
             if (onDownload != null && canSave(hit)) Tap(onDownload, Modifier.padding(start = 4.dp), CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
             // Everything else that can be done with it: play elsewhere, mirrors, copy, download (also a long-press).
             if (onMore != null) Tap(onMore, Modifier.padding(start = 2.dp), CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
+        }
+    }
+}
+
+/**
+ * Space-between with a floor: the pills spread across the row, first and last at its ends, until there
+ * are too many to fit — then the gap stays at 8 dp and the row is wider than the screen, to scroll.
+ */
+private val SpreadOut = object : Arrangement.Horizontal {
+    override val spacing = 8.dp
+
+    override fun androidx.compose.ui.unit.Density.arrange(totalSize: Int, sizes: IntArray, layoutDirection: androidx.compose.ui.unit.LayoutDirection, outPositions: IntArray) {
+        val min = spacing.roundToPx()
+        val gap = if (sizes.size > 1) maxOf(min, (totalSize - sizes.sum()) / (sizes.size - 1)) else 0
+        var x = 0
+        sizes.forEachIndexed { i, w ->
+            outPositions[i] = x
+            x += w + gap
         }
     }
 }

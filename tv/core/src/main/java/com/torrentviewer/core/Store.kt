@@ -158,6 +158,8 @@ data class Settings(
     val themeMode: String = "system",
     /** Jump past an episode's intro by itself, rather than offer the button. */
     val autoSkipIntro: Boolean = false,
+    /** The phone's tab bar: "bar" along the bottom edge, or "pill" floating over the page. The TV ignores it. */
+    val navStyle: String = "bar",
 )
 
 /** Subtitle text; [size] is one of [SUB_SIZES]' keys. The Expo build's names and values. */
@@ -220,6 +222,7 @@ object SettingsStore {
         wholeFile = o.optBoolean("streamWholeFile", false),
         themeMode = o.optString("themeMode").takeIf { it == "light" || it == "dark" } ?: "system",
         autoSkipIntro = o.optBoolean("autoSkipIntro", false),
+        navStyle = o.optString("navStyle").takeIf { it == "pill" } ?: "bar",
     )
 
     /** Over what is stored, not instead of it: the TV and the phone each keep fields the other never reads. */
@@ -230,7 +233,7 @@ object SettingsStore {
             .put("cacheMb", next.cacheCapMb).put("vlcPlayer", next.vlcPlayer)
             .put("subLang", next.subLang).put("audioLang", next.audioLang)
             .put("subSize", next.subtitles.size).put("subColor", if (next.subtitles.yellow) "yellow" else "white").put("subBackground", next.subtitles.box)
-            .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro)
+            .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro).put("navStyle", next.navStyle)
         Kv.setGlobal("settings", o.toString())
         Kv.set(GENRES_KEY, JSONArray(next.genres).toString())
     }

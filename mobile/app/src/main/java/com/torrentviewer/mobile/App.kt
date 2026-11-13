@@ -21,6 +21,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -395,6 +396,12 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 NavRail(tab, me, choose, onProfile = { switching = true })
                 Box(Modifier.weight(1f).fillMaxHeight()) { body() }
             }
+        } else if (SettingsStore.value.collectAsState().value.navStyle == "pill") {
+            // The pages run to the bottom edge; the pill floats over them.
+            Box(Modifier.fillMaxSize()) {
+                body()
+                PillBar(tab, choose, Modifier.align(Alignment.BottomCenter))
+            }
         } else {
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) { body() }
@@ -521,6 +528,33 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
                         Text(t.label, Modifier.padding(top = 3.dp), style = Type.meta.copy(fontSize = 11.sp, color = if (on) Ink.text else Ink.faint, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium))
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The tabs as a floating pill: icons only, the chosen one in a lighter capsule of its own, on the page's
+ * translucent grained surface so what scrolls beneath still shows through.
+ */
+@Composable
+private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.navigationBarsPadding().padding(bottom = 12.dp)
+            .clip(RoundedCornerShape(50)).background(Ink.surface.copy(alpha = 0.86f)).grain()
+            .border(1.dp, Ink.text.copy(alpha = 0.08f), RoundedCornerShape(50))
+            .padding(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        tabs().forEach { t ->
+            val on = t == tab
+            Tap({ onTab(t) }, shape = RoundedCornerShape(50)) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(if (on) Ink.text.copy(alpha = 0.16f) else Color.Transparent)
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Lc(t.icon, tint = if (on) Ink.text else Ink.muted, size = 24.dp) }
             }
         }
     }

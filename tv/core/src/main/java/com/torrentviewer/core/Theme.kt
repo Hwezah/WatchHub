@@ -233,7 +233,7 @@ fun WatchedBadge(at: Long?, modifier: Modifier = Modifier) {
 
 /** The film's title logo when Cinemeta has one — the premium look — else the name set large. */
 @Composable
-fun TitleMark(title: Title, modifier: Modifier = Modifier, maxHeight: Dp = 110.dp, style: TextStyle = Type.hero) {
+fun TitleMark(title: Title, modifier: Modifier = Modifier, maxHeight: Dp = 110.dp, style: TextStyle = Type.hero, centred: Boolean = false) {
     var failed by remember(title.logo) { mutableStateOf(title.logo == null) }
     if (!failed) {
         val context = LocalContext.current
@@ -241,12 +241,16 @@ fun TitleMark(title: Title, modifier: Modifier = Modifier, maxHeight: Dp = 110.d
             model = remember(title.logo) { ImageRequest.Builder(context).data(title.logo).crossfade(250).build() },
             contentDescription = title.title,
             contentScale = ContentScale.Fit,
-            alignment = Alignment.CenterStart,
+            // The TV's hero lines it up on the left; the phone's centres it under the art.
+            alignment = if (centred) Alignment.Center else Alignment.CenterStart,
             onError = { failed = true },
             modifier = modifier.height(maxHeight).fillMaxWidth(),
         )
     } else {
-        Text(title.title, modifier, style = style, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            title.title, modifier, style = if (centred) style.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center) else style,
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
