@@ -616,7 +616,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     // Said in green on both choices: the resolution comes from Settings, and that's where to change it.
     fun resolutionNote(): String {
         val q = com.torrentviewer.core.SettingsStore.value.value.dlQuality
-        return "The resolution picked by default is ${q.ifEmpty { "any (the best found)" }}, as set in Settings → Preferred download. Change it there for a different resolution!"
+        return "The Resolution Picked By Default Is ${q.ifEmpty { "Any (The Best Found)" }}, As Set In Settings → Preferred Download. Change It There For A Different Resolution!"
     }
     askEpisode?.let { ep ->
         DownloadChoice(
