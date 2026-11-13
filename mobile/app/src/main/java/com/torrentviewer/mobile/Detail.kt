@@ -396,7 +396,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         // Green tick for My List, red heart for Like — each fills its disc when on.
                         Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My List" else "My List", { SavedStore.toggle(title) }, modifier = share, on = inList, onColor = Ink.good)
                         Action(L.drawable.lucide_ic_heart, if (liked) "Liked" else "Like", { SavedStore.toggle(title, "favorite") }, modifier = share, on = liked, onColor = Ink.accent)
-                        if (!title.isSeries) Action(L.drawable.lucide_ic_download, "Download", { quickDownload(null) }, modifier = share)
+                        // No Download here: each source row has its own ⬇ (one-tap, by Preferred download, is the episodes').
                         title.trailer?.let { id -> Action(L.drawable.lucide_ic_film, "Trailer", { trailerOpen = true }, modifier = share) }
                         Action(L.drawable.lucide_ic_message_square_text, "Reviews", { reviews = true }, modifier = share)
                     }
