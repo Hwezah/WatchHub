@@ -8,7 +8,7 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import androidx.fragment.app.FragmentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -66,8 +66,11 @@ object Pip {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && context.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
 }
 
-/** A FragmentActivity because the Cast button's device chooser is a dialog fragment. */
-class MainActivity : FragmentActivity() {
+/**
+ * An AppCompatActivity: the Cast button's device chooser is a dialog fragment, and CloudStream plugins open
+ * their settings by casting the activity to one (getSupportFragmentManager), as CloudStream's own is.
+ */
+class MainActivity : AppCompatActivity() {
     /** A magnet or .torrent handed to us by another app. */
     private val incoming = mutableStateOf<Uri?>(null)
 

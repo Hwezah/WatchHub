@@ -53,7 +53,9 @@ data class PluginWrapper(
 object RepositoryManager {
     fun getRepositories(): Array<RepositoryData> = CsStore.repos().toTypedArray()
 
-    suspend fun parseRepository(url: String): Repository? = runCatching { parseRepository(fetchText(url)) }.getOrNull()
+    // The top-level parser by its full name: a bare parseRepository(…) here is this very function, which
+    // took the JSON for a link and failed every Browse with "Couldn't reach".
+    suspend fun parseRepository(url: String): Repository? = runCatching { com.torrentviewer.mobile.cs.parseRepository(fetchText(url)) }.getOrNull()
 
     /** Every plugin a repository lists, across its plugin lists; null when the repository can't be read. */
     suspend fun getRepoPlugins(repositoryData: RepositoryData): List<PluginWrapper>? {

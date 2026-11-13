@@ -228,6 +228,13 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
             Text(state, style = Type.meta.copy(color = tint, fontSize = 12.sp), maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(8.dp))
+        // The plugin's own settings — accounts, which sources it asks, languages — as CloudStream's sliders icon.
+        if (CsPlugins.loaded(p) && CsPlugins.settingsOf(p) != null) {
+            Tap({ CsPlugins.openSettings(p)?.let { watch.notes.tryEmit(it) } }, shape = androidx.compose.foundation.shape.CircleShape) {
+                Lc(L.drawable.lucide_ic_sliders_horizontal, Modifier.padding(8.dp), tint = Ink.text, size = 22.dp)
+            }
+            Spacer(Modifier.width(4.dp))
+        }
         Outline("Remove") {
             scope.launch {
                 CsPlugins.uninstall(p)

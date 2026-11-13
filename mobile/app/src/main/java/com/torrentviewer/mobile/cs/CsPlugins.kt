@@ -86,6 +86,20 @@ object CsPlugins {
 
     fun failure(p: PluginData): String? = PluginManager.failures[File(p.filePath).absolutePath]
 
+    /** A running plugin's own settings screen (StreamPlay's accounts and sources…), or null when it has none. */
+    fun settingsOf(p: PluginData): ((android.content.Context) -> Unit)? =
+        (synchronized(PluginManager.plugins) { PluginManager.plugins[File(p.filePath).absolutePath] } as? com.lagradost.cloudstream3.plugins.Plugin)?.openSettings
+
+    /** Opens it over the app, as CloudStream does: the plugin builds its own dialog on the activity. A failure comes back as a message. */
+    fun openSettings(p: PluginData): String? {
+        val open = settingsOf(p) ?: return "${p.internalName} has no settings"
+        val host = CommonActivity.activity ?: return "Open the app first"
+        return runCatching { open(host) }.exceptionOrNull()?.let { e ->
+            Log.e(TAG, "settings of ${p.internalName}", e)
+            "${p.internalName}'s settings didn't open: ${e::class.java.simpleName}"
+        }
+    }
+
     /**
      * Adds a repository by its link or shortcode and returns it; one already added is refreshed in
      * place. Throws with a message to show.

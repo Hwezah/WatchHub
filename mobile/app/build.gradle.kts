@@ -103,6 +103,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     // Only for the AppCompat theme that chooser dialog insists on.
     implementation("androidx.appcompat:appcompat:1.7.1")
+    // CloudStream plugins' settings screens are Material bottom sheets (StreamPlay, ShowBox…), as in CloudStream.
+    implementation("com.google.android.material:material:1.12.0")
 
     // CloudStream plugins (.cs3): the library they are compiled against — MainAPI, extractors, the `app`
     // HTTP client — pinned to the commit of CloudStream's "pre-release" tag that current plugins target.
