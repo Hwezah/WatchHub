@@ -101,8 +101,8 @@ fun batchQualities(hits: List<Hit>): List<Pair<String, Int>> = hits.filter(::bat
  * the other filters applied (pass [filter] with this row's own choice cleared), so a row never offers a
  * dead end. Best resolution first, then the most common, Unknown last.
  */
-fun filterOptions(all: List<Hit>, filter: BatchFilter, of: (Traits) -> String?): List<Pair<String, Int>> =
-    all.filter(::batchable).map(::traitsOf).filter(filter::accepts).mapNotNull(of)
+fun filterOptions(all: List<Hit>, filter: BatchFilter, only: (Hit) -> Boolean = ::batchable, of: (Traits) -> String?): List<Pair<String, Int>> =
+    all.filter(only).map(::traitsOf).filter(filter::accepts).mapNotNull(of)
         .groupingBy { it }.eachCount().toList()
         .sortedWith(compareBy<Pair<String, Int>> { it.first == UNKNOWN }.thenByDescending { qualityRank(it.first) }.thenByDescending { it.second })
 

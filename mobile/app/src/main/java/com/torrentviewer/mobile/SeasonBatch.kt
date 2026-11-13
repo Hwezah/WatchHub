@@ -210,7 +210,7 @@ private fun codecLabel(c: String) = when (c) {
 
 /** One filter: its name, then Any and each value found with its count. */
 @Composable
-private fun FilterRow(name: String, options: List<Pair<String, Int>>, chosen: String?, label: (String) -> String = { it }, onPick: (String?) -> Unit) {
+fun FilterRow(name: String, options: List<Pair<String, Int>>, chosen: String?, label: (String) -> String = { it }, onPick: (String?) -> Unit) {
     if (options.isEmpty() && chosen == null) return
     Text(name, Modifier.padding(top = 8.dp, bottom = 6.dp), style = Type.overline.copy(color = Ink.faint))
     SpreadRow {

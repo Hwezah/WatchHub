@@ -185,7 +185,10 @@ private fun decadeOf(t: Title) = t.year?.take(4)?.toIntOrNull()?.let { if (it < 
 private enum class Picking { KIND, GENRE, DECADE, RATING, SORT, QUALITY, ORDER }
 
 /** How releases are ordered: the ranking (seeds, then fit), or by size. */
-private enum class HitOrder(val label: String) { BEST("Best match"), BIGGEST("Biggest"), SMALLEST("Smallest") }
+private enum class HitOrder(val label: String) { BEST("Best match"), SMALLEST("Smallest"), BIGGEST("Biggest"), SEEDS("Most seeds") }
+
+/** A stream worth listing in search: anything but a trailer or sample (a known size under [MIN_EPISODE_BYTES]). */
+private fun notJunk(h: Hit) = h.size == 0L || h.size >= MIN_EPISODE_BYTES
 
 /**
  * Results arrive as the letters do; the Torrents switch searches release names instead.
@@ -207,10 +210,11 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
     var decade by rememberSaveable { mutableStateOf<Int?>(null) }
     var atLeast by rememberSaveable { mutableStateOf<Int?>(null) }
     var sort by rememberSaveable { mutableStateOf(Sort.POPULAR) }
-    var quality by rememberSaveable { mutableStateOf<String?>(null) }
+    /** The Streams filters, as the season sheet's: resolution, codec, format, subtitles, source. */
+    var streamFilter by remember { mutableStateOf(BatchFilter()) }
     var order by rememberSaveable { mutableStateOf(HitOrder.BEST) }
     var picking by remember { mutableStateOf<Picking?>(null) }
-    val filtered = !torrents && (kind != null || genre != null || decade != null || atLeast != null || sort != Sort.POPULAR) || torrents && (quality != null || order != HitOrder.BEST)
+    val filtered = !torrents && (kind != null || genre != null || decade != null || atLeast != null || sort != Sort.POPULAR) || torrents && (streamFilter != BatchFilter() || order != HitOrder.BEST)
     /** Going by rating: browse the best of the genre, or of everything, not only what's popular this week. */
     val byRating = sort == Sort.RATING || atLeast != null
 
@@ -258,11 +262,13 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
         )
     }
     val releases = hits?.let { list ->
-        val q = list.filter { quality == null || it.quality == quality }
+        val q = list.filter { notJunk(it) && streamFilter.accepts(traitsOf(it)) }
         when (order) {
             HitOrder.BEST -> q
             HitOrder.BIGGEST -> q.sortedByDescending { it.size }
-            HitOrder.SMALLEST -> q.sortedBy { it.size }
+            // An unknown size isn't the smallest.
+            HitOrder.SMALLEST -> q.sortedWith(compareBy<Hit> { if (it.size > 0) 0 else 1 }.thenBy { it.size })
+            HitOrder.SEEDS -> q.sortedByDescending { it.seeders }
         }
     }
 
@@ -292,12 +298,12 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                     },
                 )
                 // A kids profile searches titles only.
-                if (!Kids.on) Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!Kids.on) SpreadRow(Modifier.padding(top = 12.dp)) {
                     Chip("Titles", !torrents, onClick = { torrents = false; hits = null })
                     Chip("Streams", torrents, onClick = { torrents = true; results = null }, icon = L.drawable.lucide_ic_layers)
                 }
                 // One chip per filter, red while it narrows anything.
-                Row(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SpreadRow(Modifier.padding(top = 10.dp)) {
                     if (!torrents) {
                         Chip(when (kind) { "movie" -> "Films"; "tv" -> "Series"; else -> "Films & series" }, kind != null, onClick = { picking = Picking.KIND })
                         Chip(genre ?: "Any genre", genre != null, onClick = { picking = Picking.GENRE })
@@ -305,12 +311,26 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                         Chip(atLeast?.let { "IMDb $it+" } ?: "Any rating", atLeast != null, onClick = { picking = Picking.RATING })
                         Chip(if (sort == Sort.POPULAR) "Best match" else sort.label, sort != Sort.POPULAR, onClick = { picking = Picking.SORT })
                     } else {
-                        Chip(quality ?: "Any quality", quality != null, onClick = { picking = Picking.QUALITY })
-                        Chip(order.label, order != HitOrder.BEST, onClick = { picking = Picking.ORDER })
+                        HitOrder.entries.forEach { o -> Chip(o.label, order == o, onClick = { order = o }) }
                     }
                     if (filtered) Chip("Clear", false, icon = L.drawable.lucide_ic_x, onClick = {
-                        kind = null; genre = null; decade = null; atLeast = null; sort = Sort.POPULAR; quality = null; order = HitOrder.BEST
+                        kind = null; genre = null; decade = null; atLeast = null; sort = Sort.POPULAR; streamFilter = BatchFilter(); order = HitOrder.BEST
                     })
+                }
+                // The Streams filters, from what this search found: each row offers what the others leave possible.
+                val found = hits.orEmpty()
+                if (torrents && found.isNotEmpty()) {
+                    val f = streamFilter
+                    FilterRow("Resolution", filterOptions(found, f.copy(quality = null), ::notJunk) { it.quality }, f.quality) { streamFilter = f.copy(quality = it) }
+                    FilterRow("Codec", filterOptions(found, f.copy(codec = null), ::notJunk) { it.codec }, f.codec) { streamFilter = f.copy(codec = it) }
+                    FilterRow("Format", filterOptions(found, f.copy(format = null), ::notJunk) { it.format }, f.format) { streamFilter = f.copy(format = it) }
+                    FilterRow(
+                        "Subtitles", filterOptions(found, f.copy(subsOnly = false), ::notJunk) { if (it.subs) "With subs" else null },
+                        if (f.subsOnly) "With subs" else null,
+                    ) { streamFilter = f.copy(subsOnly = it != null) }
+                    FilterRow("Source", filterOptions(found, f.copy(source = null), ::notJunk) { it.source }, f.source, label = { if (it == "Link") "Direct link" else it }) {
+                        streamFilter = f.copy(source = it)
+                    }
                 }
                 if (recents.isNotEmpty() && results == null && hits == null) {
                     Row(Modifier.padding(top = 26.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -362,7 +382,6 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
             Picking.DECADE -> Sheet("Year", listOf(Option<Int?>(null, "Any year")) + DECADES.map { (y, label) -> Option<Int?>(y, label) }, decade, { decade = it; close() }, close)
             Picking.RATING -> Sheet("IMDb rating", listOf(Option<Int?>(null, "Any rating")) + listOf(6, 7, 8, 9).map { Option<Int?>(it, "IMDb $it+") }, atLeast, { atLeast = it; close() }, close)
             Picking.SORT -> Sheet("Order", Sort.entries.map { Option(it, if (it == Sort.POPULAR) "Best match" else it.label) }, sort, { sort = it; close() }, close)
-            Picking.QUALITY -> Sheet("Quality", listOf(Option<String?>(null, "Any quality")) + listOf("4K", "1080p", "720p").map { Option<String?>(it, it) }, quality, { quality = it; close() }, close)
             Picking.ORDER -> Sheet("Order", HitOrder.entries.map { Option(it, it.label) }, order, { order = it; close() }, close)
         }
     }
