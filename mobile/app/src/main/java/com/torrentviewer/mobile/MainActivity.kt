@@ -51,6 +51,8 @@ object Services {
         AppScope.launch(Dispatchers.IO) { engine.warmUp() }
         watch = Watch(engine)
         Downloads.init(context)
+        // CloudStream plugins: loaded in the background, so they're ready by the time a title opens.
+        com.torrentviewer.mobile.cs.CsPlugins.init(context)
     }
 }
 
@@ -72,6 +74,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Services.init(applicationContext)
+        com.torrentviewer.mobile.cs.CsPlugins.attach(this)
         // The TV's red glares at arm's length on a phone screen: a deeper one.
         Ink.accent = Color(0xFFB81D24)
         // The page before the first frame, so a light theme never opens on a flash of dark.
@@ -94,6 +97,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.torrentviewer.mobile.cs.CsPlugins.attach(this)
         preferHighRefreshRate()
         com.torrentviewer.core.refreshWatched()
     }
@@ -112,6 +116,7 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        if (com.lagradost.cloudstream3.CommonActivity.activity === this) com.torrentviewer.mobile.cs.CsPlugins.attach(null)
         if (isFinishing) AppScope.launch(Dispatchers.IO) { Services.engine.shutdown() }
         super.onDestroy()
     }

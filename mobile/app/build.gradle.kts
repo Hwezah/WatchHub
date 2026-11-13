@@ -62,8 +62,10 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Off, as in CloudStream itself: .cs3 plugins call the library and its dependencies by name
+            // at run time, and R8 would rename or drop whatever this app's own code doesn't use.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
         }
@@ -80,7 +82,16 @@ android {
     }
 
     // Native libraries stay uncompressed in the APK and are mapped from there.
-    packaging { jniLibs { useLegacyPackaging = false } }
+    packaging {
+        jniLibs { useLegacyPackaging = false }
+        // The same licence and OSGi files come in several of the plugin library's jars.
+        resources.excludes += setOf(
+            "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST",
+            "META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/*.md",
+        )
+    }
+
+    testOptions { unitTests.isReturnDefaultValues = true }
 }
 
 dependencies {
@@ -91,4 +102,16 @@ dependencies {
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     // Only for the AppCompat theme that chooser dialog insists on.
     implementation("androidx.appcompat:appcompat:1.7.1")
+
+    // CloudStream plugins (.cs3): the library they are compiled against — MainAPI, extractors, the `app`
+    // HTTP client — pinned to the commit of CloudStream's "pre-release" tag that current plugins target.
+    // Bump it when plugins start failing with NoSuchMethodError / NoClassDefFoundError.
+    implementation("com.github.recloudstream.cloudstream:library:5d66bbeaf3")
+    implementation("com.github.Blatzar:NiceHttp:0.4.18")
+    // TLS for older Androids, as CloudStream bundles.
+    implementation("org.conscrypt:conscrypt-android:2.5.3")
+
+    testImplementation("junit:junit:4.13.2")
+    // org.json is an Android stub on the JVM; the real one for unit tests.
+    testImplementation("org.json:json:20240303")
 }
