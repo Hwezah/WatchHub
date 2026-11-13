@@ -152,7 +152,11 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp),
             )
 
-            Chip(if (showPlan) "Hide what each episode gets" else "Show what each episode gets", showPlan, onClick = { showPlan = !showPlan }, Modifier.padding(top = 12.dp), compact = true)
+            // The Download button's size and shape, in the plain translucent style.
+            Button(
+                if (showPlan) "Hide what each episode gets" else "Show what each episode gets", { showPlan = !showPlan },
+                Modifier.padding(top = 14.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_list_video,
+            )
             if (showPlan) plan.forEach { (ep, hit) ->
                 val t = hit?.let(::traitsOf)
                 Text(

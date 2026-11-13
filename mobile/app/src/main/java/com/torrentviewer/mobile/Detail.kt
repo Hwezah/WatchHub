@@ -369,10 +369,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         title.trailer?.let { id -> Action(L.drawable.lucide_ic_film, "Trailer", { openUrl(context, "https://www.youtube.com/watch?v=$id") }, modifier = share) }
                         Action(L.drawable.lucide_ic_message_square_text, "Reviews", { reviews = true }, modifier = share)
                     }
-                    Chip(
-                        "Language: " + if (lang.isEmpty()) "Any" else langName(lang), lang.isNotEmpty(),
-                        onClick = { pickingLang = true }, modifier = Modifier.padding(top = 14.dp), icon = L.drawable.lucide_ic_languages,
-                    )
+                    // No language chip: sources are searched in any language (the owner's choice); the batch sheet's filters narrow them.
                     inOrder?.let { order -> FranchiseRail(order, title.imdb, { onOrder(order) }, onOpen, Modifier.padding(top = 20.dp)) }
                     val people = tmdb?.cast.orEmpty()
                     if (people.isNotEmpty()) PeopleRow(people, onPerson.takeUnless { com.torrentviewer.core.Kids.on })
