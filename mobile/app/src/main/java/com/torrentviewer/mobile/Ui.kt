@@ -639,3 +639,24 @@ fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = M
         Box(Modifier.offset(x = travel).size(18.dp).clip(CircleShape).background(thumb))
     }
 }
+
+/**
+ * Space-between with a floor: items spread across the row, first and last at its ends, until there are
+ * too many to fit — then [min] apart, and the row (scrolling, or lazy) runs past the screen.
+ */
+fun spreadOut(min: Dp = 8.dp): Arrangement.Horizontal = object : Arrangement.Horizontal {
+    override val spacing = min
+
+    override fun androidx.compose.ui.unit.Density.arrange(totalSize: Int, sizes: IntArray, layoutDirection: androidx.compose.ui.unit.LayoutDirection, outPositions: IntArray) {
+        val floor = spacing.roundToPx()
+        val gap = if (sizes.size > 1) maxOf(floor, (totalSize - sizes.sum()) / (sizes.size - 1)) else 0
+        var x = 0
+        sizes.forEachIndexed { i, w ->
+            outPositions[i] = x
+            x += w + gap
+        }
+    }
+}
+
+/** The pill rows' arrangement: [spreadOut] with an 8 dp floor. */
+val SpreadOut: Arrangement.Horizontal = spreadOut()

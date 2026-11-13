@@ -730,7 +730,8 @@ private fun Crew(label: String, names: List<String>, known: List<com.torrentview
 private fun CastRow(names: List<String>) {
     Column(Modifier.padding(top = 18.dp)) {
         Text("Cast", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        // Spread across the row when few; 14 dp apart and scrolling when many.
+        LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = spreadOut(14.dp)) {
             items(names.take(12)) { name ->
                 val photo by produceState<String?>(null, name) { value = castPhoto(name) }
                 Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -878,23 +879,6 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
     }
 }
 
-/**
- * Space-between with a floor: the pills spread across the row, first and last at its ends, until there
- * are too many to fit — then the gap stays at 8 dp and the row is wider than the screen, to scroll.
- */
-private val SpreadOut = object : Arrangement.Horizontal {
-    override val spacing = 8.dp
-
-    override fun androidx.compose.ui.unit.Density.arrange(totalSize: Int, sizes: IntArray, layoutDirection: androidx.compose.ui.unit.LayoutDirection, outPositions: IntArray) {
-        val min = spacing.roundToPx()
-        val gap = if (sizes.size > 1) maxOf(min, (totalSize - sizes.sum()) / (sizes.size - 1)) else 0
-        var x = 0
-        sizes.forEachIndexed { i, w ->
-            outPositions[i] = x
-            x += w + gap
-        }
-    }
-}
 
 /** One-tap Download waits this long at most for every source to answer, then takes the best of what has. */
 private const val QUICK_PICK_MS = 15_000L
