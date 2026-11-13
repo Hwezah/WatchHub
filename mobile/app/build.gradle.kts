@@ -17,9 +17,9 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        // The Expo build's id and key (debug.keystore): a release installs over it in place
-        // and imports its AsyncStorage on first launch.
-        applicationId = "com.torrentviewer.app"
+        // This fork's own id, so it never installs over (or is replaced by) upstream Watchly.
+        // The code's package (namespace) stays com.torrentviewer.mobile.
+        applicationId = "com.hwezah.watchhub"
         minSdk = 24
         targetSdk = 36
         versionCode = 6
@@ -30,7 +30,7 @@ android {
         buildConfigField("String", "MDBLIST_CLIENT_ID", "\"${env("MDBLIST_CLIENT_ID")}\"")
         buildConfigField("String", "TMDB_KEY", "\"${env("TMDB_KEY")}\"")
         buildConfigField("long", "BUILD_TIME", "${System.currentTimeMillis()}L")
-        manifestPlaceholders["appLabel"] = "Watchly"
+        manifestPlaceholders["appLabel"] = "WatchHub"
     }
 
     // libtorrent4j and libVLC each ship a large .so per ABI: one APK per ABI.
@@ -54,10 +54,11 @@ android {
     }
 
     buildTypes {
-        // Beside the Expo app rather than over it, while the rewrite is short of parity.
+        // What CI builds for the phone: beside a release build rather than over it. Signed with the
+        // committed debug.keystore so every CI build installs over the last one, keeping your data.
         debug {
-            applicationIdSuffix = ".next"
-            manifestPlaceholders["appLabel"] = "Watchly Next"
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = "WatchHub"
             signingConfig = signingConfigs.getByName("debug")
         }
         release {

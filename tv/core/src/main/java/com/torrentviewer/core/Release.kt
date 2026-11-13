@@ -2,8 +2,11 @@ package com.torrentviewer.core
 
 import org.json.JSONObject
 
+/** The GitHub repository this build's releases come from: this fork, not upstream Watchly. */
+internal const val RELEASE_REPO = "Hwezah/WatchHub"
+
 /** Where this project's release files are. An update from anywhere else is not offered. */
-internal const val RELEASE_FILES = "https://github.com/sammyZi/Watchly/releases/download/"
+internal const val RELEASE_FILES = "https://github.com/$RELEASE_REPO/releases/download/"
 
 /** A published version, and the one file of it for this device. */
 data class AppRelease(val version: String, val url: String, val size: Long, val sha256: String?)

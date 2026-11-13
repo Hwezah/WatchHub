@@ -19,14 +19,14 @@
     {"heading": "Casting", "text": "If you use Google Cast, the stream and its details go to the Cast device you choose."},
     {"heading": "Children", "text": "Watchly is not made to collect anything about children. A kids profile limits what is shown on this device."},
     {"heading": "Changes", "text": "If this policy changes, the new version comes with an app update."},
-    {"heading": "Contact", "text": "Questions go to the project's page: github.com/sammyZi/Watchly"}
+    {"heading": "Contact", "text": "Questions go to the project's page: github.com/Hwezah/WatchHub, a fork of github.com/sammyZi/Watchly"}
   ],
   "terms": [
     {"heading": "Using Watchly", "text": "By using Watchly you accept these terms. If you don't accept them, please don't use the app."},
     {"heading": "What it is", "text": "Watchly is a media player and a film and series suggestion app. It provides no content and no sources."},
     {"heading": "Your responsibility", "text": "You choose what to add and play. You agree to use Watchly lawfully, to only watch what you have the right to, and not to use it to infringe anyone's rights."},
     {"heading": "Other services", "text": "Add-ons, servers and other third-party services are not part of Watchly and have their own terms. They may change or stop working at any time."},
-    {"heading": "Licence", "text": "Watchly is free software under the GNU General Public License, version 3. The licence and the third-party notices come with the source code at github.com/sammyZi/Watchly."},
+    {"heading": "Licence", "text": "Watchly is free software under the GNU General Public License, version 3. The licence and the third-party notices come with the source code at github.com/Hwezah/WatchHub (forked from github.com/sammyZi/Watchly)."},
     {"heading": "No warranty", "text": "Watchly is provided as is, without any warranty, to the extent the law allows. Its developers are not liable for any loss or damage from using it, or for anything you play with it."},
     {"heading": "Changes", "text": "These terms can change with an app update. Using the app after that means you accept the new terms."}
   ]

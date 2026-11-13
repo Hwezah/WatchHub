@@ -24,7 +24,7 @@ import java.security.MessageDigest
  * the same key and a higher versionCode.
  */
 object Updates {
-    private const val LATEST = "https://api.github.com/repos/sammyZi/Watchly/releases/latest"
+    private const val LATEST = "https://api.github.com/repos/$RELEASE_REPO/releases/latest"
     /** The version "Not now" was said to. */
     private const val SKIPPED = "update-skipped"
 
