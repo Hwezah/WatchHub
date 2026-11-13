@@ -275,13 +275,13 @@ fun DownloadChoice(
         // a tap on the dimmed page around it closes it.
         Box(
             Modifier.fillMaxSize().clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = onDismiss)
-                .navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 82.dp),
+                .navigationBarsPadding().padding(start = EDGE + 4.dp, end = EDGE + 4.dp, bottom = 82.dp),
             contentAlignment = Alignment.BottomCenter,
         ) {
         Column(
             Modifier.widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Ink.surface)
                 .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
-                .padding(18.dp),
+                .padding(CARD + 2.dp),
         ) {
             Text("Download", style = Type.title.copy(fontWeight = FontWeight.Bold))
             Text(detail, Modifier.padding(top = 2.dp, bottom = 14.dp), style = Type.meta.copy(color = Ink.faint), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -306,7 +306,7 @@ fun DownloadChoice(
 private fun ChoiceTile(icon: Int, title: String, excerpt: String, tint: androidx.compose.ui.graphics.Color = Ink.text, onClick: () -> Unit) {
     Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(14.dp)) { pressed ->
         Row(
-            Modifier.fillMaxWidth().background(Ink.text.copy(alpha = if (pressed) 0.12f else 0.06f)).padding(14.dp),
+            Modifier.fillMaxWidth().background(Ink.text.copy(alpha = if (pressed) 0.12f else 0.06f)).padding(CARD - 2.dp),
             verticalAlignment = Alignment.Top,
         ) {
             Lc(icon, Modifier.padding(top = 2.dp), tint = tint, size = 22.dp)

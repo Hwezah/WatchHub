@@ -139,7 +139,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     BottomSheet("Download season $season", onDismiss) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 12.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = CARD).padding(bottom = 12.dp)) {
             if (scan == null) return@Column
             val all = scan.found.values.flatten()
             if (!scan.done) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {

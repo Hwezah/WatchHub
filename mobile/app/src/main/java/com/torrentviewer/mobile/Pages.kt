@@ -1211,7 +1211,7 @@ fun StremioSection(me: Profile, onLater: (() -> Unit)? = null) {
         note?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint)) }
     }
     if (onLater == null) Section("Stremio account", hint, body)
-    else Column(Modifier.fillMaxWidth().padding(bottom = 14.dp).background(Ink.surface, RoundedCornerShape(12.dp)).padding(16.dp)) {
+    else Column(Modifier.fillMaxWidth().padding(bottom = 14.dp).background(Ink.surface, RoundedCornerShape(12.dp)).padding(CARD)) {
         Text("Bring your Stremio library", style = Type.title.copy(fontWeight = FontWeight.Bold))
         Text(hint, Modifier.padding(top = 4.dp, bottom = 12.dp), style = Type.meta.copy(color = Ink.faint))
         body()
@@ -1305,7 +1305,7 @@ fun AddonsScreen(watch: Watch) {
 private fun AddonCard(a: com.torrentviewer.core.Addon, first: Boolean, last: Boolean, onRemoved: () -> Unit) {
     val m = remember(a.manifest) { runCatching { org.json.JSONObject(a.manifest) }.getOrNull() }
     val types = remember(a) { (a.resources.flatMap { it.types } + a.catalogs.map { it.type }).distinct().joinToString(", ") { com.torrentviewer.core.typeLabel(it) } }
-    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(16.dp)) {
+    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(CARD)) {
         Row(verticalAlignment = Alignment.Top) {
             Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
                 Lc(L.drawable.lucide_ic_puzzle, tint = Ink.muted, size = 24.dp)
@@ -1353,7 +1353,7 @@ private fun Group(title: String, content: @Composable () -> Unit) {
 /** The card itself. */
 @Composable
 private fun Panel(content: @Composable () -> Unit) {
-    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(start = 16.dp, end = 16.dp, top = 18.dp)) { content() }
+    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(start = CARD, end = CARD, top = CARD + 2.dp)) { content() }
 }
 
 /** One line of the settings list; [words] are what else it answers to in the search. */

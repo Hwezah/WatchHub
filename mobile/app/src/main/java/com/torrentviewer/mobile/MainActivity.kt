@@ -86,6 +86,8 @@ class MainActivity : AppCompatActivity() {
         val systemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         applyTheme(darkFor(SettingsStore.value.value.themeMode, systemDark))
         incoming.value = intent?.data
+        // Known before the first frame, so an upright phone doesn't open with the wider margins.
+        resources.configuration.let { Room.tight = it.orientation == Configuration.ORIENTATION_PORTRAIT && it.smallestScreenWidthDp < 600 }
         setContent {
             androidx.compose.foundation.layout.Box {
                 App(Services.watch, incoming)

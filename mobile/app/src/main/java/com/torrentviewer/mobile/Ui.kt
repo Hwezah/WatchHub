@@ -121,8 +121,16 @@ import com.composables.icons.lucide.R as L
 // The TV's look (Ink, Type, artwork, title marks — all from :core) on touch: what the
 // remote's focus ring did is a press that dips the control a little instead.
 
-/** Side margin of every page. */
-val EDGE = 10.dp
+/** Whether the phone is held upright, where margins and padding are tighter. Kept by [App] (and MainActivity at start). */
+object Room {
+    var tight by mutableStateOf(false)
+}
+
+/** Side margin of every page: 6 dp on an upright phone, where width is scarce; 10 dp otherwise. */
+val EDGE: Dp get() = if (Room.tight) 6.dp else 10.dp
+
+/** Padding inside cards, panels and dialogs: 12 dp on an upright phone, 16 dp otherwise. */
+val CARD: Dp get() = if (Room.tight) 12.dp else 16.dp
 
 /** Landscape, or a tablet held either way: the TV's side-by-side layouts fit. */
 @Composable

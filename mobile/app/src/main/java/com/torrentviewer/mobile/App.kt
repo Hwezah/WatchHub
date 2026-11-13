@@ -189,6 +189,9 @@ const val DOWNLOADS_LINK = "watchly://downloads"
 
 @Composable
 fun App(watch: Watch, incoming: MutableState<Uri?>) {
+    // Tighter margins on an upright phone, followed as it turns.
+    val tight = isPortraitPhone()
+    androidx.compose.runtime.SideEffect { Room.tight = tight }
     val settings by SettingsStore.value.collectAsState()
     val dark = darkFor(settings.themeMode, isSystemInDarkTheme())
     val activity = LocalActivity.current as? ComponentActivity
