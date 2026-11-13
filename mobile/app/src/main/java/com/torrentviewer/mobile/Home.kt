@@ -178,10 +178,11 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         }
     }
     // What TMDB suggests for the titles this profile last played or saved: not for kids, whose rows are the family ones.
-    LaunchedEffect(history.size, saved.size, online, com.torrentviewer.core.Kids.on) {
+    LaunchedEffect(history.size, saved.size, online, com.torrentviewer.core.Kids.on, settings.builtInHome) {
         val played = history.sortedByDescending { it.at }.mapNotNull { h -> h.imdb?.let { it to (h.kind ?: "movie") } }
         val seeds = (played + saved.map { it.imdb to it.kind }).filter { it.first.startsWith("tt") }.distinctBy { it.first }.take(FOR_YOU_SEEDS)
-        if (seeds.isEmpty() || com.torrentviewer.core.Kids.on) state.forYou = com.torrentviewer.core.ForYou()
+        // Built-in rows off: no TMDB suggestions either.
+        if (seeds.isEmpty() || com.torrentviewer.core.Kids.on || !settings.builtInHome) state.forYou = com.torrentviewer.core.ForYou()
         else Meta.forYou(seeds).takeIf { it.picks.isNotEmpty() }?.let { state.forYou = it }
     }
     // Followed series — watched or saved — with episodes out since their page was last opened.
@@ -189,21 +190,24 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         val shows = history.filter { it.kind == "tv" }.mapNotNull { it.imdb } + saved.filter { it.kind == "tv" }.map { it.imdb }
         state.fresh = runCatching { NewEpisodes.fresh(shows) }.getOrDefault(state.fresh)
     }
-    val chosen = settings.genres.map { Shelf(if (it == ANIME_GENRE) "Anime" else it, kindOfGenre(it), it) }
+    // Built-in rows off: Home is the viewer's own setup alone — their addons' catalogues, in their order.
+    val builtIn = settings.builtInHome
+    val chosen = if (!builtIn) emptyList() else settings.genres.map { Shelf(if (it == ANIME_GENRE) "Anime" else it, kindOfGenre(it), it) }
     val kids = com.torrentviewer.core.Kids
     val addons by com.torrentviewer.core.Addons.list.collectAsState()
     val personal = state.forYou.picks.isNotEmpty()
-    val shelves = remember(chosen, state.picks, kids.on, addons, personal) {
+    val shelves = remember(chosen, state.picks, kids.on, addons, personal, builtIn, settings.hiddenShelves) {
         if (kids.on) return@remember com.torrentviewer.core.KIDS_SHELVES.map { (title, kind, genre) -> Shelf(title, kind, genre) }
         // The viewer's addons' own lists lead, as on Stremio's board.
-        val mine = com.torrentviewer.core.Addons.shelves().map { (title, kind, key) -> Shelf(title, kind, key) }
+        val mine = com.torrentviewer.core.Addons.shelves().filter { it.third !in settings.hiddenShelves }.map { (title, kind, key) -> Shelf(title, kind, key) }
+        if (!builtIn) return@remember mine
         val taken = chosen.map { it.key }.toMutableSet()
         // A genre's popular list is no suggestion: it's what TMDB's rows replace, with no key or nothing played.
         val rest = if (personal) emptyList() else state.picks.filter { taken.add(it.key) }
         chosen + mine + rest + SHELVES.filter { it.key !in taken }
     }
     // The charts draw on every genre the viewer chose, or on all of them with none chosen.
-    val tops = if (kids.on) emptyList() else listOf("movie", "tv").flatMap { kind ->
+    val tops = if (kids.on || !builtIn) emptyList() else listOf("movie", "tv").flatMap { kind ->
         settings.genres.ifEmpty { listOf("") }.map { Shelf("", kind, TOP_SHELF + it) }
     }
 
@@ -291,7 +295,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                 }
             }
             // A list by hand isn't sorted for children: their rows stay the family ones.
-            if (!com.torrentviewer.core.Kids.on) item(key = "orders") {
+            if (!com.torrentviewer.core.Kids.on && builtIn) item(key = "orders") {
                 // Nothing chosen: what they watch stands in.
                 Rail("Watch orders", onMore = onOrders) { WatchOrderRow(settings.genres.ifEmpty { state.picks.mapNotNull { it.genre } }, onOrder) }
             }

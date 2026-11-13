@@ -607,6 +607,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_users, "Switch profile", "Change to a different profile", onClick = onSwitchProfile),
                     ),
                     listOf(
+                        Entry(L.drawable.lucide_ic_house, "Home screen", "Built-in rows, and which addon catalogues show", "metadata tmdb catalog rows") { page = "Home screen" },
                         Entry(L.drawable.lucide_ic_palette, "Appearance", "Theme, navigation and home screen genres", "light dark pill bar tabs") { page = "Appearance" },
                     ),
                     listOf(
@@ -881,6 +882,40 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                                 Downloads.sdCard = card
                             }
                         })
+                    }
+                }
+            }
+        }
+        }
+
+        if (page == "Home screen") Panel {
+        Section(
+            "Built-in rows",
+            "The app's own rows — genres from Cinemeta, IMDb charts, TMDB's picks for you, watch orders. Off, Home is " +
+                "only your setup: Continue Watching, My List and your addons' catalogues (Xperience, AIO…) in your addon order.",
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("On", settings.builtInHome, onClick = { set(settings.copy(builtInHome = true)) })
+                Chip("Off", !settings.builtInHome, onClick = { set(settings.copy(builtInHome = false)) })
+            }
+        }
+        val addons by Addons.list.collectAsState()
+        val withRows = addons.filter { a -> a.on && a.catalogs.any { !it.required } }
+        Section(
+            "Addon catalogues on Home",
+            if (withRows.isEmpty()) "None of your addons has a catalogue." else
+                "Hide an addon's rows (HdHub's, PenguPlay's…) and keep its streams. Order them in the Addons tab.",
+        ) {
+            withRows.forEach { a ->
+                Text(a.name, Modifier.padding(top = 6.dp, bottom = 4.dp), style = Type.overline.copy(color = Ink.faint))
+                a.catalogs.filter { !it.required }.forEach { c ->
+                    val key = a.shelfKey(c)
+                    val shown = key !in settings.hiddenShelves
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${c.name} · ${com.torrentviewer.core.typeLabel(c.type)}", Modifier.weight(1f), style = Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Chip(if (shown) "Shown" else "Hidden", shown, onClick = {
+                            set(settings.copy(hiddenShelves = if (shown) settings.hiddenShelves + key else settings.hiddenShelves - key))
+                        }, compact = true)
                     }
                 }
             }
