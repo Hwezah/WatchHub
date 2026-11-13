@@ -423,7 +423,8 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
                     })
                 }
                 if (stremio) Text("✓ Signed in to Stremio — your library and where you stopped are below", Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint))
-                Row(Modifier.padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // End to end, like the other pill rows.
+                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Shelfs.entries.forEach { s -> Chip(s.label, s == shelf, onClick = { shelf = s }) }
                 }
             }
@@ -506,7 +507,8 @@ fun whereLeft(item: Item): String? {
 private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
     val paused = com.torrentviewer.core.Stremio.library.collectAsState().value.paused.find { it.imdb == s.imdb }
     Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) { pressed ->
-        Row(Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        // The ⋯ ends as far from the right edge as the poster starts from the left: its own 8 dp, plus 2.
+        Row(Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(start = 10.dp, end = 2.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))) {
                 Artwork("https://images.metahub.space/poster/medium/${s.imdb}/img", s.title, Modifier.fillMaxSize())
                 paused?.let { ProgressLine((it.progress / 100).toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp) }
@@ -1153,14 +1155,15 @@ fun StremioSection(me: Profile, onLater: (() -> Unit)? = null) {
                     changed++
                 }, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_link)
             }
-            c != null -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button("Open Stremio", { runCatching { browser.openUri(c.uriComplete) } }, icon = L.drawable.lucide_ic_link, primary = true)
-                Button("Cancel", { job?.cancel() })
+            // The buttons share the card's width.
+            c != null -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button("Open Stremio", { runCatching { browser.openUri(c.uriComplete) } }, Modifier.weight(1f), icon = L.drawable.lucide_ic_link, primary = true)
+                Button("Cancel", { job?.cancel() }, Modifier.weight(1f))
             }
-            else -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            else -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // The card's heading already says Stremio, and a dialog is narrow: "Not now" was cut to "Not …".
-                Button(if (onLater != null) "Sign in" else "Sign in to Stremio", ::connect, icon = L.drawable.lucide_ic_link, primary = true)
-                onLater?.let { Button("Not now", it) }
+                Button(if (onLater != null) "Sign in" else "Sign in to Stremio", ::connect, Modifier.weight(1f), icon = L.drawable.lucide_ic_link, primary = true)
+                onLater?.let { Button("Not now", it, Modifier.weight(1f)) }
             }
         }
         note?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint)) }
