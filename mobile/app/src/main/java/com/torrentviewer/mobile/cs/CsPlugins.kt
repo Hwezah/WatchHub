@@ -94,7 +94,9 @@ object CsPlugins {
         val input = repoInput(raw) ?: throw IllegalArgumentException("That isn't a repository link or shortcode")
         val url = when (input) {
             is RepoInput.Link -> input.url
-            is RepoInput.Shortcode -> runCatching { resolveShortcode(input.code) }.getOrNull()
+            // As typed, then in lower case: a phone keyboard capitalises the first letter, and the shortener is case-sensitive.
+            is RepoInput.Shortcode -> listOf(input.code, input.code.lowercase()).distinct()
+                .firstNotNullOfOrNull { runCatching { resolveShortcode(it) }.getOrNull() }
                 ?: throw IllegalArgumentException("No repository is called \"${input.code}\" — check the spelling, or paste the repository's link instead")
         }
         val repo = RepositoryManager.parseRepository(url) ?: throw IllegalArgumentException("Couldn't read a repository at that link")
