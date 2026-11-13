@@ -747,12 +747,22 @@ private fun LazyListScope.sources(
     val qualities = hits.orEmpty().mapNotNull { it.quality }.distinct().sortedBy { QUALITY_ORDER.indexOf(it).let { i -> if (i < 0) 9 else i } }
     item(key = "sources-head") {
         Column(modifier.padding(start = EDGE, end = EDGE, top = if (heading) 26.dp else 4.dp)) {
-            if (heading) Text("Sources", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
-            if (qualities.size > 1 || (onReload != null && hits != null)) {
+            // The heading, and at its far right a green reload: these links' tokens expire within minutes.
+            if (heading) Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Sources", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
+                if (onReload != null && hits != null) Tap(onReload, shape = RoundedCornerShape(6.dp)) {
+                    Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (busy) Spinner(size = 18.dp, color = Ink.download) else Lc(L.drawable.lucide_ic_refresh_cw, tint = Ink.download, size = 18.dp)
+                        Text("  Reload Fresh Links!", style = Type.label.copy(color = Ink.download, fontWeight = FontWeight.SemiBold))
+                    }
+                }
+            }
+            if (qualities.size > 1 || (!heading && onReload != null && hits != null)) {
                 // Spread across the row like the season pills; with many, 8 dp gaps and a sideways scroll.
                 SpreadRow(Modifier.padding(bottom = 12.dp)) {
                     // Reload first: never lit like a chosen pill; spinning while links are still coming in.
-                    if (onReload != null) ReloadPill(busy, onReload)
+                    // Under a heading, the reload is the heading's; in the episode sheet (no heading), this pill.
+                    if (onReload != null && !heading) ReloadPill(busy, onReload)
                     Chip("All", quality == null, onClick = { onQuality(null) })
                     qualities.forEach { q -> Chip(q, quality == q, onClick = { onQuality(q) }) }
                 }
