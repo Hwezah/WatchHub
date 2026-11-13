@@ -143,7 +143,7 @@ object LinkFetch {
         return Result(out, if (media.init != null) "mp4" else "ts")
     }
 
-    private fun decrypt(seg: HlsSegment, data: ByteArray, headers: Map<String, String>, keys: HashMap<String, ByteArray>): ByteArray {
+    private suspend fun decrypt(seg: HlsSegment, data: ByteArray, headers: Map<String, String>, keys: HashMap<String, ByteArray>): ByteArray {
         val key = seg.key ?: return data
         val uri = key.uri ?: throw LinkDownloadException("An encrypted segment names no key")
         val bytes = synchronized(keys) { keys[uri] } ?: fetchBytes(uri, headers, null, null).also { k -> synchronized(keys) { keys[uri] = k } }
