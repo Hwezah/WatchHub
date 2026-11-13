@@ -553,7 +553,7 @@ fun StatusIconsOverArt(overArt: Boolean, navigationToo: Boolean = false) {
     }
 }
 
-private val CARD = RoundedCornerShape(10.dp)
+private val POSTER_SHAPE = RoundedCornerShape(10.dp)
 
 /**
  * A poster with its name and a line of facts under it, as the streaming apps set them:
@@ -566,9 +566,9 @@ fun TitleCard(
     info: String? = null, badge: String? = null, progress: Float? = null, onLongClick: (() -> Unit)? = null, rating: String? = null,
 ) {
     Column(modifier) {
-        Tap(onClick, Modifier.fillMaxWidth().aspectRatio(2f / 3f), CARD, onLongClick) {
+        Tap(onClick, Modifier.fillMaxWidth().aspectRatio(2f / 3f), POSTER_SHAPE, onLongClick) {
             Artwork(art, name, Modifier.fillMaxSize())
-            Box(Modifier.matchParentSize().border(1.dp, Ink.stroke, CARD))
+            Box(Modifier.matchParentSize().border(1.dp, Ink.stroke, POSTER_SHAPE))
             rating?.takeIf { it.isNotBlank() }?.let { ImdbMark(it, Modifier.align(Alignment.BottomStart).padding(6.dp)) }
             badge?.let {
                 Text(
@@ -594,7 +594,7 @@ fun PosterCard(title: Title, onClick: () -> Unit, modifier: Modifier = Modifier,
 fun CardPlaceholder(modifier: Modifier = Modifier) {
     val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(0.45f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "alpha")
     Column(modifier.graphicsLayer { alpha = pulse }) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(Ink.surface, CARD))
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(Ink.surface, POSTER_SHAPE))
         Box(Modifier.padding(top = 9.dp).fillMaxWidth(0.8f).height(11.dp).background(Ink.surface, RoundedCornerShape(4.dp)))
         Box(Modifier.padding(top = 6.dp).fillMaxWidth(0.5f).height(9.dp).background(Ink.surface, RoundedCornerShape(4.dp)))
     }
