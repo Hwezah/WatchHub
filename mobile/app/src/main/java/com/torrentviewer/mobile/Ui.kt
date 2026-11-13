@@ -119,7 +119,7 @@ import com.composables.icons.lucide.R as L
 // remote's focus ring did is a press that dips the control a little instead.
 
 /** Side margin of every page. */
-val EDGE = 16.dp
+val EDGE = 12.dp
 
 /** Landscape, or a tablet held either way: the TV's side-by-side layouts fit. */
 @Composable

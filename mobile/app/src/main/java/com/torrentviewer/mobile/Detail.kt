@@ -822,17 +822,10 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
     }
     Tap(onClick, modifier.fillMaxWidth(), RoundedCornerShape(8.dp), onLongClick = onMore) { pressed ->
         Row(
-            Modifier.background(if (pressed) Ink.surface2 else Ink.surface.copy(alpha = 0.92f)).padding(horizontal = 14.dp, vertical = 11.dp),
+            Modifier.background(if (pressed) Ink.surface2 else Ink.surface.copy(alpha = 0.92f)).padding(start = 14.dp, end = 0.dp, top = 11.dp, bottom = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            hit.quality?.let {
-                Text(
-                    it,
-                    Modifier.background(Ink.text.copy(alpha = 0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
-                    style = Type.overline.copy(color = Ink.text, letterSpacing = 0.5.sp),
-                )
-                Spacer(Modifier.width(12.dp))
-            }
+            // No resolution tag: the pills above already sort the rows by it.
             Column(Modifier.weight(1f)) {
                 // The whole release name, on one line that scrolls through it — the codec and group at the end are what tell releases apart.
                 Text(
@@ -854,10 +847,11 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
                 )
             }
             Spacer(Modifier.width(10.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    when { hit.external -> "Opens app"; hit.direct -> "Direct"; instant -> "Instant"; else -> grade.label },
-                    style = Type.meta.copy(color = if (hit.external) Ink.muted else if (hit.direct || instant) Ink.good else tint, fontWeight = FontWeight.Bold),
+            // A direct link says nothing here: only what tells sources apart (a torrent's health, TorBox, another app).
+            if (!hit.direct || hit.external || mbps >= HEAVY_MBPS) Column(horizontalAlignment = Alignment.End) {
+                if (!hit.direct || hit.external) Text(
+                    when { hit.external -> "Opens app"; instant -> "Instant"; else -> grade.label },
+                    style = Type.meta.copy(color = if (hit.external) Ink.muted else if (instant) Ink.good else tint, fontWeight = FontWeight.Bold),
                 )
                 if (instant) Text("TorBox", style = Type.meta.copy(fontSize = 11.sp, color = Ink.faint))
                 if (mbps >= HEAVY_MBPS) Text("Needs ${mbps.toInt()} Mb/s", style = Type.meta.copy(fontSize = 11.sp, color = if (mbps >= TOO_HEAVY_MBPS) Ink.danger else Ink.warn))
