@@ -22,8 +22,12 @@ android {
         applicationId = "com.hwezah.watchhub"
         minSdk = 24
         targetSdk = 36
-        versionCode = 6
-        versionName = "2.4.0"
+        // Each CI build a higher version than the last (GitHub's run number), so Android always offers it as an
+        // update over what's installed — same id, same key (debug.keystore below), a newer version — keeping the data.
+        // A local build stays at 6.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        versionCode = if (build != null) 100 + build else 6
+        versionName = if (build != null) "2.4.0 (build $build)" else "2.4.0"
         buildConfigField("String", "SUBDL_KEY", "\"$subdlKey\"")
         // Public ids, no secrets: both sign in by device code.
         buildConfigField("String", "SIMKL_CLIENT_ID", "\"${env("SIMKL_CLIENT_ID")}\"")
