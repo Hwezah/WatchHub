@@ -182,7 +182,7 @@ private val DECADES = listOf(2020 to "2020s", 2010 to "2010s", 2000 to "2000s", 
 private fun decadeOf(t: Title) = t.year?.take(4)?.toIntOrNull()?.let { if (it < 1990) 0 else it / 10 * 10 }
 
 /** Which filter's list is up. */
-private enum class Picking { KIND, GENRE, DECADE, RATING, SORT, QUALITY, ORDER }
+private enum class Picking { KIND, GENRE, DECADE, RATING, SORT, ORDER }
 
 /** How releases are ordered: the ranking (seeds, then fit), or by size. */
 private enum class HitOrder(val label: String) { BEST("Best match"), SMALLEST("Smallest"), BIGGEST("Biggest"), SEEDS("Most seeds") }
