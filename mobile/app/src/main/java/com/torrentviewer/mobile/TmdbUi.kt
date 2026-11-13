@@ -132,26 +132,52 @@ fun PersonScreen(id: Int, name: String, onOpen: (Title) -> Unit, onBack: () -> U
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "head") {
-                Column(Modifier.statusBarsPadding().padding(top = 56.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.width(104.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).background(Ink.surface2)) {
-                            p?.photo?.let { Artwork(it, name, Modifier.fillMaxSize(), fill = false) }
+                Column(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 48.dp)) {
+                    // Photo, name and the facts, centred.
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.size(156.dp).clip(CircleShape).background(Ink.surface2)) {
+                            p?.photo?.let { Artwork(it, name, Modifier.fillMaxSize()) }
                         }
-                        Column(Modifier.padding(start = 16.dp)) {
-                            Text(name, style = Type.display, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                            val line = listOfNotNull(p?.knownFor, p?.credits?.size?.takeIf { it > 0 }?.let { "$it titles" }).joinToString("  ·  ")
-                            if (line.isNotEmpty()) Text(line, Modifier.padding(top = 4.dp), style = Type.meta.copy(color = Ink.faint))
+                        Text(name, Modifier.padding(top = 16.dp), style = Type.display.copy(textAlign = TextAlign.Center), maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        val today = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date()) }
+                        val facts = listOfNotNull(
+                            p?.let { com.torrentviewer.core.lifeLine(it.birthday, it.deathday, today) },
+                            p?.birthplace,
+                            p?.knownFor?.let { "Known for: $it" },
+                        )
+                        facts.forEachIndexed { i, line ->
+                            Text(line, Modifier.padding(top = if (i == 0) 10.dp else 2.dp), style = Type.meta.copy(color = Ink.muted, fontSize = 14.sp, textAlign = TextAlign.Center))
                         }
                     }
-                    p?.about?.let { about ->
-                        Tap({ more = !more }, Modifier.fillMaxWidth().padding(top = 14.dp)) {
-                            Text(about, style = Type.body.copy(color = Ink.muted, fontSize = 14.sp), maxLines = if (more) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
+                    // The biography, four lines until Show More.
+                    p?.about?.takeIf { it.isNotBlank() }?.let { about ->
+                        Tap({ more = !more }, Modifier.fillMaxWidth().padding(top = 18.dp)) {
+                            Column {
+                                Text(about, style = Type.body.copy(color = Ink.muted, fontSize = 14.sp), maxLines = if (more) Int.MAX_VALUE else 7, overflow = TextOverflow.Ellipsis)
+                                Text(if (more) "Show Less ▴" else "Show More ▾", Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold))
+                            }
                         }
                     }
-                    Text("Known for", Modifier.padding(top = 18.dp, bottom = 2.dp), style = Type.title.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold))
+                    // Their best-known, in a row; then everything, newest first, in the grid below.
+                    val popular = p?.credits.orEmpty().take(12)
+                    if (popular.isNotEmpty()) {
+                        Text("Popular", Modifier.padding(top = 22.dp, bottom = 10.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(popular, key = { "pop:${it.kind}:${it.id}" }) { card ->
+                                TitleCard(card.poster, card.title, { open(card) }, Modifier.width(120.dp), info = card.year)
+                            }
+                        }
+                    }
+                    if ((p?.credits?.size ?: 0) > 0) Text(
+                        "All titles  ·  ${p?.credits?.size}", Modifier.padding(top = 22.dp, bottom = 2.dp),
+                        style = Type.title.copy(fontWeight = FontWeight.Bold),
+                    )
+                    if (p == null) Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
+                        Text(if (Tmdb.key.isEmpty()) "Add a TMDB key to see who people are and what they're in." else "Loading…", style = Type.meta.copy(color = Ink.faint))
+                    }
                 }
             }
-            items(p?.credits.orEmpty(), key = { "${it.kind}:${it.id}" }) { card ->
+            items(p?.byYear.orEmpty(), key = { "${it.kind}:${it.id}" }) { card ->
                 TitleCard(card.poster, card.title, { open(card) }, Modifier.fillMaxWidth(), info = card.year)
             }
         }

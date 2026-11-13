@@ -21,7 +21,48 @@ fun sameName(a: String, b: String): Boolean {
     return squash(a).isNotEmpty() && squash(a) == squash(b)
 }
 
-data class TmdbPerson(val name: String, val photo: String?, val knownFor: String?, val about: String?, val credits: List<TmdbCard>)
+/**
+ * A person's page. [credits]: most popular first (the phone's "Popular" row); [byYear]: the same, newest
+ * first, unknown years last (its grid). Dates are TMDB's yyyy-MM-dd.
+ */
+data class TmdbPerson(
+    val name: String,
+    val photo: String?,
+    val knownFor: String?,
+    val about: String?,
+    val credits: List<TmdbCard>,
+    val birthday: String? = null,
+    val deathday: String? = null,
+    val birthplace: String? = null,
+) {
+    val byYear get() = credits.sortedWith(compareBy<TmdbCard> { it.year == null }.thenByDescending { it.year })
+}
+
+private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+/** "1964-06-12" → "Jun 12, 1964"; null when it isn't a date. */
+fun prettyDate(date: String?): String? {
+    val parts = date?.split("-")?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == 3 } ?: return null
+    val (y, m, d) = parts
+    return MONTHS.getOrNull(m - 1)?.let { "$it $d, $y" }
+}
+
+/** Full years between [birthday] and [deathday] (or [today]); null when either isn't a date. */
+fun ageOf(birthday: String?, deathday: String?, today: String): Int? {
+    fun parts(s: String?) = s?.split("-")?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == 3 }
+    val b = parts(birthday) ?: return null
+    val e = parts(deathday ?: today) ?: return null
+    val beforeBirthday = e[1] < b[1] || (e[1] == b[1] && e[2] < b[2])
+    return (e[0] - b[0] - if (beforeBirthday) 1 else 0).takeIf { it >= 0 }
+}
+
+/** "Born Jun 12, 1964 (age 61)", or with a death "Jun 12, 1964 – Mar 3, 2020 (aged 55)"; null without a birthday. */
+fun lifeLine(birthday: String?, deathday: String?, today: String): String? {
+    val born = prettyDate(birthday) ?: return null
+    val age = ageOf(birthday, deathday, today)
+    val died = prettyDate(deathday)
+    return if (died != null) "$born – $died" + (age?.let { " (aged $it)" } ?: "") else "Born $born" + (age?.let { " (age $it)" } ?: "")
+}
 
 private fun image(size: String, path: String?) = path?.takeIf { it.isNotBlank() }?.let { "$IMAGES/$size$it" }
 
@@ -69,7 +110,10 @@ fun parseTmdbPerson(json: String): TmdbPerson {
         .mapNotNull { cardOf(it, it.optString("media_type")) }
         .distinctBy { it.kind to it.id }
         .take(60)
-    return TmdbPerson(o.optString("name"), image("w342", o.str("profile_path")), o.str("known_for_department"), o.str("biography"), credits)
+    return TmdbPerson(
+        o.optString("name"), image("w342", o.str("profile_path")), o.str("known_for_department"), o.str("biography"), credits,
+        birthday = o.str("birthday"), deathday = o.str("deathday"), birthplace = o.str("place_of_birth"),
+    )
 }
 
 /** Above these a kids profile stops. A title with no rating at all goes by the genre rule, as before. */
