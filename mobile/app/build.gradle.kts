@@ -81,9 +81,10 @@ android {
         buildConfig = true
     }
 
-    // Native libraries stay uncompressed in the APK and are mapped from there.
+    // Native libraries compressed in the APK (extracted on install): libVLC, libtorrent and libc++ are
+    // ~65 MB per ABI uncompressed, which made a 100 MB phone APK and a 277 MB universal one.
     packaging {
-        jniLibs { useLegacyPackaging = false }
+        jniLibs { useLegacyPackaging = true }
         // The same licence and OSGi files come in several of the plugin library's jars.
         resources.excludes += setOf(
             "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST",
