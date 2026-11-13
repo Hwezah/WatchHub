@@ -95,11 +95,24 @@ object CsPlugins {
         val url = when (input) {
             is RepoInput.Link -> input.url
             // As typed, then in lower case: a phone keyboard capitalises the first letter, and the shortener is case-sensitive.
-            is RepoInput.Shortcode -> listOf(input.code, input.code.lowercase()).distinct()
-                .firstNotNullOfOrNull { runCatching { resolveShortcode(it) }.getOrNull() }
-                ?: throw IllegalArgumentException("No repository is called \"${input.code}\" — check the spelling, or paste the repository's link instead")
+            is RepoInput.Shortcode -> {
+                // Unreachable is not "no such code": some networks block link shorteners, and the fix is different.
+                var unreachable = false
+                listOf(input.code, input.code.lowercase()).distinct().firstNotNullOfOrNull { code ->
+                    runCatching { resolveShortcode(code) }.onFailure { unreachable = true }.getOrNull()
+                } ?: throw IllegalArgumentException(
+                    if (unreachable) "Couldn't reach the shortcode service (${shortcodeLookup(input.code).substringAfter("://").substringBefore('/')}) — your network may block it. Paste the repository's link instead."
+                    else "No repository is called \"${input.code}\" — check the spelling, or paste the repository's link instead",
+                )
+            }
         }
-        val repo = RepositoryManager.parseRepository(url) ?: throw IllegalArgumentException("Couldn't read a repository at that link")
+        val host = runCatching { java.net.URI(url).host }.getOrNull() ?: url
+        val text = try {
+            fetchText(url)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Couldn't reach $host — check your connection, or that the link is right")
+        }
+        val repo = parseRepository(text) ?: throw IllegalArgumentException("$host answered, but not with a repository (repo.json)")
         val data = RepositoryData(repo.iconUrl, repo.name, url, repo.description)
         lock.withLock {
             val now = CsStore.repos()
