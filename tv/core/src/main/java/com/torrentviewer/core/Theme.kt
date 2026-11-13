@@ -294,9 +294,9 @@ fun Facts(title: Title, modifier: Modifier = Modifier) {
 
 /** A thin bar for how far through something is. */
 @Composable
-fun ProgressLine(progress: Float, modifier: Modifier = Modifier, height: Dp = 3.dp) {
+fun ProgressLine(progress: Float, modifier: Modifier = Modifier, height: Dp = 3.dp, color: Color = Ink.accent) {
     Box(modifier.fillMaxWidth().height(height).background(Color.White.copy(alpha = 0.25f))) {
-        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(height).background(Ink.accent))
+        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(height).background(color))
     }
 }
 

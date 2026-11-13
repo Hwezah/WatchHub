@@ -225,6 +225,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                     style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint),
                     maxLines = 1,
                 )
+                // Right under the sizes, a thin green line filling as the bytes arrive.
+                ProgressLine(row.ratio, Modifier.padding(top = 6.dp).clip(CircleShape), height = 2.dp, color = Ink.download)
             }
             when (row.state) {
                 DlState.PAUSED, DlState.FAILED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
@@ -233,8 +235,6 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             }
             Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
         }
-        Spacer(Modifier.height(10.dp))
-        ProgressLine(row.ratio, height = 3.dp)
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
         // This download's own order, over the default above.
@@ -346,7 +346,7 @@ private fun EpisodeLine(f: DlFile, isNext: Boolean, onToggle: () -> Unit) {
         }
         Text(ep, Modifier.width(64.dp).padding(start = 4.dp), style = Type.meta.copy(color = if (f.wanted) Ink.text else Ink.faint, fontWeight = FontWeight.SemiBold), maxLines = 1)
         Box(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-            if (f.wanted && !f.saved) ProgressLine(pct / 100f, height = 3.dp)
+            if (f.wanted && !f.saved) ProgressLine(pct / 100f, Modifier.clip(CircleShape), height = 2.dp, color = Ink.download)
         }
         Text(
             when {
