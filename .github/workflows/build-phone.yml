@@ -52,7 +52,8 @@ jobs:
           short=$(git rev-parse --short HEAD)
           for apk in mobile/app/build/outputs/apk/debug/app-*-debug.apk; do
             abi=$(basename "$apk" -debug.apk); abi=${abi#app-}
-            cp "$apk" "out/WatchHub-phone-$short-$abi.apk"
+            # No build code in the name: the same link always downloads the newest build.
+            cp "$apk" "out/WatchHub-phone-$abi.apk"
           done
           ls -lh out
 
@@ -68,7 +69,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          notes="Latest phone build from \`${GITHUB_REF_NAME}\` at ${GITHUB_SHA::7}. Most phones: download the **arm64-v8a** APK. Not sure? Take **universal**."
+          notes="Latest phone build from \`${GITHUB_REF_NAME}\` at ${GITHUB_SHA::7}, built $(date -u '+%Y-%m-%d %H:%M UTC'). Most phones: download the **arm64-v8a** APK. Not sure? Take **universal**."
           if gh release view phone-latest > /dev/null 2>&1; then
             for name in $(gh release view phone-latest --json assets -q '.assets[].name'); do
               gh release delete-asset phone-latest "$name" --yes
