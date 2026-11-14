@@ -39,7 +39,21 @@ data class Traits(val quality: String?, val codec: String, val format: String, v
 
 const val UNKNOWN = "Unknown"
 
+/**
+ * Kept per release: every list, filter row and download pick asks for the same few hundred releases' traits again
+ * on each redraw, and each answer is four regexes over a long name. Bounded, oldest out first.
+ */
+private val traitsMemo = object : LinkedHashMap<String, Traits>(512, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Traits>?) = size > 4000
+}
+
 fun traitsOf(hit: Hit): Traits {
+    val key = "${hit.id}|${hit.quality}|${hit.name}|${hit.release}"
+    synchronized(traitsMemo) { traitsMemo[key] }?.let { return it }
+    return readTraits(hit).also { synchronized(traitsMemo) { traitsMemo[key] = it } }
+}
+
+private fun readTraits(hit: Hit): Traits {
     val text = "${hit.name} ${hit.release}"
     val codec = when {
         HEVC.containsMatchIn(text) -> "x265"

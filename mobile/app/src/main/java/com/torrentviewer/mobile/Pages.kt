@@ -250,19 +250,20 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
     val hideFew = com.torrentviewer.core.SettingsStore.value.collectAsState().value.hideFewSeeds
     val cachedIds by TorBox.cached.collectAsState()
     var showFew by remember(query) { mutableStateOf(false) }
-    var hiddenFew = 0
-    val releases = hits?.let { list ->
-        val matching = allowedHits(list).filter { notJunk(it) && streamFilter.accepts(traitsOf(it)) }
+    val leaveOut = com.torrentviewer.core.SettingsStore.value.collectAsState().value.leaveOut
+    // Worked out when something it depends on changes, not on every redraw: hundreds of releases, several regexes each.
+    val (releases, hiddenFew) = remember<Pair<List<Hit>?, Int>>(hits, streamFilter, order, hideFew, showFew, cachedIds, leaveOut) {
+        val list = hits ?: return@remember null to 0
+        val matching = list.filter { allowed(it, leaveOut) && notJunk(it) && streamFilter.accepts(traitsOf(it)) }
         val cached = cachedIds.mapTo(HashSet()) { it.lowercase() }
         val q = if (hideFew && !showFew) matching.filterNot { fewSeeds(it, cached) } else matching
-        hiddenFew = matching.size - q.size
         when (order) {
             HitOrder.BEST -> q
             HitOrder.BIGGEST -> q.sortedByDescending { it.size }
             // An unknown size isn't the smallest.
             HitOrder.SMALLEST -> q.sortedWith(compareBy<Hit> { if (it.size > 0) 0 else 1 }.thenBy { it.size })
             HitOrder.SEEDS -> q.sortedByDescending { it.seeders }
-        }
+        } to (matching.size - q.size)
     }
 
     LazyVerticalGrid(

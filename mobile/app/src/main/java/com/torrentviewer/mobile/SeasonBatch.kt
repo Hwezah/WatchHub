@@ -146,10 +146,13 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             FilterRow("Source", filterOptions(all, filter.copy(source = null)) { it.source }, filter.source, label = { if (it == "Link") "Direct link" else it }) { filter = filter.copy(source = it) }
 
             // For another app: links that need no headers first, since a shared link can't carry them.
-            val plan = scan.episodes.mapNotNull { ep ->
-                scan.found[ep.id]?.let { hits ->
-                    val from = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
-                    ep to if (filter == BatchFilter()) preferredPick(from, prefs) else batchPick(from, filter, prefs.direct)
+            // Worked out when the scan, the chips or the preferences change, not on every redraw of the sheet.
+            val plan = remember(scan, filter, prefs, external) {
+                scan.episodes.mapNotNull { ep ->
+                    scan.found[ep.id]?.let { hits ->
+                        val from = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
+                        ep to if (filter == BatchFilter()) preferredPick(from, prefs) else batchPick(from, filter, prefs.direct)
+                    }
                 }
             }
             val picks = plan.mapNotNull { (ep, hit) -> hit?.let { ep to it } }
