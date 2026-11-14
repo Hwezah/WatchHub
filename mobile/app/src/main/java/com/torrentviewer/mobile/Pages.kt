@@ -613,7 +613,10 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
     if (clearing) {
         Sheet(
             title = "Clear everything you have played?",
-            options = listOf(Option(true, "Clear all", "Resume points and downloaded subtitles go too"), Option(false, "Cancel")),
+            options = listOf(
+                Option(true, "Clear all", "Resume points and downloaded subtitles go too", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
+                Option(false, "Cancel", icon = L.drawable.lucide_ic_x),
+            ),
             selected = null,
             onPick = {
                 if (it) History.clear(watch.engine)
@@ -670,7 +673,11 @@ private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
 @Composable
 private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: () -> Unit) {
     Tap(onPlay, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), onLongClick = onMore) { pressed ->
-        Row(Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        // The ⋮ carries 8dp of its own tap room: 2dp at the end makes its icon sit as far from the edge as the poster does.
+        Row(
+            Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(start = 10.dp, top = 10.dp, bottom = 10.dp, end = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))) {
                 Artwork(remoteArt(item.poster) ?: item.art(), item.label, Modifier.fillMaxSize())
                 if (item.ratio > 0) ProgressLine(item.ratio.toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp)
