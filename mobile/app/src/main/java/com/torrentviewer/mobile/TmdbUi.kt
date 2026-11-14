@@ -152,8 +152,9 @@ fun PersonScreen(id: Int, name: String, onOpen: (Title) -> Unit, onBack: () -> U
                     // The biography, four lines until Show More.
                     p?.about?.takeIf { it.isNotBlank() }?.let { about ->
                         Tap({ more = !more }, Modifier.fillMaxWidth().padding(top = 18.dp)) {
-                            Column {
-                                Text(about, style = Type.body.copy(color = Ink.muted, fontSize = 14.sp), maxLines = if (more) Int.MAX_VALUE else 7, overflow = TextOverflow.Ellipsis)
+                            // Centred, like the name and facts above it.
+                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(about, style = Type.body.copy(color = Ink.muted, fontSize = 14.sp, textAlign = TextAlign.Center), maxLines = if (more) Int.MAX_VALUE else 7, overflow = TextOverflow.Ellipsis)
                                 Text(if (more) "Show Less ▴" else "Show More ▾", Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold))
                             }
                         }
