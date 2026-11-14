@@ -141,7 +141,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     cancelling?.let { row ->
         Sheet(
             title = "Stop downloading ${row.job.label}?",
-            options = listOf(Option(true, "Stop and delete what has arrived", "Files already saved stay on this phone"), Option(false, "Keep downloading")),
+            options = listOf(Option(true, "Stop and delete what has arrived", "Files already saved stay on this phone", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep downloading", icon = L.drawable.lucide_ic_download, iconTint = Ink.download)),
             selected = null,
             onPick = {
                 if (it) Downloads.cancel(row.job.uri)
@@ -152,7 +152,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     }
     if (deletingAll) Sheet(
         title = "Stop and delete all ${live.size} downloads?",
-        options = listOf(Option(true, "Stop and delete them all", "Files already saved stay on this phone"), Option(false, "Keep downloading")),
+        options = listOf(Option(true, "Stop and delete them all", "Files already saved stay on this phone", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep downloading", icon = L.drawable.lucide_ic_download, iconTint = Ink.download)),
         selected = null,
         onPick = {
             if (it) live.forEach { row -> Downloads.cancel(row.job.uri) }

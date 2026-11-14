@@ -385,8 +385,14 @@ fun Field(
     }
 }
 
-/** [image]: a picture to lead the row with — a site's logo — in place of the tick column. [tag]: a badge before the label, "4K". */
-data class Option<T>(val value: T, val label: String, val hint: String? = null, val image: String? = null, val tag: String? = null)
+/**
+ * [image]: a picture to lead the row with — a site's logo — in place of the tick column. [tag]: a badge before the label, "4K".
+ * [icon]: an icon there instead, in [iconTint] (the label's colour when null) — a trash can, a download arrow.
+ */
+data class Option<T>(
+    val value: T, val label: String, val hint: String? = null, val image: String? = null, val tag: String? = null,
+    @androidx.annotation.DrawableRes val icon: Int? = null, val iconTint: Color? = null,
+)
 
 /** A choice, up from the bottom edge over a dimmed page; a tap outside or Back closes it. */
 @Composable
@@ -413,6 +419,8 @@ fun <T> Sheet(
                         ) {
                             if (option.image != null) {
                                 coil3.compose.AsyncImage(option.image, option.label, Modifier.size(24.dp).clip(RoundedCornerShape(5.dp)))
+                            } else if (option.icon != null) {
+                                Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { Lc(option.icon, tint = option.iconTint ?: Ink.muted, size = 20.dp) }
                             } else {
                                 Box(Modifier.size(22.dp)) { if (on) Lc(L.drawable.lucide_ic_check, tint = Ink.accent, size = 20.dp) }
                             }
