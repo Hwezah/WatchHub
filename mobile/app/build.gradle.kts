@@ -61,6 +61,10 @@ android {
         // What CI builds for the phone: beside a release build rather than over it. Signed with the
         // committed debug.keystore so every CI build installs over the last one, keeping your data.
         debug {
+            // Not debuggable: a debuggable app runs Compose several times slower (Android skips most of its
+            // optimisations for it), and this is the build people actually use. Same id and key, so it still
+            // installs over the last one.
+            isDebuggable = false
             applicationIdSuffix = ".dev"
             manifestPlaceholders["appLabel"] = "WatchHub"
             signingConfig = signingConfigs.getByName("debug")
