@@ -679,7 +679,10 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     listOf(
                         Entry(L.drawable.lucide_ic_history, "Backup", "Save or restore your library", "export import") { page = "Backup" },
                         Entry(L.drawable.lucide_ic_sparkles, "Welcome tour", "See the first-run tour again", "onboarding") { tourAgain = true },
-                        Entry(L.drawable.lucide_ic_refresh_cw, "Check for updates", "You have version ${BuildConfig.VERSION_NAME}", "new version upgrade") { Updates.checkNow { watch.notes.tryEmit(it) } },
+                        Entry(L.drawable.lucide_ic_refresh_cw, "Check for updates", "You have version ${BuildConfig.VERSION_NAME}", "new version upgrade") {
+                            Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-", force = true)
+                            watch.notes.tryEmit("Checking for a newer build…")
+                        },
                     ),
                     listOf(
                         Entry(L.drawable.lucide_ic_scale, "Legal notice", "WatchHub is a media player only", "disclaimer copyright dmca") { page = "Legal notice" },

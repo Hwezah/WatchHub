@@ -36,3 +36,17 @@ fun parseRelease(json: String, abis: List<String>, prefix: String): AppRelease? 
         ?.takeIf { it.optString("browser_download_url").startsWith(RELEASE_FILES) && it.str("digest") != null }
         ?.let { AppRelease(version, it.getString("browser_download_url"), it.optLong("size"), it.str("digest")?.removePrefix("sha256:")) }
 }.getOrNull()
+
+/**
+ * The phone's rolling "phone-latest" pre-release, rebuilt on every push: its versionCode (stated in the notes
+ * as "versionCode N") and its [prefix] APK for the first of [abis], else the universal one. Null when the notes
+ * don't say, or no file of this project's (with GitHub's checksum) fits.
+ */
+fun parsePhoneBuild(json: String, abis: List<String>, prefix: String): Pair<Int, AppRelease>? = runCatching {
+    val o = JSONObject(json)
+    val code = Regex("""versionCode (\d+)""").find(o.optString("body"))?.groupValues?.get(1)?.toIntOrNull() ?: return null
+    val assets = o.getJSONArray("assets").objects().filter { it.optString("name").startsWith(prefix) }
+    (abis + "universal").firstNotNullOfOrNull { abi -> assets.find { it.optString("name").endsWith("-$abi.apk") } }
+        ?.takeIf { it.optString("browser_download_url").startsWith(RELEASE_FILES) && it.str("digest") != null }
+        ?.let { code to AppRelease("build ${code - 100}", it.getString("browser_download_url"), it.optLong("size"), it.str("digest")?.removePrefix("sha256:")) }
+}.getOrNull()

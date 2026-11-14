@@ -82,7 +82,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          notes="Latest phone build from \`${GITHUB_REF_NAME}\` at ${GITHUB_SHA::7}, built $(date -u '+%Y-%m-%d %H:%M UTC'). Most phones: download the **arm64-v8a** APK. Not sure? Take **universal**."
+          # "versionCode N" is what the installed app reads to know a newer build is out (100 + the run number, as build.gradle.kts sets it).
+          notes="Latest phone build from \`${GITHUB_REF_NAME}\` at ${GITHUB_SHA::7}, built $(date -u '+%Y-%m-%d %H:%M UTC'), versionCode $((100 + GITHUB_RUN_NUMBER)). Most phones: download the **arm64-v8a** APK. Not sure? Take **universal**."
           if gh release view phone-latest > /dev/null 2>&1; then
             # The tag moves to this build, so the release page shows the commit the APKs came from.
             gh api -X PATCH "repos/$GH_REPO/git/refs/tags/phone-latest" -f sha="$GITHUB_SHA" -F force=true > /dev/null

@@ -82,6 +82,27 @@ object Updates {
         }
     }
 
+    private const val PHONE_LATEST = "https://api.github.com/repos/$RELEASE_REPO/releases/tags/phone-latest"
+    private var lastPhoneCheck = 0L
+
+    /**
+     * The phone's builds: every push builds a new "phone-latest", with a higher versionCode than the one
+     * installed. Asked at launch and whenever the app comes back to the front (at most every 5 minutes), so a
+     * new build is offered soon after it's out. The debug and release apps alike: each installs over itself.
+     */
+    fun checkPhoneBuild(versionCode: Int, prefix: String, force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastPhoneCheck < 5 * 60_000L) return
+        lastPhoneCheck = now
+        AppScope.launch {
+            val json = runCatching { Net.get(PHONE_LATEST, 15_000, quiet = true, headers = mapOf("Accept" to "application/vnd.github+json")) }.getOrNull() ?: return@launch
+            val (code, found) = parsePhoneBuild(json, Build.SUPPORTED_ABIS.toList(), prefix) ?: return@launch
+            if (code <= versionCode) return@launch
+            _hidden.value = Kv.global(SKIPPED) == found.version
+            _release.value = found
+        }
+    }
+
     fun skip(version: String) {
         Kv.setGlobal(SKIPPED, version)
         _hidden.value = true

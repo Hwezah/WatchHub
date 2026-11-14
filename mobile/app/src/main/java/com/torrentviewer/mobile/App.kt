@@ -315,7 +315,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
 
     // After the terms: nothing is asked of GitHub until they are accepted.
     val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
-    LaunchedEffect(Unit) { com.torrentviewer.core.Updates.check(appContext, BuildConfig.VERSION_NAME, "Watchly-phone-", BuildConfig.DEBUG) }
+    // Every push builds a new phone APK: offered here as soon as it's out (see Updates.checkPhoneBuild).
+    LaunchedEffect(Unit) { com.torrentviewer.core.Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-") }
 
     // The tour, once, on a fresh install: anyone with a library or a profile already knows the app.
     var toured by remember { mutableStateOf(Kv.global(TOURED) != null || Profiles.list.value.isNotEmpty() || History.items.value.isNotEmpty()) }

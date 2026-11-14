@@ -107,6 +107,8 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         com.torrentviewer.mobile.cs.CsPlugins.attach(this)
+        // Back in front: a build pushed while away is offered (at most one check every 5 minutes).
+        com.torrentviewer.core.Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-")
         preferHighRefreshRate()
         com.torrentviewer.core.refreshWatched()
     }
