@@ -246,8 +246,16 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
             sort,
         )
     }
+    // Torrents under MIN_SEEDS are left out here too (Settings → Streaming), unless shown by hand for this search.
+    val hideFew = com.torrentviewer.core.SettingsStore.value.collectAsState().value.hideFewSeeds
+    val cachedIds by TorBox.cached.collectAsState()
+    var showFew by remember(query) { mutableStateOf(false) }
+    var hiddenFew = 0
     val releases = hits?.let { list ->
-        val q = allowedHits(list).filter { notJunk(it) && streamFilter.accepts(traitsOf(it)) }
+        val matching = allowedHits(list).filter { notJunk(it) && streamFilter.accepts(traitsOf(it)) }
+        val cached = cachedIds.mapTo(HashSet()) { it.lowercase() }
+        val q = if (hideFew && !showFew) matching.filterNot { fewSeeds(it, cached) } else matching
+        hiddenFew = matching.size - q.size
         when (order) {
             HitOrder.BEST -> q
             HitOrder.BIGGEST -> q.sortedByDescending { it.size }
@@ -342,6 +350,15 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
             }
         }
         if (torrents) {
+            if (hiddenFew > 0) item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart) {
+                    Text(
+                        "$hiddenFew torrent${if (hiddenFew == 1) "" else "s"} under $MIN_SEEDS seeds hidden · Show",
+                        Modifier.clip(RoundedCornerShape(6.dp)).clickable { showFew = true }.padding(horizontal = 6.dp, vertical = 4.dp),
+                        style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold),
+                    )
+                }
+            }
             items(releases.orEmpty(), key = { it.id }, span = { GridItemSpan(maxLineSpan) }) { hit ->
                 Source(hit, onDownload = {
                     Downloads.add(downloadJob(hit, null))
