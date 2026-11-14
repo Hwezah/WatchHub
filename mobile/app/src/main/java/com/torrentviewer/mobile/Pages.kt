@@ -165,8 +165,6 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
 
 /* --------------------------------------------------------------- search */
 
-}
-
 /** "2020s"… and before 1990 one bucket; the year a title's releaseInfo starts with. */
 private val DECADES = listOf(2020 to "2020s", 2010 to "2010s", 2000 to "2000s", 1990 to "1990s", 0 to "Before 1990")
 
