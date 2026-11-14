@@ -37,7 +37,9 @@ class PreferredPickTest {
 
     @Test fun nearestResolutionBelowThenAbove() {
         val hits = listOf(hit("E03.1080p.x265.mkv", "1080p", 1200 * mb), hit("E03.480p.x264.mp4", "480p", 200 * mb))
-        assertEquals("E03.480p.x264.mp4", preferredPick(hits, defaults)!!.name)
+        // No 720p: the next one up, before anything below.
+        assertEquals("E03.1080p.x265.mkv", preferredPick(hits, defaults)!!.name)
+        assertEquals("E03.480p.x264.mp4", preferredPick(hits.drop(1), defaults)!!.name)
         assertEquals("E03.1080p.x265.mkv", preferredPick(hits.take(1), defaults)!!.name)
         assertEquals("E03.1080p.x265.mkv", preferredPick(hits, defaults.copy(quality = "1080p"))!!.name)
     }
@@ -53,8 +55,8 @@ class PreferredPickTest {
 
     @Test fun distances() {
         assertEquals(0, resolutionDistance("720p", "720p"))
-        assertEquals(240, resolutionDistance("480p", "720p"))
-        assertEquals(10_360, resolutionDistance("1080p", "720p"))
+        assertEquals(10_240, resolutionDistance("480p", "720p"))
+        assertEquals(360, resolutionDistance("1080p", "720p"))
         assertEquals(0, resolutionDistance("4K", ""))
     }
 }

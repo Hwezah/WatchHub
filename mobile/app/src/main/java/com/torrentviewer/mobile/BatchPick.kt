@@ -120,19 +120,19 @@ data class DownloadPrefs(val quality: String = "720p", val codec: String = "x265
 }
 
 /**
- * How far [quality] is from the preferred [wanted]: 0 for it, then the nearest below (a smaller file),
- * then the nearest above, unknown last. With no preference every resolution is equal.
+ * How far [quality] is from the preferred [wanted]: 0 for it, then moving up — the nearest above, then the
+ * next — and only then the nearest below; unknown last. With no preference every resolution is equal.
  */
 fun resolutionDistance(quality: String?, wanted: String): Int {
     if (wanted.isEmpty()) return 0
     val w = heightOf(wanted) ?: return 0
     val h = heightOf(quality) ?: return 100_000
-    return if (h <= w) w - h else 10_000 + (h - w)
+    return if (h >= w) h - w else 10_000 + (w - h)
 }
 
 /**
- * One-tap Download: never fails to pick while anything can be saved. Ranked, in order: nearest
- * resolution; can download at all; a single file before an HLS playlist; codec, format, subtitles and
+ * One-tap Download: never fails to pick while anything can be saved. Ranked, in order: the preferred
+ * resolution, else the next one up; can download at all; a single file before an HLS playlist; codec, format, subtitles and
  * source as preferred; the lightest known size (unknown after every known one); the bigger swarm.
  */
 fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {

@@ -113,26 +113,10 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     val scanned by SeasonBatch.scan.collectAsState()
     val scan = scanned?.takeIf { it.titleImdb == title.imdb && it.season == season }
     var filter by remember(title.imdb, season) { mutableStateOf(BatchFilter()) }
-    // Opens with Settings → Preferred download chosen, each where the season has it, once its sources are in.
-    var preset by remember(title.imdb, season) { mutableStateOf(false) }
-    LaunchedEffect(scan?.done) {
-        val s = scan ?: return@LaunchedEffect
-        if (!s.done || preset) return@LaunchedEffect
-        preset = true
-        // Already chosen by hand while the season was being checked: left as chosen.
-        if (filter != BatchFilter()) return@LaunchedEffect
-        val st = com.torrentviewer.core.SettingsStore.value.value
-        val want = DownloadPrefs(st.dlQuality, st.dlCodec, st.dlFormat, st.dlSubs, st.dlSource).asFilter()
-        val all = s.found.values.flatten()
-        fun has(f: BatchFilter) = all.any { batchable(it) && f.accepts(traitsOf(it)) }
-        // Each preference kept only if something is left with it and the ones before it.
-        var f = BatchFilter()
-        listOf<(BatchFilter) -> BatchFilter>(
-            { it.copy(quality = want.quality) }, { it.copy(codec = want.codec) }, { it.copy(format = want.format) },
-            { it.copy(subsOnly = want.subsOnly) }, { it.copy(source = want.source) },
-        ).forEach { step -> step(f).takeIf(::has)?.let { f = it } }
-        filter = f
-    }
+    // No filter chosen: each episode gets what Settings → Preferred download would pick for it — the preferred
+    // resolution, else the next one up, then codec, format… as preferences, so every episode with anything gets
+    // something. A chip tapped below is a hard choice instead: only releases with it.
+    val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource) }
     var showPlan by remember { mutableStateOf(false) }
     /** Fresh links being fetched before they go to another app. */
     var sending by remember { mutableStateOf(false) }
@@ -163,7 +147,10 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
 
             // For another app: links that need no headers first, since a shared link can't carry them.
             val plan = scan.episodes.mapNotNull { ep ->
-                scan.found[ep.id]?.let { hits -> ep to batchPick(if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits, filter) }
+                scan.found[ep.id]?.let { hits ->
+                    val from = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
+                    ep to if (filter == BatchFilter()) preferredPick(from, prefs) else batchPick(from, filter)
+                }
             }
             val picks = plan.mapNotNull { (ep, hit) -> hit?.let { ep to it } }
             val missing = plan.filter { it.second == null }.map { it.first.episode }
@@ -179,7 +166,9 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint),
             )
             Text(
-                "Per episode: ${if (filter.codec == null) "HEVC (x265) first, then " else ""}the smallest file — nothing under ${bytes(MIN_EPISODE_BYTES)}.",
+                if (filter == BatchFilter()) "Per episode: your preferred ${listOf(prefs.quality, prefs.codec, prefs.format).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { "settings" }} where found, " +
+                    "else the next resolution up — then the lightest. Tap a chip above to insist on something."
+                else "Per episode: only releases with what you chose above; ${if (filter.codec == null) "HEVC (x265) first, then " else ""}the smallest file — nothing under ${bytes(MIN_EPISODE_BYTES)}.",
                 Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp),
             )
 

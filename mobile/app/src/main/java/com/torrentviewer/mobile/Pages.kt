@@ -995,9 +995,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
 
         if (page == "Preferred download") Panel {
         Text(
-            "The download buttons on films and episodes pick one release for you: the nearest resolution to yours, a single " +
+            "The download buttons on films and episodes pick one release for you: your resolution, or the next one up when it isn't there, a single " +
                 "file before a streaming playlist (HLS), then your codec, format, subtitles and source, then the lightest. " +
-                "Season downloads open with these chosen. Nothing under 25 MB (trailers, samples) is ever picked.",
+                "Season downloads pick the same way for each episode. Nothing under 25 MB (trailers, samples) is ever picked.",
             Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
         )
         PrefRow("Resolution", listOf("" to "Any", "4K" to "4K", "1080p" to "1080p", "720p" to "720p", "480p" to "480p"), settings.dlQuality) { set(settings.copy(dlQuality = it)) }

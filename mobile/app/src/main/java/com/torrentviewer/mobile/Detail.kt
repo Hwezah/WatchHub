@@ -649,7 +649,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     }
     askSeason?.let { s ->
         DownloadChoice(
-            "Season $s · every episode, filters set to your preferred ${preferred()}",
+            "Season $s · every episode gets your preferred ${preferred()}, or the nearest found",
             onInternal = { batchExternal = false; batchFor = s },
             onExternal = { askSeason = null; batchExternal = true; batchFor = s },
             onDismiss = { askSeason = null },
