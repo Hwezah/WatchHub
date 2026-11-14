@@ -83,7 +83,7 @@ fun SourceActions(
     BottomSheet(heading, onDismiss, trailing = {
         Tap(onReload, shape = RoundedCornerShape(6.dp)) {
             Row(Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (busy) com.torrentviewer.core.Spinner(size = 18.dp, color = Ink.download) else Lc(L.drawable.lucide_ic_refresh_cw, tint = Ink.download, size = 18.dp)
+                ReloadArrow(busy, Ink.download, 18.dp)
                 Text("  Reload!", style = Type.label.copy(color = Ink.download, fontWeight = FontWeight.SemiBold))
             }
         }
@@ -141,7 +141,7 @@ fun SourceActions(
                 if (subs.isEmpty()) say("No subtitles came with this source. Find more from the player's subtitle menu.")
                 else say(downloadSubs(context, subs, heading))
             }
-            Action(L.drawable.lucide_ic_refresh_cw, "Reload links", "Ask every source again") { onDismiss(); onReload() }
+            Action(L.drawable.lucide_ic_rotate_cw, "Reload links", "Ask every source again") { onDismiss(); onReload() }
             if (link) {
                 Action(L.drawable.lucide_ic_globe, "Play in browser") {
                     val ok = runCatching {

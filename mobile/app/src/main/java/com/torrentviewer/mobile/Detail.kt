@@ -762,7 +762,7 @@ private fun LazyListScope.sources(
                 Text("Sources", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
                 if (onReload != null && hits != null) Tap(onReload, shape = RoundedCornerShape(6.dp)) {
                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (busy) Spinner(size = 18.dp, color = Ink.download) else Lc(L.drawable.lucide_ic_refresh_cw, tint = Ink.download, size = 18.dp)
+                        ReloadArrow(busy, Ink.download, 18.dp)
                         Text("  Reload Fresh Links!", style = Type.label.copy(color = Ink.download, fontWeight = FontWeight.SemiBold))
                     }
                 }
@@ -997,7 +997,7 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
 /** One-tap Download waits this long at most for every source to answer, then takes the best of what has. */
 private const val QUICK_PICK_MS = 15_000L
 
-/** The sources' reload pill: the plain (never chosen) pill look, a ↻ — a spinner while links are still arriving. */
+/** The sources' reload pill: the plain (never chosen) pill look and one arrow, turning while links are still arriving. */
 @Composable
 private fun ReloadPill(busy: Boolean, onClick: () -> Unit) {
     Tap(onClick, shape = CircleShape) { pressed ->
@@ -1005,8 +1005,8 @@ private fun ReloadPill(busy: Boolean, onClick: () -> Unit) {
             Modifier.background(Ink.text.copy(alpha = if (pressed) 0.18f else 0.08f)).height(36.dp).padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (busy) Spinner(size = 16.dp, color = Ink.muted) else Lc(L.drawable.lucide_ic_refresh_cw, tint = Ink.muted, size = 16.dp)
-            Text(if (busy) "  Finding" else "  Reload", style = Type.label.copy(fontSize = 14.sp, color = Ink.muted, fontWeight = FontWeight.Medium))
+            // Just the arrow, no word: it turns while links are still coming in.
+            ReloadArrow(busy, Ink.muted, 18.dp)
         }
     }
 }

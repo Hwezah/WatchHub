@@ -234,7 +234,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             when {
                 row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
                 // Failed: ↻ asks the sources again for the next fresh link at this resolution.
-                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { Lc(L.drawable.lucide_ic_refresh_cw, Modifier.padding(10.dp), tint = Ink.download, size = 20.dp) }
+                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(10.dp)) }
                 // Looking for a fresh link: a small spinner where the button was.
                 row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(10.dp)) { com.torrentviewer.core.Spinner(size = 20.dp, color = Ink.download) }
                 row.state == DlState.WIFI -> Unit
