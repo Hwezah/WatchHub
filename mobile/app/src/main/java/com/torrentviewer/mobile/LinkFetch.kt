@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -48,6 +49,9 @@ fun looksLikeText(head: ByteArray): Boolean {
 /** What a server says to a link whose token ran out or that it no longer serves. */
 private val EXPIRED = setOf(400, 401, 403, 404, 410)
 
+/** What was kept belonged to another file: thrown away, and the download starts once more from zero. */
+private class RestartException : Exception()
+
 /**
  * Saves a direct link to a file: one file as it is (resumed with a Range request), or an HLS playlist
  * as its segments joined in order — MPEG-TS segments into a .ts, fMP4 ones behind their init section
@@ -73,7 +77,12 @@ object LinkFetch {
         work.mkdirs()
         return if (playlist) // Whole segments are held in memory while they're fetched and decrypted: six at once keeps that to a few tens of MB.
         hls(url, headers, quality, work, connections.coerceIn(PARALLEL, 6), progress)
-        else multi(url, headers, work, connections, progress) ?: single(url, headers, work, progress)
+        else multi(url, headers, work, connections, progress) ?: try {
+            single(url, headers, work, progress)
+        } catch (_: RestartException) {
+            // What was kept belonged to another file: once more, from the start.
+            single(url, headers, work, progress)
+        }
     }
 
     /* ------------------------------------------------------ many connections */
@@ -92,23 +101,33 @@ object LinkFetch {
         if (connections <= 1) return null
         val out = File(work, "data.part")
         val stateFile = File(work, "parts.json")
-        val plan: JSONObject = runCatching { JSONObject(stateFile.readText()) }.getOrNull() ?: run {
-            // Can this server do ranges, and how big is it? One byte asked for says both.
-            val probe = withContext(Dispatchers.IO) {
-                val conn = open(url, headers, "bytes=0-0")
-                try {
-                    val code = conn.responseCode
-                    if (code in EXPIRED) throw LinkExpiredException("The link has expired (the server answered $code)")
-                    val size = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
-                    if (code == 206 && size != null) size to extOf(url, conn.contentType) else null
-                } finally {
-                    conn.disconnect()
-                }
-            } ?: return null
+        // Can this server do ranges, and how big is the file? One byte asked for says both — asked every start, so a
+        // download resumed days later, or on a renewed link, carries on only when it is still the very same size.
+        val probe = withContext(Dispatchers.IO) {
+            val conn = open(url, headers, "bytes=0-0")
+            try {
+                val code = conn.responseCode
+                if (code in EXPIRED) throw LinkExpiredException("The link has expired (the server answered $code)")
+                val size = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
+                if (code == 206 && size != null) size to extOf(url, conn.contentType) else null
+            } finally {
+                conn.disconnect()
+            }
+        }
+        val kept = runCatching { JSONObject(stateFile.readText()) }.getOrNull()?.takeIf { probe != null && it.optLong("total") == probe.first && out.exists() }
+        if (probe == null || probe.first < MULTI_MIN) {
+            // The parts kept (if any) can't be carried on over one connection: the plain download starts afresh.
+            if (stateFile.exists()) {
+                out.delete()
+                stateFile.delete()
+            }
+            return null
+        }
+        val plan: JSONObject = kept ?: run {
             val (size, kind) = probe
-            if (size < MULTI_MIN) return null
-            // A single download's leftovers are of no use to this one.
+            // Another file's leftovers — a single download's, or a different size's — are of no use to this one.
             out.delete()
+            File(work, SINGLE_STATE).delete()
             withContext(Dispatchers.IO) { RandomAccessFile(out, "rw").use { it.setLength(size) } }
             val parts = partsOf(size, connections)
             JSONObject().put("total", size).put("ext", kind).put("starts", org.json.JSONArray(parts.map { it.first }))
@@ -203,15 +222,47 @@ object LinkFetch {
         }
     }
 
+    /**
+     * Whether an old link still leads to the video, asked before a paused or waiting download carries on with
+     * it: a playlist that still opens, or a file that answers with something other than a web page. Quick,
+     * and false on any doubt, so a fresh link is looked for instead.
+     */
+    suspend fun answers(url: String, headers: Map<String, String>, playlist: Boolean): Boolean = withTimeoutOrNull(20_000) {
+        runCatching {
+            if (playlist) fetchText(url, headers).trimStart('\uFEFF').trimStart().startsWith("#EXTM3U")
+            else withContext(Dispatchers.IO) {
+                val conn = open(url, headers, "bytes=0-0")
+                try {
+                    conn.responseCode in 200..299 && conn.contentType?.startsWith("text/", true) != true
+                } finally {
+                    conn.disconnect()
+                }
+            }
+        }.getOrDefault(false)
+    } ?: false
+
     /* ---------------------------------------------------------------- one file */
+
+    /** A single download's expected size, so a resume (perhaps days later, perhaps on a renewed link) appends only to the same file. */
+    private const val SINGLE_STATE = "single.json"
 
     private suspend fun single(url: String, headers: Map<String, String>, work: File, progress: Progress): Result = withContext(Dispatchers.IO) {
         val out = File(work, "data.part")
+        val meta = File(work, SINGLE_STATE)
+        val was = runCatching { JSONObject(meta.readText()).optLong("total") }.getOrDefault(0L)
+        // Bytes with no record of what file they belong to (another kind of download's) can't be appended to.
+        if (out.exists() && was <= 0) out.delete()
         var have = if (out.exists()) out.length() else 0L
+        fun again(): Nothing = throw RestartException()
         val conn = open(url, headers, if (have > 0) "bytes=$have-" else null)
         try {
             val code = conn.responseCode
-            if (code == 416) return@withContext Result(out, extOf(url, conn.contentType))
+            if (code == 416) {
+                // Asked past the end: done, if this is the same file.
+                val size = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
+                if (size == null || size == have) return@withContext Result(out, extOf(url, conn.contentType))
+                out.delete(); meta.delete(); again()
+            }
             if (code in EXPIRED) throw LinkExpiredException("The link has expired (the server answered $code)")
             if (code !in 200..299) throw LinkDownloadException("The server answered $code")
             // 200 to a Range request: the server starts over, so must we.
@@ -221,6 +272,9 @@ object LinkFetch {
             }
             val total = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
                 ?: conn.contentLengthLong.takeIf { it > 0 }?.plus(have) ?: 0L
+            // A different file behind the link now: what was kept would be spliced into it.
+            if (have > 0 && total > 0 && total != was) { out.delete(); meta.delete(); again() }
+            if (total > 0) meta.writeText(JSONObject().put("total", total).toString())
             val meter = Meter(have)
             conn.inputStream.use { input ->
                 java.io.FileOutputStream(out, true).use { output ->
@@ -236,6 +290,7 @@ object LinkFetch {
             }
             if (total > 0 && out.length() < total) throw LinkDownloadException("The download stopped early — try again")
             progress.report(out.length(), out.length(), 0)
+            meta.delete()
             Result(out, extOf(url, conn.contentType))
         } finally {
             conn.disconnect()
@@ -267,7 +322,9 @@ object LinkFetch {
         // Where the last run stopped: segments written, and the file's length at that point.
         var next = 0
         var length = 0L
-        runCatching { JSONObject(state.readText()) }.getOrNull()?.takeIf { it.optString("media") == mediaUrl }?.let {
+        // The same playlist — or, after the link was renewed (a pause of days, an expired token), one with the same
+        // number of segments: the same video under a new address — carries on where it stopped.
+        runCatching { JSONObject(state.readText()) }.getOrNull()?.takeIf { it.optString("media") == mediaUrl || it.optInt("count", -1) == media.segments.size }?.let {
             next = it.optInt("next")
             length = it.optLong("length")
         }
@@ -291,7 +348,7 @@ object LinkFetch {
                 }
                 withContext(Dispatchers.IO) { parts.forEach { raf.write(it) } }
                 i += window.size
-                state.writeText(JSONObject().put("media", mediaUrl).put("next", i).put("length", raf.length()).toString())
+                state.writeText(JSONObject().put("media", mediaUrl).put("count", media.segments.size).put("next", i).put("length", raf.length()).toString())
                 val estimate = raf.length() * media.segments.size / i
                 meter.add(parts.sumOf { it.size.toLong() }, force = true)?.let { progress.report(raf.length(), estimate, it) }
             }

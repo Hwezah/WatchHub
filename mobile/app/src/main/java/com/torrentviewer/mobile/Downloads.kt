@@ -467,7 +467,11 @@ object Downloads {
     private suspend fun runLink(job: DownloadJob) {
             try {
                 // Found a while ago (a season's batch, a restart): ask for today's link first, same source and name if it's there.
-                if (job.imdb != null && job.fetchedAt > 0 && System.currentTimeMillis() - job.fetchedAt > LINK_FRESH_MS) {
+                // Partly saved (paused for days, say) and the old link still answers: carried on with it as it is.
+                val started = File(linkWork(job.uri), "data.part").let { it.exists() && it.length() > 0 }
+                val stale = job.imdb != null && job.fetchedAt > 0 && System.currentTimeMillis() - job.fetchedAt > LINK_FRESH_MS
+                if (stale && started) update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Checking the link still works…", speed = 0) }
+                if (stale && !(started && LinkFetch.answers(job.uri, job.headers, job.playlist))) {
                     update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Getting a fresh link…", speed = 0) }
                     val fresh = runCatching { LinkRefresh.fresh(job, tried(job), allowSame = true) }.getOrNull()
                     if (fresh != null) {
@@ -512,6 +516,7 @@ object Downloads {
                     result.file.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
                 }
                 work.deleteRecursively()
+                autoRounds.remove(job.label)
                 writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, job.poster, job.label, job.imdb, job.kind)) + _finished.value.filter { it.path != dest.path })
                 synchronized(lock) {
                     _live.value = _live.value.filter { it.job.uri != job.uri }
@@ -536,12 +541,12 @@ object Downloads {
                 // Out of fresh links for now: not left for the viewer to retry by hand — asked again on its own a little later
                 // (sources come back, links get renewed), a few times, by the same rules.
                 val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
-                val later = job.imdb != null && job.link && round <= AUTO_ROUNDS
+                val wait = waitMinutes(round)
                 errors[job.uri] = (if (dead && job.imdb != null) "No fresh link found — " else "") + (e.message ?: "Couldn't save that link") +
-                    if (later) " · trying again in ${round * 2} min" else ""
+                    " · what's saved is kept, trying again in $wait min"
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
-                if (later) scope.launch {
-                    kotlinx.coroutines.delay(round * 2 * 60_000L)
+                scope.launch {
+                    kotlinx.coroutines.delay(wait * 60_000L)
                     // Unless it was cancelled, paused or retried by hand meanwhile.
                     if (_live.value.any { it.job.uri == job.uri && it.state == DlState.FAILED }) retry(job.uri)
                 }
@@ -551,8 +556,19 @@ object Downloads {
     /** Fresh links tried in a row per download before it waits a while ([AUTO_ROUNDS]). */
     private const val MAX_REFRESHES = 4
 
-    /** Times a download that ran out of fresh links is tried again on its own (after 2, 4, 6 minutes) before it waits for the viewer. */
+    /** Quick rounds for a download that ran out of fresh links (after 2, 4, 6 minutes); then it keeps trying, less often. */
     private const val AUTO_ROUNDS = 3
+
+    /**
+     * Minutes before a download out of fresh links is tried again, round by round: 2, 4, 6, then 15, 30, then every hour
+     * for as long as it takes — days if need be, as 1DM does — what's saved kept all the while. Only cancel ends it.
+     */
+    private fun waitMinutes(round: Int) = when {
+        round <= AUTO_ROUNDS -> round * 2
+        round == AUTO_ROUNDS + 1 -> 15
+        round == AUTO_ROUNDS + 2 -> 30
+        else -> 60
+    }
 
     /** Per download (by its name): how many automatic rounds it has had. */
     private val autoRounds = java.util.concurrent.ConcurrentHashMap<String, Int>()
@@ -586,15 +602,12 @@ object Downloads {
             else {
                 // Still nothing: asked again on its own, a few rounds, before it waits for the viewer.
                 val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
-                val later = round <= AUTO_ROUNDS
+                val wait = waitMinutes(round)
                 update(uri) {
-                    it.copy(
-                        state = DlState.FAILED, speed = 0,
-                        error = "No other ${job.quality ?: "working"} source right now" + if (later) " · trying again in ${round * 2} min" else " — tap ↻ to try again",
-                    )
+                    it.copy(state = DlState.FAILED, speed = 0, error = "No other ${job.quality ?: "working"} source right now · what's saved is kept, trying again in $wait min")
                 }
-                if (later) scope.launch {
-                    kotlinx.coroutines.delay(round * 2 * 60_000L)
+                scope.launch {
+                    kotlinx.coroutines.delay(wait * 60_000L)
                     if (_live.value.any { it.job.uri == uri && it.state == DlState.FAILED }) retry(uri)
                 }
             }
@@ -616,7 +629,15 @@ object Downloads {
             fetchedAt = System.currentTimeMillis(),
         )
         Log.i(TAG, "fresh link for ${old.label} from ${hit.addon}")
-        scope.launch { linkWork(old.uri).deleteRecursively() }
+        // What's saved so far goes along to the new link: the file's parts (or the playlist's segments) carry on
+        // where they stopped when it's the same video — LinkFetch checks the size (or segment count) and starts
+        // over only if it isn't. A switch between a playlist and a file can't share anything.
+        val from = linkWork(old.uri)
+        val to = linkWork(next.uri)
+        if (from != to) runCatching {
+            to.deleteRecursively()
+            if (old.playlist != next.playlist || !from.renameTo(to)) from.deleteRecursively()
+        }
         synchronized(lock) {
             _live.value = _live.value.map { if (it.job.uri == old.uri) LiveDownload(next, DlState.RESOLVING, error = "Got a fresh link") else it }
             writeQueue(jobs())
