@@ -62,7 +62,8 @@ fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null, foundAt: Long 
     link = hit.direct,
     headers = if (hit.direct) hit.headers else emptyMap(),
     playlist = hit.direct && isPlaylist(hit),
-    quality = hit.quality,
+    // An "Auto" playlist (several resolutions in one) is saved at the preferred resolution, not its biggest.
+    quality = hit.quality ?: com.torrentviewer.core.SettingsStore.value.value.dlQuality.takeIf { hit.direct && isPlaylist(hit) && it.isNotEmpty() },
     source = hit.addon.ifEmpty { null },
     linkName = hit.name,
     epSeason = episode?.season,

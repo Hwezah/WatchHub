@@ -100,7 +100,7 @@ object LinkFetch {
         if (!text.trimStart('﻿').trimStart().startsWith("#EXTM3U")) throw LinkExpiredException("The link no longer leads to the stream")
         if (isMasterPlaylist(text)) {
             val master = parseMaster(text, url)
-            val pick = pickVariant(master.variants, heightOf(quality)) ?: throw LinkDownloadException("The playlist lists no streams")
+            val pick = pickVariant(master.variants, heightOf(quality), leftOutHeights(com.torrentviewer.core.SettingsStore.value.value.leaveOut)) ?: throw LinkDownloadException("The playlist lists no streams")
             if (pick.audio != null) throw LinkDownloadException("This stream keeps its sound in a separate playlist — saving it isn't supported yet")
             mediaUrl = pick.uri
             text = fetchText(mediaUrl, headers)

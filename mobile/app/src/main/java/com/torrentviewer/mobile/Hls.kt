@@ -57,9 +57,10 @@ fun parseMaster(text: String, base: String): HlsMaster {
  * tallest under it, else the best; among equals, the higher bitrate. Variants whose audio is a
  * separate playlist come last — saving one would be a silent film.
  */
-fun pickVariant(variants: List<HlsVariant>, height: Int?): HlsVariant? {
+fun pickVariant(variants: List<HlsVariant>, height: Int?, leftOut: Set<Int> = emptySet()): HlsVariant? {
     if (variants.isEmpty()) return null
-    val muxed = variants.filter { it.audio == null }.ifEmpty { variants }
+    // An "Auto" stream holds several resolutions: the ones left out in Settings aren't taken while another is there.
+    val muxed = variants.filter { it.audio == null }.ifEmpty { variants }.let { all -> all.filter { (it.height ?: 0) !in leftOut }.ifEmpty { all } }
     val best = compareBy<HlsVariant>({ it.height ?: 0 }, { it.bandwidth })
     if (height == null) return muxed.maxWithOrNull(best)
     return muxed.filter { it.height == height }.maxByOrNull { it.bandwidth }
@@ -118,6 +119,9 @@ fun hlsIv(key: HlsKey, sequence: Long): ByteArray {
 }
 
 /** "1080p" → 1080, "4K" → 2160; null when unknown. */
+/** The heights of the resolutions left out in Settings ("q:1080p" → 1080, "q:4K" → 2160). */
+fun leftOutHeights(leaveOut: Collection<String>): Set<Int> = leaveOut.mapNotNull { k -> k.removePrefix("q:").takeIf { k.startsWith("q:") }?.let(::heightOf) }.toSet()
+
 fun heightOf(quality: String?): Int? = when {
     quality == null -> null
     quality == "4K" -> 2160

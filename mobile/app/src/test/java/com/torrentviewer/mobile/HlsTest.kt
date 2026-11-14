@@ -42,6 +42,13 @@ class HlsTest {
         assertNull(pickVariant(emptyList(), 720))
     }
 
+    @Test fun leftOutResolutionsAreSkippedInAnAutoStream() {
+        val v = parseMaster(master, "https://cdn.example/m.m3u8").variants
+        // Best would be 1080p; with 1080p left out in Settings, the next best.
+        assertEquals(720, pickVariant(v, null, setOf(1080))!!.height)
+        assertEquals(setOf(2160, 1080), leftOutHeights(listOf("q:4K", "q:1080p", "c:x264", "q:Auto")))
+    }
+
     @Test fun mediaPlaylist() {
         val text = """
             #EXTM3U
