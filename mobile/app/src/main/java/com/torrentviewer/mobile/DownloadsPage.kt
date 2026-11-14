@@ -178,7 +178,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
 private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -> Unit, onDelete: () -> Unit) {
     Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), RoundedCornerShape(8.dp), onLongClick = onDelete) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (poster) Artwork(f.poster, f.label, Modifier.width(48.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
+            if (poster) Artwork(f.poster, f.label, Modifier.width(60.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(name, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text("${bytes(f.size)}  ·  ${ago(f.at)}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
@@ -197,7 +197,7 @@ private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onDe
     Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
         Tap({ open = !open }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Artwork(first.poster, first.label, Modifier.width(48.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
+                Artwork(first.poster, first.label, Modifier.width(60.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(first.label.substringBefore(" · "), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("${episodes.size} episodes  ·  ${bytes(episodes.sumOf { it.size })}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
@@ -233,7 +233,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     }
     Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(CARD - 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Artwork(row.job.poster, row.job.label, Modifier.width(52.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
+            Artwork(row.job.poster, row.job.label, Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
             // Beside the poster: the words and buttons, and under them the progress line, from the poster to the ✕'s end.
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
