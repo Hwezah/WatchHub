@@ -6,6 +6,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -48,9 +49,137 @@ object LinkFetch {
         fun report(done: Long, total: Long, speed: Int)
     }
 
-    suspend fun download(url: String, headers: Map<String, String>, quality: String?, playlist: Boolean, work: File, progress: Progress): Result {
+    suspend fun download(url: String, headers: Map<String, String>, quality: String?, playlist: Boolean, work: File, connections: Int = 1, progress: Progress): Result {
         work.mkdirs()
-        return if (playlist) hls(url, headers, quality, work, progress) else single(url, headers, work, progress)
+        return if (playlist) hls(url, headers, quality, work, connections.coerceIn(PARALLEL, 16), progress)
+        else multi(url, headers, work, connections, progress) ?: single(url, headers, work, progress)
+    }
+
+    /* ------------------------------------------------------ many connections */
+
+    /** A file under this is fetched over one connection: splitting it buys nothing. */
+    private const val MULTI_MIN = 16L * 1024 * 1024
+
+    /**
+     * One file over [connections] connections at once, as 1DM does: the file is cut into parts ([partsOf]),
+     * each fetched with a Range request into its place in the file; workers take the next unfinished part
+     * as they free up. What each part has is kept in parts.json, so a pause or a restart carries on part by
+     * part. Null when this can't be done — one connection asked for, a server without ranges, a small or
+     * unknown size — and the plain single download runs instead.
+     */
+    private suspend fun multi(url: String, headers: Map<String, String>, work: File, connections: Int, progress: Progress): Result? {
+        if (connections <= 1) return null
+        val out = File(work, "data.part")
+        val stateFile = File(work, "parts.json")
+        val plan: JSONObject = runCatching { JSONObject(stateFile.readText()) }.getOrNull() ?: run {
+            // Can this server do ranges, and how big is it? One byte asked for says both.
+            val probe = withContext(Dispatchers.IO) {
+                val conn = open(url, headers, "bytes=0-0")
+                try {
+                    val code = conn.responseCode
+                    if (code in EXPIRED) throw LinkExpiredException("The link has expired (the server answered $code)")
+                    val size = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
+                    if (code == 206 && size != null) size to extOf(url, conn.contentType) else null
+                } finally {
+                    conn.disconnect()
+                }
+            } ?: return null
+            val (size, kind) = probe
+            if (size < MULTI_MIN) return null
+            // A single download's leftovers are of no use to this one.
+            out.delete()
+            withContext(Dispatchers.IO) { RandomAccessFile(out, "rw").use { it.setLength(size) } }
+            val parts = partsOf(size, connections)
+            JSONObject().put("total", size).put("ext", kind).put("starts", org.json.JSONArray(parts.map { it.first }))
+                .put("ends", org.json.JSONArray(parts.map { it.second })).put("done", org.json.JSONArray(parts.map { 0L }))
+                .also { stateFile.writeText(it.toString()) }
+        }
+        val total = plan.getLong("total")
+        val ext = plan.optString("ext", "mp4")
+        val starts = plan.getJSONArray("starts").let { a -> LongArray(a.length()) { a.getLong(it) } }
+        val ends = plan.getJSONArray("ends").let { a -> LongArray(a.length()) { a.getLong(it) } }
+        val done = plan.getJSONArray("done").let { a -> java.util.concurrent.atomic.AtomicLongArray(LongArray(a.length()) { a.getLong(it) }) }
+        val next = java.util.concurrent.atomic.AtomicInteger(0)
+        val meter = Meter((0 until done.length()).sumOf { done.get(it) })
+        var lastSave = 0L
+        fun save(force: Boolean = false) = synchronized(stateFile) {
+            val now = System.currentTimeMillis()
+            if (!force && now - lastSave < 2000) return@synchronized
+            lastSave = now
+            plan.put("done", org.json.JSONArray((0 until done.length()).map { done.get(it) }))
+            stateFile.writeText(plan.toString())
+        }
+        fun take(): Int? {
+            while (true) {
+                val i = next.getAndIncrement()
+                if (i >= starts.size) return null
+                if (starts[i] + done.get(i) <= ends[i]) return i
+            }
+        }
+        try {
+            coroutineScope {
+                repeat(connections.coerceAtMost(starts.size)) {
+                    launch(Dispatchers.IO) {
+                        RandomAccessFile(out, "rw").use { raf ->
+                            while (true) {
+                                val i = take() ?: break
+                                fetchPart(url, headers, i, starts[i], ends[i], done, raf) { n ->
+                                    synchronized(meter) { meter.add(n) }?.let { rate -> progress.report(synchronized(meter) { meter.done }, total, rate) }
+                                    save()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+            save(force = true)
+        }
+        if ((0 until done.length()).any { starts[it] + done.get(it) <= ends[it] }) throw LinkDownloadException("The download stopped early — try again")
+        stateFile.delete()
+        progress.report(total, total, 0)
+        return Result(out, ext)
+    }
+
+    /** One part, from where it got to, tried again on a dropped connection or a busy server. */
+    private suspend fun fetchPart(url: String, headers: Map<String, String>, i: Int, start: Long, end: Long, done: java.util.concurrent.atomic.AtomicLongArray, raf: RandomAccessFile, onBytes: (Long) -> Unit) {
+        var failures = 0
+        while (start + done.get(i) <= end) {
+            coroutineContext.ensureActive()
+            val from = start + done.get(i)
+            try {
+                val conn = open(url, headers, "bytes=$from-$end")
+                try {
+                    val code = conn.responseCode
+                    if (code in EXPIRED) throw LinkExpiredException("The link has expired (the server answered $code)")
+                    // Too many connections for this host: wait, and the part is asked for again.
+                    if (code == 429 || code == 503) throw IOException("busy ($code)")
+                    if (code != 206) throw LinkDownloadException("The server stopped sending parts ($code)")
+                    conn.inputStream.use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        var at = from
+                        while (at <= end) {
+                            coroutineContext.ensureActive()
+                            val n = input.read(buf, 0, minOf(buf.size.toLong(), end - at + 1).toInt())
+                            if (n < 0) break
+                            raf.seek(at)
+                            raf.write(buf, 0, n)
+                            at += n
+                            done.addAndGet(i, n.toLong())
+                            onBytes(n.toLong())
+                        }
+                    }
+                    failures = 0
+                } finally {
+                    conn.disconnect()
+                }
+            } catch (e: LinkDownloadException) {
+                throw e
+            } catch (e: IOException) {
+                if (++failures > TRIES * 3) throw LinkDownloadException("A part kept failing: ${e.message}")
+                delay(1000L * failures.coerceAtMost(8))
+            }
+        }
     }
 
     /* ---------------------------------------------------------------- one file */
@@ -94,7 +223,7 @@ object LinkFetch {
 
     /* -------------------------------------------------------------------- HLS */
 
-    private suspend fun hls(url: String, headers: Map<String, String>, quality: String?, work: File, progress: Progress): Result {
+    private suspend fun hls(url: String, headers: Map<String, String>, quality: String?, work: File, parallel: Int, progress: Progress): Result {
         var mediaUrl = url
         var text = fetchText(url, headers)
         if (!text.trimStart('﻿').trimStart().startsWith("#EXTM3U")) throw LinkExpiredException("The link no longer leads to the stream")
@@ -135,7 +264,7 @@ object LinkFetch {
             var i = next
             while (i < media.segments.size) {
                 coroutineContext.ensureActive()
-                val window = media.segments.subList(i, minOf(i + PARALLEL, media.segments.size))
+                val window = media.segments.subList(i, minOf(i + parallel, media.segments.size))
                 val parts = coroutineScope {
                     window.map { seg -> async(Dispatchers.IO) { decrypt(seg, fetchBytes(seg.uri, headers, seg.length, seg.offset), headers, keys) } }.awaitAll()
                 }
@@ -243,4 +372,14 @@ object LinkFetch {
             return rate
         }
     }
+}
+
+/**
+ * A file of [total] bytes cut into parts for [connections] connections: about four parts a connection, so
+ * the fast ones take more and nobody waits on one slow part at the end; none under 2 MB. Inclusive ranges.
+ */
+fun partsOf(total: Long, connections: Int): List<Pair<Long, Long>> {
+    if (total <= 0) return emptyList()
+    val size = maxOf(2L * 1024 * 1024, (total + connections * 4 - 1) / (connections * 4L))
+    return (0 until total step size).map { it to minOf(it + size, total) - 1 }
 }

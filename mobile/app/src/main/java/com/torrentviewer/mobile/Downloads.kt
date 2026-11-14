@@ -228,6 +228,14 @@ object Downloads {
      * the rarest pieces first, which is how a swarm gives its full speed. Episodes of a pack
      * still come one after another either way (file priorities).
      */
+    /**
+     * Connections a direct link is fetched over at once, each a range of the file — as 1DM's "threads".
+     * More is faster on most hosts; a host that refuses (429, 503) is waited out part by part.
+     */
+    var connections: Int
+        get() = prefs().getInt("connections", 32)
+        set(v) = prefs().edit().putInt("connections", v).apply()
+
     var sequential: Boolean
         get() = prefs().getBoolean("sequential", false)
         set(v) {
@@ -463,7 +471,7 @@ object Downloads {
                 }
                 update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null) }
                 val work = linkWork(job.uri)
-                val result = LinkFetch.download(job.uri, job.headers, job.quality, job.playlist, work) { done, total, rate ->
+                val result = LinkFetch.download(job.uri, job.headers, job.quality, job.playlist, work, connections) { done, total, rate ->
                     update(job.uri) { it.copy(state = DlState.DOWNLOADING, files = listOf(DlFile(0, job.label, maxOf(total, done), done, false)), speed = rate) }
                     notifyProgress()
                 }

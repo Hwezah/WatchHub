@@ -248,13 +248,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
         ProgressLine(row.ratio, Modifier.padding(top = 10.dp).clip(CircleShape), height = 2.dp, color = Ink.download)
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
-        // This download's own order, over the default above.
-        val inOrder = Downloads.inOrder(row.job)
-        // A pair: from the start, not spread (only three or more pills share the width).
-        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("Fastest", !inOrder, onClick = { onOrder(false) })
-            Chip("In order", inOrder, onClick = { onOrder(true) })
-        }
+        // Fastest / In order live in Settings → Downloads now, for every download, not on each card.
 
         if (pack) {
             Tap({ open = !open }, Modifier.fillMaxWidth().padding(top = 6.dp), RoundedCornerShape(6.dp)) {

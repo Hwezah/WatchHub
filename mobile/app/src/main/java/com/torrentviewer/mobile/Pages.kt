@@ -928,6 +928,16 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 Chip("Fastest", !sequential, onClick = { sequential = false; Downloads.sequential = false })
                 Chip("In order", sequential, onClick = { sequential = true; Downloads.sequential = true })
             }
+            // Direct links: how many connections at once, as 1DM's threads.
+            var connections by remember { mutableStateOf(Downloads.connections) }
+            Text(
+                "Direct links are fetched over several connections at once, each a part of the file — as 1DM does. More is faster; " +
+                    "if a site slows down or refuses, try fewer. Torrents aren't affected.",
+                Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
+            )
+            SpreadRow {
+                listOf(1, 4, 8, 16, 32).forEach { n -> Chip(if (n == 1) "1 connection" else "$n", connections == n, onClick = { connections = n; Downloads.connections = n }) }
+            }
             // Re-read on return from the system prompt.
             val context = LocalContext.current
             var unrestricted by remember { mutableStateOf(Downloads.unrestricted(context)) }
