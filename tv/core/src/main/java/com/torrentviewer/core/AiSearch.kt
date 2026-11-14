@@ -250,7 +250,21 @@ object AiSearch {
         val model = typed.ifBlank { Kv.global(foundKey(p)).orEmpty() }
         suspend fun ask(m: String): String {
             val req = aiRequest(p, m, key, prompt)
-            return aiReplyText(p, Net.postJson(req.url, req.body, timeoutMs = 60_000, quiet = true, headers = req.headers))
+            // A connection cut before the answer (the app left the screen, the network switched) is asked once more;
+            // a second cut is said in plain words. The service's own errors (HttpException) go straight up.
+            repeat(2) { attempt ->
+                try {
+                    return aiReplyText(p, Net.postJson(req.url, req.body, timeoutMs = 90_000, quiet = true, headers = req.headers))
+                } catch (e: HttpException) {
+                    throw e
+                } catch (e: java.io.IOException) {
+                    if (attempt == 1) throw IllegalStateException(
+                        "The connection to ${p.label} dropped before it answered — try again, and keep WatchHub open while it thinks",
+                    )
+                    kotlinx.coroutines.delay(1500)
+                }
+            }
+            error("unreachable")
         }
         return try {
             ask(model) to model.ifBlank { p.defaultModel }
