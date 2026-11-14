@@ -673,9 +673,10 @@ private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
 @Composable
 private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: () -> Unit) {
     Tap(onPlay, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), onLongClick = onMore) { pressed ->
-        // The ⋮ carries 8dp of its own tap room: 2dp at the end makes its icon sit as far from the edge as the poster does.
+        // The ⋮'s dots are a thin line in the middle of a 20dp icon: with no padding at its end and none beside it, the
+        // dots sit about as far from the card's edge as the poster does (10dp).
         Row(
-            Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(start = 10.dp, top = 10.dp, bottom = 10.dp, end = 2.dp),
+            Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(start = 10.dp, top = 10.dp, bottom = 10.dp, end = 0.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))) {
@@ -695,7 +696,8 @@ private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: ()
             Box(Modifier.size(38.dp).clip(CircleShape).background(Ink.accent), contentAlignment = Alignment.Center) {
                 Lc(L.drawable.lucide_ic_play, tint = Color.White, size = 18.dp)
             }
-            Tap(onMore, shape = CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
+            // Tall tap room above and below, little beside: the card's edge is right there.
+            Tap(onMore, shape = RoundedCornerShape(8.dp)) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(start = 6.dp, top = 12.dp, bottom = 12.dp), tint = Ink.muted, size = 20.dp) }
         }
     }
 }
