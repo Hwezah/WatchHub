@@ -178,16 +178,6 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     var choosing by remember { mutableStateOf(false) }
     /** The app picked in that sheet, waiting to be sent to. */
     var chosen by remember { mutableStateOf<Downloader?>(null) }
-    /** The app a plain tap on Send goes to, by name, for its label: the one picked on the way in, else the default. */
-    val sendName = remember(sendTo, choosing) {
-        val probe = ExternalDownloaders.sendProbe()
-        val apps = ExternalDownloaders.apps(context, probe)
-        when (sendTo) {
-            is Downloader.App -> apps.firstOrNull { it.first == sendTo.pkg }?.second
-            Downloader.Default -> ExternalDownloaders.default(context, probe)?.second
-            else -> null
-        }
-    }
 
     BottomSheet("Download season $season", onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = CARD).padding(bottom = 12.dp)) {
@@ -306,7 +296,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 when {
                     picks.isEmpty() -> "Nothing matches"
                     sending -> "Getting fresh links…"
-                    external -> "Send $many to ${sendName ?: "a downloader"}"
+                    external -> "Send $many to Downloader"
                     else -> "Download $many"
                 },
                 {
@@ -324,7 +314,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 onLongClick = { if (external && picks.isNotEmpty() && !sending) choosing = true },
             )
             if (external && picks.isNotEmpty()) Text(
-                "Hold to send to another app, or copy the links.",
+                "Long tap for share and download options!",
                 Modifier.fillMaxWidth().padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
             if (scan.done) Solo(Modifier.padding(top = 14.dp, bottom = 6.dp)) { m -> Chip("Ask Every Source Again", false, onClick = { SeasonBatch.begin(title, season, again = true) }, m, tall = true) }

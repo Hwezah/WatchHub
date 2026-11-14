@@ -287,8 +287,6 @@ fun DownloadChoice(
     /** A line in green under the choices: where the picked resolution comes from, and where to change it. */
     disclaimer: String? = null,
 ) {
-    val context = LocalContext.current
-    val default = remember(probe.action) { ExternalDownloaders.default(context, probe)?.second }
     // Held, the external choice gives way to the "Download With" sheet; let go of that without a pick, it is back.
     var choosing by remember { mutableStateOf(false) }
     if (choosing) {
@@ -317,8 +315,8 @@ fun DownloadChoice(
             Spacer(Modifier.height(10.dp))
             // A tap goes to the default app; held, the "Download With" sheet offers the others.
             ChoiceTile(
-                L.drawable.lucide_ic_external_link, default?.let { "Send to $it" } ?: "Choose External Downloader",
-                "$externalNote\nHold to pick another app or copy the link${if (probe.action == Intent.ACTION_SEND) "s" else ""}.", onLongClick = { choosing = true },
+                L.drawable.lucide_ic_external_link, "Use External Downloader",
+                "$externalNote\nLong tap for share and download options!", onLongClick = { choosing = true },
             ) { onExternal(Downloader.Default) }
             disclaimer?.let { Text(it, Modifier.padding(top = 12.dp), style = Type.meta.copy(color = Ink.download, fontWeight = FontWeight.Medium)) }
             Text(
