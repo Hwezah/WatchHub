@@ -43,15 +43,16 @@ data class AiGuess(val title: String, val year: Int?, val series: Boolean?)
 /** What the model is asked: only a JSON list, so the reply can be read without a second guess at its shape. */
 fun aiPrompt(description: String): String =
     "Someone is trying to find a film or TV show. Their description:\n\n\"${description.trim()}\"\n\n" +
-        "Reply with only a JSON array of up to 8 titles that best fit it, most likely first, each as " +
+        "Reply with only a JSON array of up to 6 titles that best fit it, most likely first, each as " +
         "{\"title\": \"<official English title>\", \"year\": <first release year>, \"type\": \"movie\" or \"series\"}. " +
         "No other text."
 
 /**
  * The request for [provider]: Claude's Messages API, Gemini's generateContent, or the OpenAI chat format (ChatGPT,
  * DeepSeek and OpenRouter all speak it). Every key goes in a header, never the URL, so no log line can show it.
+ * [quick] asks Gemini to answer without thinking first.
  */
-fun aiRequest(provider: AiProvider, model: String, key: String, prompt: String): AiRequest {
+fun aiRequest(provider: AiProvider, model: String, key: String, prompt: String, quick: Boolean = true): AiRequest {
     val m = model.trim().ifEmpty { provider.defaultModel }
     return when (provider) {
         AiProvider.CLAUDE -> AiRequest(
@@ -76,7 +77,11 @@ fun aiRequest(provider: AiProvider, model: String, key: String, prompt: String):
             mapOf("x-goog-api-key" to key),
             JSONObject()
                 .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
-                .put("generationConfig", JSONObject().put("responseMimeType", "application/json"))
+                // [quick]: no "thinking" before the answer — naming a film from a description doesn't need it, and it is
+                // most of the wait. A model that refuses the setting is asked again without it (AiSearch.complete).
+                .put("generationConfig", JSONObject().put("responseMimeType", "application/json").apply {
+                    if (quick) put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+                })
                 .toString(),
         )
         AiProvider.OPENAI, AiProvider.DEEPSEEK, AiProvider.OPENROUTER -> AiRequest(
@@ -240,6 +245,26 @@ object AiSearch {
      * Titles the AI thinks [description] means, as Cinemeta knows them, most likely first. Throws with a message
      * to show when the provider fails.
      */
+    /** One request and its answer's text; a connection cut before the answer is asked once more, then said in plain words. */
+    private suspend fun askOnce(p: AiProvider, m: String, key: String, prompt: String, quick: Boolean): String {
+        val req = aiRequest(p, m, key, prompt, quick)
+        // A connection cut before the answer (the app left the screen, the network switched) is asked once more;
+        // a second cut is said in plain words. The service's own errors (HttpException) go straight up.
+        repeat(2) { attempt ->
+            try {
+                return aiReplyText(p, Net.postJson(req.url, req.body, timeoutMs = 90_000, quiet = true, headers = req.headers))
+            } catch (e: HttpException) {
+                throw e
+            } catch (e: java.io.IOException) {
+                if (attempt == 1) throw IllegalStateException(
+                    "The connection to ${p.label} dropped before it answered — try again, and keep WatchHub open while it thinks",
+                )
+                kotlinx.coroutines.delay(1500)
+            }
+        }
+        error("unreachable")
+    }
+
     /**
      * One question to [p], answered: the reply's text and the model that gave it. The viewer's model, else one found
      * earlier for this service, else the default; an unknown default makes it ask the service which models the key
@@ -248,23 +273,11 @@ object AiSearch {
     private suspend fun complete(p: AiProvider, key: String, prompt: String): Pair<String, String> {
         val typed = SettingsStore.value.value.aiModel
         val model = typed.ifBlank { Kv.global(foundKey(p)).orEmpty() }
-        suspend fun ask(m: String): String {
-            val req = aiRequest(p, m, key, prompt)
-            // A connection cut before the answer (the app left the screen, the network switched) is asked once more;
-            // a second cut is said in plain words. The service's own errors (HttpException) go straight up.
-            repeat(2) { attempt ->
-                try {
-                    return aiReplyText(p, Net.postJson(req.url, req.body, timeoutMs = 90_000, quiet = true, headers = req.headers))
-                } catch (e: HttpException) {
-                    throw e
-                } catch (e: java.io.IOException) {
-                    if (attempt == 1) throw IllegalStateException(
-                        "The connection to ${p.label} dropped before it answered — try again, and keep WatchHub open while it thinks",
-                    )
-                    kotlinx.coroutines.delay(1500)
-                }
-            }
-            error("unreachable")
+        suspend fun ask(m: String): String = try {
+            askOnce(p, m, key, prompt, quick = true)
+        } catch (e: HttpException) {
+            // A model that won't answer without thinking says so with a 400: asked again its own way.
+            if (e.code == 400 && p == AiProvider.GEMINI) askOnce(p, m, key, prompt, quick = false) else throw e
         }
         return try {
             ask(model) to model.ifBlank { p.defaultModel }
