@@ -316,7 +316,11 @@ object Downloads {
         }
     }.getOrDefault(emptyList())
 
-    private fun writeQueue(jobs: List<DownloadJob>) = Kv.setGlobal(QUEUE, if (jobs.isEmpty()) null else JSONArray(jobs.map { it.toJson() }).toString())
+    private fun writeQueue(jobs: List<DownloadJob>) {
+        Kv.setGlobal(QUEUE, if (jobs.isEmpty()) null else JSONArray(jobs.map { it.toJson() }).toString())
+        // The hourly background check runs while anything is left to download, and only then.
+        if (jobs.any { !it.paused }) BackgroundResume.watch(app) else BackgroundResume.stop(app)
+    }
 
     private fun jobs() = _live.value.map { it.job }
 
@@ -352,7 +356,58 @@ object Downloads {
         val queue = readQueue()
         _live.value = queue.map { LiveDownload(it, if (it.paused) DlState.PAUSED else DlState.RESOLVING) }
         queue.filter { !(it.link && it.paused) }.forEach(::begin)
+        if (queue.any { !it.paused }) BackgroundResume.watch(app)
+        // The network back (Wi-Fi again, mobile data on): downloads that failed meanwhile carry on at once,
+        // not at their next timed try.
+        runCatching {
+            (app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    scope.launch {
+                        kotlinx.coroutines.delay(3000)
+                        if (_live.value.any { it.state == DlState.FAILED && !it.job.paused }) wake()
+                    }
+                }
+            })
+        }
     }
+
+    /** Anything not paused left to download: the background wake-ups go on while this is so. */
+    val unfinished get() = _live.value.any { !it.job.paused }
+
+    /** The last [wake], so a burst of network changes doesn't ask the sources over and over. */
+    @Volatile private var lastWake = 0L
+
+    /**
+     * Carries on every download that isn't paused and isn't running: a failed one tried again (a fresh link if
+     * need be, what's saved kept), a link with nothing fetching it started. Called by the background job
+     * ([ResumeWorker]) and when the network comes back. Torrents restart with the engine on their own.
+     */
+    fun wake() {
+        val now = System.currentTimeMillis()
+        if (now - lastWake < 30_000) return
+        lastWake = now
+        _live.value.filter { !it.job.paused }.forEach { d ->
+            when {
+                d.state == DlState.FAILED -> retry(d.job.uri)
+                d.job.link && synchronized(lock) { links[d.job.uri] } == null -> begin(d.job)
+            }
+        }
+    }
+
+    /** No network now: a background wake-up waits for it rather than a clock. */
+    private fun offline(): Boolean = runCatching {
+        val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        cm.activeNetwork == null
+    }.getOrDefault(false)
+
+    /** A download waiting [minutes] for its next try: woken then even if Android closes the app meanwhile — or as soon as the network is back. */
+    private fun wakeIn(minutes: Int) = BackgroundResume.soon(app, if (offline()) 0L else minutes.toLong())
+
+    /**
+     * Android's daily limit on background downloading (six hours, Android 15) reached: the service goes, the
+     * downloads go on while the process lives, and the background job takes over in bursts after that.
+     */
+    fun onServiceTimeout() = BackgroundResume.soon(app, 1)
 
     /** Another episode out of a torrent already downloading widens it rather than starting it twice. */
     fun add(job: DownloadJob) {
@@ -545,6 +600,7 @@ object Downloads {
                 errors[job.uri] = (if (dead && job.imdb != null) "No fresh link found — " else "") + (e.message ?: "Couldn't save that link") +
                     " · what's saved is kept, trying again in $wait min"
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
+                wakeIn(wait)
                 scope.launch {
                     kotlinx.coroutines.delay(wait * 60_000L)
                     // Unless it was cancelled, paused or retried by hand meanwhile.
@@ -606,6 +662,7 @@ object Downloads {
                 update(uri) {
                     it.copy(state = DlState.FAILED, speed = 0, error = "No other ${job.quality ?: "working"} source right now · what's saved is kept, trying again in $wait min")
                 }
+                wakeIn(wait)
                 scope.launch {
                     kotlinx.coroutines.delay(wait * 60_000L)
                     if (_live.value.any { it.job.uri == uri && it.state == DlState.FAILED }) retry(uri)
@@ -1011,6 +1068,7 @@ class DownloadService : Service() {
 
     /** Android 15 caps a data-sync service at six hours a day, and kills an app still in the foreground after this. */
     override fun onTimeout(startId: Int, fgsType: Int) {
+        Downloads.onServiceTimeout()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }

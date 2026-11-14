@@ -111,6 +111,9 @@ dependencies {
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     // Only for the AppCompat theme that chooser dialog insists on.
     implementation("androidx.appcompat:appcompat:1.7.1")
+    // Downloads carry on with the app closed: Android's job scheduler wakes it to resume them (after a reboot,
+    // when the network returns, after the six-hour background limit).
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     // CloudStream plugins' settings screens are Material bottom sheets (StreamPlay, ShowBox…), as in CloudStream.
     implementation("com.google.android.material:material:1.12.0")
 
