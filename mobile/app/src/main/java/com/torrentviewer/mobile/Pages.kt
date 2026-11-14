@@ -980,7 +980,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         if (page == "Preferred download") Panel {
         Text(
             "The download buttons on films and episodes pick one release for you: your resolution, or the next one up when it isn't there, a single " +
-                "file before a streaming playlist (HLS), then your codec, format, subtitles and source, then the lightest. " +
+                "file before a streaming playlist (HLS), a torrent with 20+ seeds before a thinner one, then your codec, format, subtitles and source, then the lightest. " +
                 "Season downloads pick the same way for each episode. Nothing under 25 MB (trailers, samples) is ever picked.",
             Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
         )

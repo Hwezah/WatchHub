@@ -77,4 +77,14 @@ class PreferredPickTest {
         // The season sheet's chips: the link within the filter wins too.
         assertEquals(light, batchPick(listOf(torrent, light), BatchFilter(quality = "720p"), preferDirect = true))
     }
+
+    /** S01E01: an x265 torrent with 8 seeds loses to an x264 one with 41 — the quick download first. */
+    @Test fun wellSeededFirst() {
+        val thin = hit("E01.720p.x265.mkv", "720p", 400 * mb, seeders = 8)
+        val busy = hit("E01.720p.x264.mkv", "720p", 575 * mb, seeders = 41)
+        assertEquals(busy, preferredPick(listOf(thin, busy), defaults))
+        assertEquals(busy, batchPick(listOf(thin, busy), BatchFilter(quality = "720p")))
+        // Both thin: codec and size decide as before.
+        assertEquals(thin, preferredPick(listOf(thin, busy.copy(seeders = 9)), defaults))
+    }
 }

@@ -83,6 +83,12 @@ fun batchCandidates(hits: List<Hit>, quality: String): List<Hit> = batchCandidat
  * HLS playlist (which some download apps handle badly), then — when no codec was picked — HEVC, then
  * the smallest known size (an unknown size after every known one), then the bigger swarm.
  */
+/** Torrents with at least this many seeds normally download quickly: picks prefer them to thinner swarms. */
+const val GOOD_SEEDS = 20
+
+/** Quick to download: a direct link, or a torrent with [GOOD_SEEDS] or more. */
+fun quick(hit: Hit) = hit.direct || hit.seeders >= GOOD_SEEDS
+
 /** A direct link may be up to this many times the lightest torrent at its resolution and still be preferred. */
 const val HEAVY_RATIO = 1.5
 
@@ -107,6 +113,7 @@ fun batchPick(hits: List<Hit>, filter: BatchFilter, preferDirect: Boolean = fals
     list.sortedWith(
     compareByDescending<Hit> { alive(it) }
         .thenByDescending { it in links }
+        .thenByDescending { quick(it) }
         .thenByDescending { !(it.direct && isPlaylist(it)) }
         .thenByDescending { filter.codec == null && isHevc(it) }
         .thenBy { if (it.size > 0) 0 else 1 }
@@ -160,7 +167,7 @@ fun resolutionDistance(quality: String?, wanted: String): Int {
 /**
  * One-tap Download: never fails to pick while anything can be saved. Ranked, in order: the preferred
  * resolution, else the next one up; can download at all; a direct link not much heavier than the torrents (when
- * [DownloadPrefs.direct]); a single file before an HLS playlist; codec, format, subtitles and
+ * [DownloadPrefs.direct]); a torrent with 20+ seeds before a thinner one; a single file before an HLS playlist; codec, format, subtitles and
  * source as preferred; the lightest known size (unknown after every known one); the bigger swarm.
  */
 fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
@@ -173,6 +180,7 @@ fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
         compareBy<Hit> { resolutionDistance(it.quality, prefs.quality) }
             .thenByDescending { alive(it) }
             .thenByDescending { it in links }
+            .thenByDescending { quick(it) }
             .thenByDescending { !(it.direct && isPlaylist(it)) }
             .thenByDescending { prefs.codec.isNotEmpty() && t(it).codec == prefs.codec }
             .thenByDescending { prefs.format.isNotEmpty() && t(it).format == prefs.format }
