@@ -416,7 +416,9 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                     onOpen(t)
                 }, sub = subOf(t))
             }
-            heading?.let { h -> item(span = { GridItemSpan(maxLineSpan) }) { Text(h, Modifier.padding(top = 16.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) } }
+            // "Nothing found" says nothing while the AI is still answering, or once it has found something.
+            val quiet = !torrents && titles.isNullOrEmpty() && (aiBusy || !aiTitles.isNullOrEmpty())
+            if (!quiet) heading?.let { h -> item(span = { GridItemSpan(maxLineSpan) }) { Text(h, Modifier.padding(top = 16.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) } }
         }
         if (torrents) {
             if (hiddenFew > 0) item(span = { GridItemSpan(maxLineSpan) }) {
