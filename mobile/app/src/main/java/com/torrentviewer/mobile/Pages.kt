@@ -729,7 +729,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val update by Updates.release.collectAsState()
     val appContext = LocalContext.current
-    BackHandler(page != null) { page = null }
+    BackHandler(page != null && LocalShown.current) { page = null }
     // The list keeps its own place, for coming back to; a page always opens at its top.
     val listScroll = rememberScrollState()
     val pageScroll = rememberScrollState()

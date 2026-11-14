@@ -10,6 +10,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.annotation.DrawableRes
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -352,38 +357,45 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
 
     val openTitle: (Title) -> Unit = { pages.add(Page.Detail(it)) }
     val openOrder: (com.torrentviewer.core.WatchOrder) -> Unit = { pages.add(Page.WatchOrder(it)) }
+    // Every tab visited stays composed underneath — hidden, not thrown away — and pages open over them, so going
+    // back (or to another tab and back) finds it as it was left: its rows loaded, its scroll, what was typed.
+    val visited = remember { mutableStateListOf(tab) }
+    if (tab !in visited) visited.add(tab)
     val body: @Composable () -> Unit = {
         val top = pages.lastOrNull()
-        if (top != null) {
-            holder.SaveableStateProvider(keyOf(pages.lastIndex, top)) {
-                when (top) {
-                    is Page.Detail -> DetailScreen(top.title, watch, onOrder = openOrder, onOpen = openTitle, onPerson = { pages.add(Page.Person(it.id, it.name)) }, onBack = ::pop)
-                    is Page.Person -> PersonScreen(top.id, top.name, onOpen = openTitle, onBack = ::pop)
-                    is Page.Top -> TopScreen(top.kind, onOpen = openTitle, onBack = ::pop)
-                    is Page.Catalog -> CatalogScreen(top.shelf, onOpen = openTitle, onBack = ::pop)
-                    Page.Downloads -> DownloadsScreen(watch, onBack = ::pop)
-                    Page.WatchOrders -> WatchOrdersScreen(onOpen = openOrder, onBack = ::pop)
-                    is Page.WatchOrder -> WatchOrderScreen(top.order, onOpen = openTitle, onBack = ::pop)
+        Box(Modifier.fillMaxSize()) {
+            visited.forEach { t ->
+                key(t) {
+                    val shown = t == tab && top == null
+                    val alpha by androidx.compose.animation.core.animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 220 else 120), label = "tab")
+                    Box(
+                        Modifier.fillMaxSize().zIndex(if (shown) 1f else 0f).graphicsLayer { this.alpha = alpha }
+                            .then(if (shown) Modifier else Modifier.blockTouches()),
+                    ) {
+                        CompositionLocalProvider(LocalShown provides shown) {
+                            holder.SaveableStateProvider(t.name) {
+                                when (t) {
+                                    Tab.HOME -> HomeScreen(home, watch, me, onOpen = openTitle, onShelf = { pages.add(Page.Catalog(it)) }, onTop = { pages.add(Page.Top(it)) }, onOrders = { pages.add(Page.WatchOrders) }, onOrder = openOrder, onProfile = { switching = true })
+                                    Tab.SEARCH -> SearchScreen(watch, onOpen = openTitle)
+                                    Tab.ADDONS -> AddonsScreen(watch)
+                                    Tab.LIBRARY -> LibraryScreen(watch, me, onOpen = openTitle, onDownloads = { pages.add(Page.Downloads) })
+                                    Tab.SETTINGS -> SettingsScreen(watch, me, onSwitchProfile = { switching = true })
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            // Tabs slide in from the side they sit on: Settings from the right of Home, Home from the left of it.
-            AnimatedContent(
-                tab,
-                transitionSpec = {
-                    val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                    (slideInHorizontally(tween(280)) { it * dir } + fadeIn(tween(280))) togetherWith
-                        (slideOutHorizontally(tween(280)) { -it * dir / 3 } + fadeOut(tween(200)))
-                },
-                label = "tabs",
-            ) { t ->
-                holder.SaveableStateProvider(t.name) {
-                    when (t) {
-                        Tab.HOME -> HomeScreen(home, watch, me, onOpen = openTitle, onShelf = { pages.add(Page.Catalog(it)) }, onTop = { pages.add(Page.Top(it)) }, onOrders = { pages.add(Page.WatchOrders) }, onOrder = openOrder, onProfile = { switching = true })
-                        Tab.SEARCH -> SearchScreen(watch, onOpen = openTitle)
-                        Tab.ADDONS -> AddonsScreen(watch)
-                        Tab.LIBRARY -> LibraryScreen(watch, me, onOpen = openTitle, onDownloads = { pages.add(Page.Downloads) })
-                        Tab.SETTINGS -> SettingsScreen(watch, me, onSwitchProfile = { switching = true })
+            if (top != null) Box(Modifier.fillMaxSize().zIndex(2f).background(Ink.bg)) {
+                holder.SaveableStateProvider(keyOf(pages.lastIndex, top)) {
+                    when (top) {
+                        is Page.Detail -> DetailScreen(top.title, watch, onOrder = openOrder, onOpen = openTitle, onPerson = { pages.add(Page.Person(it.id, it.name)) }, onBack = ::pop)
+                        is Page.Person -> PersonScreen(top.id, top.name, onOpen = openTitle, onBack = ::pop)
+                        is Page.Top -> TopScreen(top.kind, onOpen = openTitle, onBack = ::pop)
+                        is Page.Catalog -> CatalogScreen(top.shelf, onOpen = openTitle, onBack = ::pop)
+                        Page.Downloads -> DownloadsScreen(watch, onBack = ::pop)
+                        Page.WatchOrders -> WatchOrdersScreen(onOpen = openOrder, onBack = ::pop)
+                        is Page.WatchOrder -> WatchOrderScreen(top.order, onOpen = openTitle, onBack = ::pop)
                     }
                 }
             }
@@ -642,5 +654,15 @@ private fun Toast(watch: Watch) {
                 Text(note.orEmpty(), style = Type.label)
             }
         }
+    }
+}
+
+/** Whether the screen reading it is the one in view: a hidden tab's Back handling stays out of the way. */
+val LocalShown = androidx.compose.runtime.compositionLocalOf { true }
+
+/** A hidden tab under the one in view: no tap or swipe reaches it. */
+private fun Modifier.blockTouches() = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.forEach { it.consume() }
     }
 }
