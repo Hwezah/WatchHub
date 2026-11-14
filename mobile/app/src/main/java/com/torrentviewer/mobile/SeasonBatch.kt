@@ -66,23 +66,23 @@ data class SeasonScan(
  */
 object SeasonBatch {
     /**
-     * Episodes asked about at once. Each fans out to every plugin's sites; three at a time made those sites slow down or
-     * refuse, and episodes came back with far fewer links than the same episode opened on its own.
+     * Episodes asked about at once. Each fans out to every plugin's sites: three at a time made those sites slow down or
+     * refuse; one at a time took too long. Two is the balance.
      */
-    private const val AT_ONCE = 1
+    private const val AT_ONCE = 2
 
     private val _scan = MutableStateFlow<SeasonScan?>(null)
     val scan: StateFlow<SeasonScan?> = _scan
     private var job: Job? = null
 
     /** How long one episode may be asked about: past this, what has come in is what it gets. */
-    private const val EPISODE_MS = 120_000L
+    private const val EPISODE_MS = 60_000L
 
     /**
      * However good the first answers look, an episode's search runs at least this long: the fast sources (Torrentio)
      * answer in seconds, the plugins with the smaller files later, and a pick made before they're in isn't the smallest.
      */
-    private const val EPISODE_MIN_MS = 45_000L
+    private const val EPISODE_MIN_MS = 25_000L
 
     /**
      * An episode's sources, as the title page finds them — but not waited on to the end ([gather]). Waiting on

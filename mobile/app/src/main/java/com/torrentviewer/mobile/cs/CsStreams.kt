@@ -50,10 +50,10 @@ object CsStreams {
 
     /**
      * Search, load and loadLinks together, per provider, unless the plugin says it needs longer. Aggregators
-     * like StreamPlay ask dozens of sites in turn and keep finding links for a minute or two (CloudStream waits
-     * for all of them); links show as they come, so a long wait costs nothing.
+     * like StreamPlay ask dozens of sites; nearly all their links are in within the first minute, and what a hung site
+     * might add after that wasn't worth the spinner turning on (2.5 minutes was too long a wait).
      */
-    private const val PROVIDER_MS = 150_000L
+    private const val PROVIDER_MS = 60_000L
 
     /** The sources list hears of new links at most this often. */
     private const val TELL_MS = 350L

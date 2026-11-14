@@ -1014,10 +1014,10 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
 
 
 /** One-tap Download waits this long at most for every source to answer, then takes the best of what has. */
-private const val QUICK_PICK_MS = 60_000L
+private const val QUICK_PICK_MS = 40_000L
 
 /** One-tap Download waits at least this long, so the plugins' (often smaller) files are in before it picks. */
-private const val QUICK_MIN_MS = 30_000L
+private const val QUICK_MIN_MS = 15_000L
 
 /** The sources' reload pill: the plain (never chosen) pill look and one arrow, turning while links are still arriving. */
 @Composable
