@@ -271,7 +271,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                 Field(
                     query,
                     { query = it },
-                    if (torrents) "A film, or a link to play" else "Movies, shows, anime",
+                    if (torrents) "A film, a show (+ s01e03), or a link" else "Movies, shows, anime",
                     Modifier.fillMaxWidth(),
                     leading = L.drawable.lucide_ic_search,
                     onSubmit = { recents = Searches.remember(query) },

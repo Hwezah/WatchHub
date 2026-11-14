@@ -27,4 +27,12 @@ class QualityTest {
             oneLineName("[PenguPlay] Dope Thief S01E01\n🎞️ 720p • HLS\n📡 Source: Cinejoy\n💾 2.02 GB"))
         assertEquals(0L, sizeInName("Vidy [Miami]"))
     }
+
+    @Test fun episodeInTypedSearch() {
+        assertEquals(Triple("dope thief", 1, 3), episodeAsked("dope thief s01e03"))
+        assertEquals(Triple("Dope Thief", 2, 10), episodeAsked("Dope Thief 2x10"))
+        assertEquals(Triple("The Office", 3, 1), episodeAsked("The Office S3E1 720p".replace(" 720p", "")))
+        assertEquals(null, episodeAsked("dope thief"))
+        assertEquals(null, episodeAsked("1917"))
+    }
 }

@@ -445,8 +445,24 @@ private suspend fun fromAddons(type: String, id: String, lang: Lang?, onHits: On
  */
 suspend fun searchStreams(title: String, imdb: String? = null, year: String? = null, lang: Lang? = null, type: String = "movie", onHits: OnHits? = null): List<Hit> {
     linkHit(title)?.let { return listOf(it).also { one -> onHits?.invoke(one) } }
-    val id = imdb ?: Meta.resolve(listOfNotNull(title, year).joinToString(" "))?.takeIf { !it.isSeries }?.imdb ?: return emptyList()
-    return fromAddons(type, id, lang, onHits) { rank(it, title) }
+    if (imdb != null) return fromAddons(type, imdb, lang, onHits) { rank(it, title) }
+    // Typed text: a film, or a series' episode (addons list a series' streams per episode) — S01E01 unless one is named.
+    val (name, season, episode) = episodeAsked(title) ?: Triple(title, 1, 1)
+    val found = Meta.resolve(listOfNotNull(name, year).joinToString(" ")) ?: return emptyList()
+    return if (found.isSeries) fromAddons(found.type, "${found.imdb}:$season:$episode", lang, onHits) { rankEpisode(it, found.title, season) }
+    else fromAddons("movie", found.imdb, lang, onHits) { rank(it, name) }
+}
+
+private val EPISODE_ASKED = Regex("""\s*\b(?:s(\d{1,2})\s*e(\d{1,4})|(\d{1,2})x(\d{1,4}))\b\s*""", RegexOption.IGNORE_CASE)
+
+/** "dope thief s01e03" (or "1x03") → the name, season 1, episode 3; null when no episode is named. */
+fun episodeAsked(query: String): Triple<String, Int, Int>? {
+    val m = EPISODE_ASKED.find(query) ?: return null
+    val g = m.groupValues
+    val season = (g[1].ifEmpty { g[3] }).toIntOrNull() ?: return null
+    val episode = (g[2].ifEmpty { g[4] }).toIntOrNull() ?: return null
+    val name = query.removeRange(m.range).replace(Regex("\\s+"), " ").trim()
+    return if (name.length < 2) null else Triple(name, season, episode)
 }
 
 private val episodeMemo = java.util.concurrent.ConcurrentHashMap<String, List<Hit>>()
