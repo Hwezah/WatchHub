@@ -446,17 +446,24 @@ private suspend fun fromAddons(type: String, id: String, lang: Lang?, onHits: On
 suspend fun searchStreams(title: String, imdb: String? = null, year: String? = null, lang: Lang? = null, type: String = "movie", onHits: OnHits? = null): List<Hit> {
     linkHit(title)?.let { return listOf(it).also { one -> onHits?.invoke(one) } }
     if (imdb != null) return fromAddons(type, imdb, lang, onHits) { rank(it, title) }
-    // Typed text: a film, or a series' episode (addons list a series' streams per episode) — S01E01 unless one is named.
-    val asked = episodeAsked(title)
-    val name = asked?.first ?: title
-    val (season, episode) = asked?.let { it.second to it.third } ?: (1 to 1)
-    // The same forgiving search the Titles view uses (typos, "the", numbers, a year); a named episode wants a series.
+    val (found, episode) = typedTarget(title, year) ?: return emptyList()
+    return if (episode != null) fromAddons(found.type, "${found.imdb}:${episode.first}:${episode.second}", lang, onHits) { rankEpisode(it, found.title, episode.first) }
+    else fromAddons("movie", found.imdb, lang, onHits) { rank(it, episodeAsked(title)?.first ?: title) }
+}
+
+/**
+ * What typed text names, for a streams search: the title — found by the same forgiving search the Titles view uses
+ * (typos, "the", numbers, a year), a series when an episode is named — and for a series its episode (season to
+ * number): the one named, else S01E01, since addons and plugins list a series' streams per episode.
+ */
+suspend fun typedTarget(text: String, year: String? = null): Pair<Title, Pair<Int, Int>?>? {
+    val asked = episodeAsked(text)
+    val name = asked?.first ?: text
     val ranked = Meta.searchEverywhere(listOfNotNull(name, year).joinToString(" "), withAddons = false)
     val found = (if (asked != null) ranked.firstOrNull { it.isSeries } else ranked.firstOrNull())
         ?: Meta.resolve(listOfNotNull(name, year).joinToString(" "))
-        ?: return emptyList()
-    return if (found.isSeries) fromAddons(found.type, "${found.imdb}:$season:$episode", lang, onHits) { rankEpisode(it, found.title, season) }
-    else fromAddons("movie", found.imdb, lang, onHits) { rank(it, name) }
+        ?: return null
+    return found to if (found.isSeries) (asked?.let { it.second to it.third } ?: (1 to 1)) else null
 }
 
 /*

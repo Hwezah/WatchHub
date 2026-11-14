@@ -247,7 +247,26 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
         busy = true
         // A kids profile has no torrent search (a release name can't be vetted) and sees family titles only.
         if (torrents && !Kids.on) {
-            hits = searchStreams(q) { hits = it }
+            // As a title page asks: the CloudStream plugins and the addons together (the addons alone found far fewer).
+            val link = com.torrentviewer.core.linkHit(q)
+            hits = if (link != null) listOf(link) else com.torrentviewer.core.typedTarget(q)?.let { (found, episode) ->
+                // A series' episode needs the show's episode list, as the plugins look the episode up in it.
+                val title = if (episode != null) Meta.title(found.imdb, found.kind) ?: found else found
+                val ep = episode?.let { (s, e) -> title.episodes.find { it.season == s && it.episode == e } }
+                val addons: suspend (com.torrentviewer.core.OnHits) -> List<Hit> = { fromAddons ->
+                    if (episode != null) com.torrentviewer.core.searchEpisode(title, episode.first, episode.second, fromAddons)
+                    else searchStreams(title.title, title.imdb, title.year?.take(4), type = title.type, onHits = fromAddons)
+                }
+                try {
+                    // An episode the show's list doesn't have (yet): the addons alone, rather than the plugins searching films.
+                    if (episode != null && ep == null) addons { hits = it }
+                    else com.torrentviewer.mobile.cs.CsStreams.withPlugins(title, ep, { hits = it }, addons)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    hits.orEmpty()
+                }
+            }.orEmpty()
         } else {
             // Forgiving: spelling, "the", numbers, a year after the name; a second round with parts of it when nothing
             // close came back. Results show as soon as the first round is in.
