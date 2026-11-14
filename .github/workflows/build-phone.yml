@@ -39,6 +39,7 @@ jobs:
 
       # Optional keys, from the repository's secrets: TMDB (suggestions, cast, ratings, trailers) and SubDL
       # (online subtitles). Without them those features are simply left out, as before.
+      # TMDB_KEY may be either the short API key or the long "Read Access Token": the app takes both.
       - name: Keys from secrets
         working-directory: mobile
         env:
