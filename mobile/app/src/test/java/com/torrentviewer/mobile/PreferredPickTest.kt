@@ -102,4 +102,16 @@ class PreferredPickTest {
         assertEquals(false, goodEnough(listOf(torrent.copy(seeders = 3)), defaults))
         assertEquals(false, goodEnough(listOf(hit("E01.1080p.x265.mkv", "1080p", 900 * mb, seeders = 41)), defaults))
     }
+
+    /** Torrents under 10 seeds are never picked when they're hidden from the lists — unless TorBox has them cached. */
+    @Test fun thinTorrentsSkipped() {
+        val thin = hit("E01.720p.x265.mkv", "720p", 400 * mb, seeders = 3)
+        val prefs = defaults.copy(skipFewSeeds = true)
+        assertNull(preferredPick(listOf(thin), prefs))
+        assertEquals(thin, preferredPick(listOf(thin), defaults))
+        assertEquals(thin, preferredPick(listOf(thin), prefs.copy(cached = setOf(thin.id.lowercase()))))
+        val link = link("Plugin 720p", "720p", 500 * mb, "https://cdn.x/e01.mp4")
+        assertEquals(link, preferredPick(listOf(thin, link), prefs))
+        assertNull(batchPick(listOf(thin), BatchFilter(quality = "720p"), prefs = prefs))
+    }
 }

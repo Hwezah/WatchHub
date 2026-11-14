@@ -42,7 +42,7 @@ object LinkRefresh {
         val number = job.epNumber
         val ep = if (season != null && number != null) title.episodes.find { it.season == season && it.episode == number } ?: return null else null
         val st = com.torrentviewer.core.SettingsStore.value.value
-        val prefs = DownloadPrefs(st.dlQuality, st.dlCodec, st.dlFormat, st.dlSubs, st.dlSource, st.dlDirect)
+        val prefs = downloadPrefs()
         // [allowSame]: renewing a link that hasn't failed, so the same address (when it doesn't expire) is fine.
         val old = if (allowSame) "" else job.uri
         val quality = job.quality ?: prefs.quality.ifEmpty { null }

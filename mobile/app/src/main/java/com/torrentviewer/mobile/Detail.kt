@@ -278,7 +278,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
      * is in ([SeasonBatch.gather]), or after [QUICK_PICK_MS] with what has come.
      */
     fun quickDownload(ep: Episode?, external: Boolean = false) {
-        val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource, it.dlDirect) }
+        val prefs = downloadPrefs()
         val what = ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title
         val loaded = hits?.takeIf { !busy && episode?.id == ep?.id }
         if (loaded == null) watch.notes.tryEmit("Finding the best ${prefs.quality.ifEmpty { "source" }} for $what…")

@@ -122,7 +122,7 @@ fun preferableLinks(hits: List<Hit>): Set<Hit> {
     }.toSet()
 }
 
-fun batchPick(hits: List<Hit>, filter: BatchFilter, preferDirect: Boolean = false): Hit? = batchCandidates(hits, filter).let { list ->
+fun batchPick(hits: List<Hit>, filter: BatchFilter, preferDirect: Boolean = false, prefs: DownloadPrefs = DownloadPrefs()): Hit? = batchCandidates(prefs.usable(hits), filter).let { list ->
     val links = if (preferDirect) preferableLinks(list) else emptySet()
     list.sortedWith(
     compareByDescending<Hit> { alive(it) }
@@ -162,7 +162,14 @@ data class DownloadPrefs(
     val quality: String = "720p", val codec: String = "x265", val format: String = "MKV", val subs: Boolean = false, val source: String = "",
     /** Direct links before torrents, unless much heavier ([preferableLinks]). */
     val direct: Boolean = false,
+    /** Torrents under [MIN_SEEDS] never picked ([fewSeeds]), as the lists hide them — except those [cached] on TorBox. */
+    val skipFewSeeds: Boolean = false,
+    /** TorBox's cached torrents (lower-case ids): they download from TorBox's servers, whatever the swarm. */
+    val cached: Set<String> = emptySet(),
 ) {
+    /** What a pick may take at all: [hits] without the thin torrents when those are skipped. */
+    fun usable(hits: List<Hit>): List<Hit> = if (skipFewSeeds) hits.filterNot { fewSeeds(it, cached) } else hits
+
     /** As a batch filter, for the batch sheet to open with — every preference a hard choice there. */
     fun asFilter() = BatchFilter(quality.ifEmpty { null }, codec.ifEmpty { null }, format.ifEmpty { null }, subs, source.ifEmpty { null })
 }
@@ -185,7 +192,7 @@ fun resolutionDistance(quality: String?, wanted: String): Int {
  * source as preferred; the lightest known size (unknown after every known one); the bigger swarm.
  */
 fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
-    val candidates = hits.filter(::batchable)
+    val candidates = prefs.usable(hits).filter(::batchable)
     if (candidates.isEmpty()) return null
     val traits = candidates.associateWith(::traitsOf)
     fun t(h: Hit) = traits.getValue(h)
@@ -258,4 +265,13 @@ fun allowed(hit: Hit, leaveOut: Collection<String>) = leaveOut.isEmpty() || leav
 fun allowedHits(hits: List<Hit>): List<Hit> {
     val out = com.torrentviewer.core.SettingsStore.value.value.leaveOut
     return if (out.isEmpty()) hits else hits.filter { allowed(it, out) }
+}
+
+/** The viewer's download preferences from Settings, with TorBox's cached torrents: what every pick goes by. */
+fun downloadPrefs(): DownloadPrefs = com.torrentviewer.core.SettingsStore.value.value.let {
+    DownloadPrefs(
+        it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource, it.dlDirect,
+        skipFewSeeds = it.hideFewSeeds,
+        cached = com.torrentviewer.core.TorBox.cached.value.mapTo(HashSet()) { c -> c.lowercase() },
+    )
 }

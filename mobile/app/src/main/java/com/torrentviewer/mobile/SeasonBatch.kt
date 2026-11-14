@@ -88,7 +88,7 @@ object SeasonBatch {
      * a time limit here mean nothing.
      */
     suspend fun gather(limitMs: Long, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
-        val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource, it.dlDirect) }
+        val prefs = downloadPrefs()
         val latest = java.util.concurrent.atomic.AtomicReference<List<Hit>>(emptyList())
         val enough = kotlinx.coroutines.CompletableDeferred<Unit>()
         val job = AppScope.async(kotlinx.coroutines.Dispatchers.Default) {
@@ -152,7 +152,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     // No filter chosen: each episode gets what Settings → Preferred download would pick for it — the preferred
     // resolution, else the next one up, then codec, format… as preferences, so every episode with anything gets
     // something. A chip tapped below is a hard choice instead: only releases with it.
-    val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource, it.dlDirect) }
+    val prefs = downloadPrefs()
     var showPlan by remember { mutableStateOf(false) }
     /** Fresh links being fetched before they go to another app. */
     var sending by remember { mutableStateOf(false) }
@@ -167,7 +167,8 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 }
                 return@Column
             }
-            val all = scan.found.values.flatten()
+            // What a pick may take: the chips count only that, thin torrents left out as in the lists.
+            val all = prefs.usable(scan.found.values.flatten())
             if (!scan.done) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spinner(size = 20.dp)
                 Text("   Checking episodes · ${scan.checked} of ${scan.episodes.size}", style = Type.meta.copy(color = Ink.muted))
@@ -200,7 +201,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 scan.episodes.mapNotNull { ep ->
                     scan.found[ep.id]?.let { hits ->
                         val from = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
-                        ep to if (filter == BatchFilter()) preferredPick(from, prefs) else batchPick(from, filter, prefs.direct)
+                        ep to if (filter == BatchFilter()) preferredPick(from, prefs) else batchPick(from, filter, prefs.direct, prefs)
                     }
                 }
             }
