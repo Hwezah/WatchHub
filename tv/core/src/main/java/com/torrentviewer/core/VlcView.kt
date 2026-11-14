@@ -56,6 +56,8 @@ abstract class Video(context: Context) : FrameLayout(context) {
     open var subtitleStyle: SubtitleStyle? = null
     /** What a link's server wants with each request (an addon's `proxyHeaders`). Set before [open]. */
     var headers: Map<String, String> = emptyMap()
+    /** The stream's type when its link doesn't say (an HLS playlist with no .m3u8): a MIME type, or null to guess. Set before [open]. */
+    var mime: String? = null
 
     abstract fun open(url: String, startAt: Long, cacheMs: Int, subtitles: List<String>)
     abstract fun reload(ms: Long)

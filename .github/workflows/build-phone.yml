@@ -1,0 +1,98 @@
+name: Build phone APK
+
+# Builds the phone app on every push to a working branch and publishes the APKs on the
+# "phone-latest" pre-release, so a phone can download and install them straight from GitHub.
+
+on:
+  push:
+    branches: ["ccr-*", "main", "master"]
+    paths:
+      - "mobile/**"
+      - "tv/core/**"
+      - ".github/workflows/build-phone.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-phone-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Accept Android SDK licences
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+
+      # Optional keys, from the repository's secrets: TMDB (suggestions, cast, ratings, trailers) and SubDL
+      # (online subtitles). Without them those features are simply left out, as before.
+      # TMDB_KEY may be either the short API key or the long "Read Access Token": the app takes both.
+      - name: Keys from secrets
+        working-directory: mobile
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+          SUBDL_KEY: ${{ secrets.SUBDL_KEY }}
+        run: |
+          : > .env
+          [ -n "$TMDB_KEY" ] && echo "TMDB_KEY=$TMDB_KEY" >> .env
+          [ -n "$SUBDL_KEY" ] && echo "SUBDL_KEY=$SUBDL_KEY" >> .env
+          echo "keys set: $(cut -d= -f1 .env | tr '\n' ' ')"
+
+      - name: Unit tests
+        working-directory: mobile
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Build debug APKs
+        working-directory: mobile
+        run: ./gradlew --no-daemon -PuniversalApk assembleDebug
+
+      - name: Name the APKs
+        shell: bash
+        run: |
+          mkdir -p out
+          short=$(git rev-parse --short HEAD)
+          for apk in mobile/app/build/outputs/apk/debug/app-*-debug.apk; do
+            abi=$(basename "$apk" -debug.apk); abi=${abi#app-}
+            # No build code in the name: the same link always downloads the newest build.
+            cp "$apk" "out/WatchHub-phone-$abi.apk"
+          done
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-apks
+          path: out/*.apk
+          if-no-files-found: error
+
+      - name: Publish to the phone-latest pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          # "versionCode N" is what the installed app reads to know a newer build is out (100 + the run number, as build.gradle.kts sets it).
+          notes="Latest phone build from \`${GITHUB_REF_NAME}\` at ${GITHUB_SHA::7}, built $(date -u '+%Y-%m-%d %H:%M UTC'), versionCode $((100 + GITHUB_RUN_NUMBER)). Most phones: download the **arm64-v8a** APK. Not sure? Take **universal**."
+          if gh release view phone-latest > /dev/null 2>&1; then
+            # The tag moves to this build, so the release page shows the commit the APKs came from.
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/phone-latest" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            for name in $(gh release view phone-latest --json assets -q '.assets[].name'); do
+              gh release delete-asset phone-latest "$name" --yes
+            done
+            gh release upload phone-latest out/*.apk --clobber
+            gh release edit phone-latest --notes "$notes" --prerelease --target "$GITHUB_SHA"
+          else
+            gh release create phone-latest out/*.apk --prerelease --title "Phone — latest build" --notes "$notes" --target "$GITHUB_SHA"
+          fi

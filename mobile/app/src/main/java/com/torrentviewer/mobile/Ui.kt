@@ -2,6 +2,9 @@
 
 package com.torrentviewer.mobile
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.selection.toggleable
 import android.app.Activity
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -118,8 +121,16 @@ import com.composables.icons.lucide.R as L
 // The TV's look (Ink, Type, artwork, title marks — all from :core) on touch: what the
 // remote's focus ring did is a press that dips the control a little instead.
 
-/** Side margin of every page. */
-val EDGE = 16.dp
+/** Whether the phone is held upright, where margins and padding are tighter. Kept by [App] (and MainActivity at start). */
+object Room {
+    var tight by mutableStateOf(false)
+}
+
+/** Side margin of every page: 6 dp on an upright phone, where width is scarce; 10 dp otherwise. */
+val EDGE: Dp get() = if (Room.tight) 6.dp else 10.dp
+
+/** Padding inside cards, panels and dialogs: 12 dp on an upright phone, 16 dp otherwise. */
+val CARD: Dp get() = if (Room.tight) 12.dp else 16.dp
 
 /** Landscape, or a tablet held either way: the TV's side-by-side layouts fit. */
 @Composable
@@ -167,6 +178,10 @@ fun Button(
     tint: Color = Ink.text,
     /** Beside a line of text in a row, where the full height towers over it. */
     compact: Boolean = false,
+    /** A solid fill with white words instead of [primary]'s red glow: the download buttons' green ([Ink.download]). */
+    fill: Color? = null,
+    /** The words in the very middle, the icon beside them: as much space after them as the icon takes before. */
+    balanced: Boolean = false,
 ) {
     val filled = on == true
     val disc by animateFloatAsState(if (filled) 1f else 0f, if (filled) spring(dampingRatio = 0.55f, stiffness = 420f) else tween(180), label = "disc")
@@ -180,16 +195,17 @@ fun Button(
     Tap(onClick, modifier, RoundedCornerShape(8.dp)) { pressed ->
         val bg by animateColorAsState(
             when {
+                fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
                 primary -> if (pressed) Ink.accent.copy(alpha = 0.8f) else Ink.accent
                 // A tint of the text colour: grey on either page.
                 else -> tint.copy(alpha = if (pressed) 0.22f else 0.12f)
             },
             Motion.effects(), label = "bg",
         )
-        val fg = if (primary) Color.White else tint
+        val fg = if (primary || fill != null) Color.White else tint
         Row(
             // The primary one — Play, Watch — a grainy red glow, a shade deeper while pressed; the rest a flat tint.
-            (if (primary) Modifier.glow(accentGlow(), 0.85f, 1.1f).background(Color.Black.copy(alpha = if (pressed) 0.18f else 0f)) else Modifier.background(bg))
+            (if (primary && fill == null) Modifier.glow(accentGlow(), 0.85f, 1.1f).background(Color.Black.copy(alpha = if (pressed) 0.18f else 0f)) else Modifier.background(bg))
                 .height(if (compact) 34.dp else 46.dp).padding(horizontal = if (compact) 14.dp else 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
@@ -211,6 +227,7 @@ fun Button(
                 Spacer(Modifier.width(8.dp))
             }
             Text(label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (balanced && icon != null) Spacer(Modifier.width(32.dp))
         }
     }
 }
@@ -225,12 +242,17 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
             else -> Ink.text.copy(alpha = 0.08f)
         }
         val fg = if (on) Color.White else Ink.muted
-        Row(Modifier.background(bg).height(if (compact) 32.dp else 36.dp).padding(horizontal = if (compact) 11.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.background(bg).height(if (compact) 32.dp else 36.dp).padding(horizontal = if (compact) 11.dp else 16.dp),
+            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+        ) {
             if (icon != null) {
                 Lc(icon, tint = fg, size = 16.dp)
                 Spacer(Modifier.width(8.dp))
             }
-            Text(label, style = Type.label.copy(fontSize = if (compact) 13.sp else 14.sp, color = fg, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium), maxLines = 1)
+            Text(label, style = Type.label.copy(fontSize = if (compact) 13.sp else 14.sp, color = fg, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium),
+                maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             if (trailing != null) {
                 Spacer(Modifier.width(if (compact) 3.dp else 6.dp))
                 Lc(trailing, tint = trailingTint ?: fg, size = if (compact) 14.dp else 16.dp)
@@ -317,7 +339,7 @@ fun RoundIcon(@DrawableRes icon: Int, onClick: () -> Unit, modifier: Modifier = 
 /** Back, top-left under the status bar. */
 @Composable
 fun BoxScope.BackButton(onBack: () -> Unit) {
-    RoundIcon(L.drawable.lucide_ic_arrow_left, onBack, Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 8.dp, top = 6.dp))
+    RoundIcon(L.drawable.lucide_ic_arrow_left, onBack, Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 12.dp, top = 18.dp))
 }
 
 /** A text box; the ring shows where the keyboard is typing. */
@@ -363,8 +385,14 @@ fun Field(
     }
 }
 
-/** [image]: a picture to lead the row with — a site's logo — in place of the tick column. [tag]: a badge before the label, "4K". */
-data class Option<T>(val value: T, val label: String, val hint: String? = null, val image: String? = null, val tag: String? = null)
+/**
+ * [image]: a picture to lead the row with — a site's logo — in place of the tick column. [tag]: a badge before the label, "4K".
+ * [icon]: an icon there instead, in [iconTint] (the label's colour when null) — a trash can, a download arrow.
+ */
+data class Option<T>(
+    val value: T, val label: String, val hint: String? = null, val image: String? = null, val tag: String? = null,
+    @androidx.annotation.DrawableRes val icon: Int? = null, val iconTint: Color? = null,
+)
 
 /** A choice, up from the bottom edge over a dimmed page; a tap outside or Back closes it. */
 @Composable
@@ -391,6 +419,8 @@ fun <T> Sheet(
                         ) {
                             if (option.image != null) {
                                 coil3.compose.AsyncImage(option.image, option.label, Modifier.size(24.dp).clip(RoundedCornerShape(5.dp)))
+                            } else if (option.icon != null) {
+                                Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { Lc(option.icon, tint = option.iconTint ?: Ink.muted, size = 20.dp) }
                             } else {
                                 Box(Modifier.size(22.dp)) { if (on) Lc(L.drawable.lucide_ic_check, tint = Ink.accent, size = 20.dp) }
                             }
@@ -418,7 +448,7 @@ fun <T> Sheet(
 
 /** The frame every sheet shares: scrim, rounded top, a grab handle and a heading. */
 @Composable
-fun BottomSheet(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+fun BottomSheet(title: String, onDismiss: () -> Unit, trailing: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) {
     BackHandler(onBack = onDismiss)
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
@@ -477,7 +507,11 @@ fun BottomSheet(title: String, onDismiss: () -> Unit, content: @Composable () ->
                     ),
                 ) {
                     Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp).size(36.dp, 4.dp).clip(CircleShape).background(Ink.stroke))
-                    Text(title, Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 8.dp), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    // The title, and beside it at the far right whatever the sheet puts there (a Reload…).
+                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        trailing?.invoke()
+                    }
                 }
                 content()
             }
@@ -533,7 +567,7 @@ fun StatusIconsOverArt(overArt: Boolean, navigationToo: Boolean = false) {
     }
 }
 
-private val CARD = RoundedCornerShape(10.dp)
+private val POSTER_SHAPE = RoundedCornerShape(10.dp)
 
 /**
  * A poster with its name and a line of facts under it, as the streaming apps set them:
@@ -546,9 +580,9 @@ fun TitleCard(
     info: String? = null, badge: String? = null, progress: Float? = null, onLongClick: (() -> Unit)? = null, rating: String? = null,
 ) {
     Column(modifier) {
-        Tap(onClick, Modifier.fillMaxWidth().aspectRatio(2f / 3f), CARD, onLongClick) {
+        Tap(onClick, Modifier.fillMaxWidth().aspectRatio(2f / 3f), POSTER_SHAPE, onLongClick) {
             Artwork(art, name, Modifier.fillMaxSize())
-            Box(Modifier.matchParentSize().border(1.dp, Ink.stroke, CARD))
+            Box(Modifier.matchParentSize().border(1.dp, Ink.stroke, POSTER_SHAPE))
             rating?.takeIf { it.isNotBlank() }?.let { ImdbMark(it, Modifier.align(Alignment.BottomStart).padding(6.dp)) }
             badge?.let {
                 Text(
@@ -574,7 +608,7 @@ fun PosterCard(title: Title, onClick: () -> Unit, modifier: Modifier = Modifier,
 fun CardPlaceholder(modifier: Modifier = Modifier) {
     val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(0.45f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "alpha")
     Column(modifier.graphicsLayer { alpha = pulse }) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(Ink.surface, CARD))
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(Ink.surface, POSTER_SHAPE))
         Box(Modifier.padding(top = 9.dp).fillMaxWidth(0.8f).height(11.dp).background(Ink.surface, RoundedCornerShape(4.dp)))
         Box(Modifier.padding(top = 6.dp).fillMaxWidth(0.5f).height(9.dp).background(Ink.surface, RoundedCornerShape(4.dp)))
     }
@@ -601,8 +635,116 @@ fun LandscapeCard(art: String?, name: String, stamp: String? = null, progress: F
 /** A page heading under the status bar. */
 @Composable
 fun Heading(text: String, modifier: Modifier = Modifier, trailing: @Composable () -> Unit = {}) {
-    Row(modifier.statusBarsPadding().padding(top = 12.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Clear of the screen's top and sides, as Home's wordmark is: a little down and in.
+    Row(modifier.statusBarsPadding().padding(start = 10.dp, end = 10.dp, top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(text, Modifier.weight(1f), style = Type.display)
         trailing()
     }
+}
+
+/**
+ * Poster grids: always three across a phone held upright, however large its display size is set; turned
+ * sideways (or on a tablet), as many as fit at about 120 dp each, never fewer than four.
+ */
+val PosterGrid = object : androidx.compose.foundation.lazy.grid.GridCells {
+    override fun androidx.compose.ui.unit.Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val count = if (availableSize < 600.dp.roundToPx()) 3
+        else maxOf(4, (availableSize + spacing) / (120.dp.roundToPx() + spacing))
+        val cells = availableSize - spacing * (count - 1)
+        return List(count) { cells / count + if (it < cells % count) 1 else 0 }
+    }
+}
+
+/**
+ * An on/off setting: a flat pill with a round thumb and no outline — red with a dark thumb on the right
+ * when on, a quiet grey with a grey thumb on the left when off. A little smaller than Material's switch.
+ */
+@Composable
+fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val travel by androidx.compose.animation.core.animateDpAsState(if (checked) 18.dp else 0.dp, tween(160), label = "toggle")
+    val track by animateColorAsState(if (checked) Ink.accent else Ink.text.copy(alpha = 0.16f), tween(160), label = "track")
+    val thumb by animateColorAsState(if (checked) Color(0xFF141414) else Ink.muted, tween(160), label = "thumb")
+    Box(
+        modifier.size(width = 44.dp, height = 26.dp).clip(RoundedCornerShape(50)).background(track)
+            .toggleable(checked, remember { MutableInteractionSource() }, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange)
+            .padding(4.dp),
+    ) {
+        Box(Modifier.offset(x = travel).size(18.dp).clip(CircleShape).background(thumb))
+    }
+}
+
+/**
+ * Space-between with a floor: items spread across the row, first and last at its ends, until there are
+ * too many to fit — then [min] apart, and the row (scrolling, or lazy) runs past the screen.
+ */
+fun spreadOut(min: Dp = 8.dp): Arrangement.Horizontal = object : Arrangement.Horizontal {
+    override val spacing = min
+
+    override fun androidx.compose.ui.unit.Density.arrange(totalSize: Int, sizes: IntArray, layoutDirection: androidx.compose.ui.unit.LayoutDirection, outPositions: IntArray) {
+        val floor = spacing.roundToPx()
+        // Two (or one) aren't spread: they sit from the start, [spacing] apart. Three or more share the width.
+        val gap = if (sizes.size > 2) maxOf(floor, (totalSize - sizes.sum()) / (sizes.size - 1)) else floor
+        var x = 0
+        sizes.forEachIndexed { i, w ->
+            outPositions[i] = x
+            x += w + gap
+        }
+    }
+}
+
+/** The pill rows' arrangement: [spreadOut] with an 8 dp floor. */
+val SpreadOut: Arrangement.Horizontal = spreadOut()
+
+/** A phone held upright: where rows of buttons spread end to end and a lone one is centred. Not sideways, not a tablet. */
+@Composable
+fun isPortraitPhone(): Boolean {
+    val c = androidx.compose.ui.platform.LocalConfiguration.current
+    return c.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT && c.smallestScreenWidthDp < 600
+}
+
+/** [spreadOut] on an upright phone; elsewhere plain [min] gaps from the start. For lazy rows. */
+@Composable
+fun spreadArrangement(min: Dp = 8.dp): Arrangement.Horizontal = if (isPortraitPhone()) spreadOut(min) else Arrangement.spacedBy(min)
+
+/**
+ * A row of buttons or pills: on an upright phone spread end to end, gaps closing to [min] and then
+ * scrolling sideways; elsewhere [min] apart from the start, scrolling if they don't fit.
+ */
+@Composable
+fun SpreadRow(modifier: Modifier = Modifier, min: Dp = 8.dp, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    if (isPortraitPhone()) {
+        androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
+            val room = maxWidth
+            Row(
+                Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).widthIn(min = room),
+                horizontalArrangement = spreadOut(min), verticalAlignment = Alignment.CenterVertically, content = content,
+            )
+        }
+    } else {
+        Row(
+            modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(min), verticalAlignment = Alignment.CenterVertically, content = content,
+        )
+    }
+}
+
+/**
+ * A button on its own: on an upright phone centred and at least 70% of the screen wide (the button takes
+ * the modifier it's handed); elsewhere where it stands.
+ */
+@Composable
+fun Solo(modifier: Modifier = Modifier, button: @Composable (Modifier) -> Unit) {
+    if (isPortraitPhone()) {
+        val min = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp * 0.7f).dp
+        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { button(Modifier.widthIn(min = min)) }
+    } else {
+        Box(modifier) { button(Modifier) }
+    }
+}
+
+/** The reload mark: one circular arrow; while [busy] (links still coming in), the app's green spinner in its place. */
+@Composable
+fun ReloadArrow(busy: Boolean, tint: Color, size: Dp, modifier: Modifier = Modifier) {
+    if (busy) Spinner(modifier, size = size)
+    else Lc(com.composables.icons.lucide.R.drawable.lucide_ic_rotate_cw, modifier, tint = tint, size = size)
 }

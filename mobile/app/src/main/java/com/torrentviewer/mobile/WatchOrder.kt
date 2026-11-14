@@ -209,7 +209,7 @@ fun WatchOrdersScreen(onOpen: (WatchOrder) -> Unit, onBack: () -> Unit) {
     val ranked = remember(orders, settings.genres) { rankOrders(orders, settings.genres) }
     val shown = ranked.filter { it.matches(query) }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.statusBarsPadding().padding(horizontal = EDGE).padding(top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.statusBarsPadding().padding(horizontal = EDGE + 6.dp).padding(top = 18.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             RoundIcon(L.drawable.lucide_ic_arrow_left, onBack)
             Column(Modifier.padding(start = 12.dp)) {
                 Text("Watch orders", style = Type.title.copy(fontWeight = FontWeight.Bold))

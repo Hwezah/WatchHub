@@ -21,6 +21,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -188,6 +189,9 @@ const val DOWNLOADS_LINK = "watchly://downloads"
 
 @Composable
 fun App(watch: Watch, incoming: MutableState<Uri?>) {
+    // Tighter margins on an upright phone, followed as it turns.
+    val tight = isPortraitPhone()
+    androidx.compose.runtime.SideEffect { Room.tight = tight }
     val settings by SettingsStore.value.collectAsState()
     val dark = darkFor(settings.themeMode, isSystemInDarkTheme())
     val activity = LocalActivity.current as? ComponentActivity
@@ -265,6 +269,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     var sendAll by remember { mutableStateOf(false) }
     /** A stremio:// link that wants to add an addon, until the viewer says yes or no. */
     var pendingAddon by remember { mutableStateOf<String?>(null) }
+    /** A magnet or .torrent another app handed over: streamed or downloaded, as the viewer picks. */
+    var captured by remember { mutableStateOf<String?>(null) }
 
     // Another app handed us a torrent, or an addon page's Install button a stremio:// link,
     // or the TV's QR page its watchly:// link asking for the addons.
@@ -292,10 +298,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             return@LaunchedEffect
         }
         if (!isTorrentSource(raw)) return@LaunchedEffect
-        val path = runCatching { withContext(Dispatchers.IO) { watch.engine.importSource(raw) } }
-            .getOrElse { return@LaunchedEffect watch.fail(it.message ?: "Couldn't read that file.") }
-        val item = History.put(Item(path, titleOf(raw), System.currentTimeMillis()))
-        watch.resume(item)
+        // Asked first: stream it now, or keep it with the app's own torrent downloader.
+        captured = raw
     }
 
     // Before anything else, for everyone, whatever they already have here, and again whenever the
@@ -311,7 +315,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
 
     // After the terms: nothing is asked of GitHub until they are accepted.
     val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
-    LaunchedEffect(Unit) { com.torrentviewer.core.Updates.check(appContext, BuildConfig.VERSION_NAME, "Watchly-phone-", BuildConfig.DEBUG) }
+    // Every push builds a new phone APK: offered here as soon as it's out (see Updates.checkPhoneBuild).
+    LaunchedEffect(Unit) { com.torrentviewer.core.Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-") }
 
     // The tour, once, on a fresh install: anyone with a library or a profile already knows the app.
     var toured by remember { mutableStateOf(Kv.global(TOURED) != null || Profiles.list.value.isNotEmpty() || History.items.value.isNotEmpty()) }
@@ -395,6 +400,12 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 NavRail(tab, me, choose, onProfile = { switching = true })
                 Box(Modifier.weight(1f).fillMaxHeight()) { body() }
             }
+        } else if (SettingsStore.value.collectAsState().value.navStyle == "pill") {
+            // The pages run to the bottom edge; the pill floats over them.
+            Box(Modifier.fillMaxSize()) {
+                body()
+                PillBar(tab, choose, Modifier.align(Alignment.BottomCenter))
+            }
         } else {
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) { body() }
@@ -418,6 +429,33 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         }
 
         // An addon decides what the app is offered to play, so one from a link is added only on a yes.
+        captured?.let { raw ->
+            Sheet(
+                title = titleOf(raw).ifBlank { "This torrent" },
+                options = listOf(
+                    Option("stream", "Stream now", "Starts playing while it downloads"),
+                    Option("download", "Download", "Kept on this phone — see the Downloads tab"),
+                    Option("", "Cancel"),
+                ),
+                selected = null,
+                onPick = { pick ->
+                    captured = null
+                    AppScope.launch {
+                        val path = runCatching { withContext(Dispatchers.IO) { watch.engine.importSource(raw) } }
+                            .getOrElse { return@launch watch.fail(it.message ?: "Couldn't read that torrent.") }
+                        when (pick) {
+                            "stream" -> watch.resume(History.put(Item(path, titleOf(raw), System.currentTimeMillis())))
+                            "download" -> {
+                                Downloads.add(DownloadJob(uri = path, title = titleOf(raw), titleName = null, poster = null, imdb = null, kind = null, tags = emptyList()))
+                                watch.notes.tryEmit("Downloading ${titleOf(raw)} — see Downloads")
+                            }
+                        }
+                    }
+                },
+                onDismiss = { captured = null },
+            )
+        }
+
         pendingAddon?.let { link ->
             Sheet(
                 title = "Add this addon?",
@@ -494,6 +532,41 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
                         Text(t.label, Modifier.padding(top = 3.dp), style = Type.meta.copy(fontSize = 11.sp, color = if (on) Ink.text else Ink.faint, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium))
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The tabs as a floating pill: icons only, the chosen one in a lighter capsule of its own, on the page's
+ * translucent grained surface so what scrolls beneath still shows through.
+ */
+@Composable
+private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.navigationBarsPadding().padding(bottom = 12.dp)
+            // Solid and dark, so nothing shows through, but still glass: a faint lift at the top fading to the page's
+            // black, the grain over it, and a rim catching light along the top edge.
+            .clip(RoundedCornerShape(50))
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.55f), Ink.bg)))
+            .grain()
+            .border(
+                1.dp,
+                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Ink.text.copy(alpha = 0.16f), Ink.text.copy(alpha = 0.04f))),
+                RoundedCornerShape(50),
+            )
+            .padding(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        tabs().forEach { t ->
+            val on = t == tab
+            Tap({ onTab(t) }, shape = RoundedCornerShape(50)) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(if (on) Ink.text.copy(alpha = 0.16f) else Color.Transparent)
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Lc(t.icon, tint = if (on) Ink.text else Ink.muted, size = 24.dp) }
             }
         }
     }

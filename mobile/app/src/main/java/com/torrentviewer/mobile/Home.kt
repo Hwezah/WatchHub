@@ -178,10 +178,11 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         }
     }
     // What TMDB suggests for the titles this profile last played or saved: not for kids, whose rows are the family ones.
-    LaunchedEffect(history.size, saved.size, online, com.torrentviewer.core.Kids.on) {
+    LaunchedEffect(history.size, saved.size, online, com.torrentviewer.core.Kids.on, settings.builtInHome) {
         val played = history.sortedByDescending { it.at }.mapNotNull { h -> h.imdb?.let { it to (h.kind ?: "movie") } }
         val seeds = (played + saved.map { it.imdb to it.kind }).filter { it.first.startsWith("tt") }.distinctBy { it.first }.take(FOR_YOU_SEEDS)
-        if (seeds.isEmpty() || com.torrentviewer.core.Kids.on) state.forYou = com.torrentviewer.core.ForYou()
+        // Built-in rows off: no TMDB suggestions either.
+        if (seeds.isEmpty() || com.torrentviewer.core.Kids.on || !settings.builtInHome) state.forYou = com.torrentviewer.core.ForYou()
         else Meta.forYou(seeds).takeIf { it.picks.isNotEmpty() }?.let { state.forYou = it }
     }
     // Followed series — watched or saved — with episodes out since their page was last opened.
@@ -189,21 +190,24 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         val shows = history.filter { it.kind == "tv" }.mapNotNull { it.imdb } + saved.filter { it.kind == "tv" }.map { it.imdb }
         state.fresh = runCatching { NewEpisodes.fresh(shows) }.getOrDefault(state.fresh)
     }
-    val chosen = settings.genres.map { Shelf(if (it == ANIME_GENRE) "Anime" else it, kindOfGenre(it), it) }
+    // Built-in rows off: Home is the viewer's own setup alone — their addons' catalogues, in their order.
+    val builtIn = settings.builtInHome
+    val chosen = if (!builtIn) emptyList() else settings.genres.map { Shelf(if (it == ANIME_GENRE) "Anime" else it, kindOfGenre(it), it) }
     val kids = com.torrentviewer.core.Kids
     val addons by com.torrentviewer.core.Addons.list.collectAsState()
     val personal = state.forYou.picks.isNotEmpty()
-    val shelves = remember(chosen, state.picks, kids.on, addons, personal) {
+    val shelves = remember(chosen, state.picks, kids.on, addons, personal, builtIn, settings.hiddenShelves) {
         if (kids.on) return@remember com.torrentviewer.core.KIDS_SHELVES.map { (title, kind, genre) -> Shelf(title, kind, genre) }
         // The viewer's addons' own lists lead, as on Stremio's board.
-        val mine = com.torrentviewer.core.Addons.shelves().map { (title, kind, key) -> Shelf(title, kind, key) }
+        val mine = com.torrentviewer.core.Addons.shelves().filter { it.third !in settings.hiddenShelves }.map { (title, kind, key) -> Shelf(title, kind, key) }
+        if (!builtIn) return@remember mine
         val taken = chosen.map { it.key }.toMutableSet()
         // A genre's popular list is no suggestion: it's what TMDB's rows replace, with no key or nothing played.
         val rest = if (personal) emptyList() else state.picks.filter { taken.add(it.key) }
         chosen + mine + rest + SHELVES.filter { it.key !in taken }
     }
     // The charts draw on every genre the viewer chose, or on all of them with none chosen.
-    val tops = if (kids.on) emptyList() else listOf("movie", "tv").flatMap { kind ->
+    val tops = if (kids.on || !builtIn) emptyList() else listOf("movie", "tv").flatMap { kind ->
         settings.genres.ifEmpty { listOf("") }.map { Shelf("", kind, TOP_SHELF + it) }
     }
 
@@ -291,7 +295,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                 }
             }
             // A list by hand isn't sorted for children: their rows stay the family ones.
-            if (!com.torrentviewer.core.Kids.on) item(key = "orders") {
+            if (!com.torrentviewer.core.Kids.on && builtIn) item(key = "orders") {
                 // Nothing chosen: what they watch stands in.
                 Rail("Watch orders", onMore = onOrders) { WatchOrderRow(settings.genres.ifEmpty { state.picks.mapNotNull { it.genre } }, onOrder) }
             }
@@ -335,10 +339,11 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         val solid by animateFloatAsState(if (scrolled) 1f else 0f, tween(260), label = "bar")
         StatusIconsOverArt(!scrolled)
         Box(Modifier.fillMaxWidth()) {
-            Box(Modifier.matchParentSize().graphicsLayer { alpha = 1f - solid }.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent))))
-            Box(Modifier.matchParentSize().graphicsLayer { alpha = solid }.background(Ink.bg).grain())
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = EDGE, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("WATCHLY", Modifier.weight(1f), style = Type.title.copy(color = Ink.accent, fontWeight = FontWeight.Black, letterSpacing = 2.sp))
+            // No shade over the hero: the art runs clean to the top; the page's own colour fades in once rows scroll under.
+            // Stays clear while the rows scroll under it (the owner's choice): no solid strip ever comes in.
+            // Clear of the screen's edges: the wordmark and the avatar sit a little in from the sides and down from the top.
+            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = EDGE + 10.dp, end = EDGE + 10.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("WatchHub", Modifier.weight(1f), style = Type.title.copy(color = Ink.accent, fontWeight = FontWeight.Black, letterSpacing = 2.sp))
                 if (!isWide()) Tap(onProfile, shape = RoundedCornerShape(6.dp)) { Avatar(who, 30.dp) }
             }
         }
@@ -463,7 +468,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                     Artwork(t.wide, t.title, Modifier.fillMaxSize().bottomScrim(0.35f), fill = false)
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = EDGE, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
-                            TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center))
+                            TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
                         }
                         Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp))
                         HeroButtons(t, inList, onOpen, Modifier.padding(top = 16.dp))
@@ -481,9 +486,15 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
 
 @Composable
 private fun HeroButtons(t: Title, inList: Boolean, onOpen: (Title) -> Unit, modifier: Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button("Watch", { onOpen(t) }, Modifier.widthIn(min = 132.dp), icon = L.drawable.lucide_ic_play, primary = true)
+    // An upright phone: the two share the full width, edge to edge; elsewhere they sit side by side.
+    val spread = isPortraitPhone()
+    Row(if (spread) modifier.fillMaxWidth() else modifier, horizontalArrangement = Arrangement.spacedBy(if (spread) 14.dp else 10.dp)) {
+        val each = if (spread) Modifier.weight(1f) else Modifier.widthIn(min = 132.dp)
+        Button("Watch", { onOpen(t) }, each, icon = L.drawable.lucide_ic_play, primary = true, balanced = true)
         // Wide enough for "In My List", and the details screen's toggle: a green disc springs in behind the tick.
-        Button(if (inList) "In My List" else "My List", { SavedStore.toggle(t) }, Modifier.widthIn(min = 132.dp), icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList)
+        Button(
+            if (inList) "In My List" else "My List", { SavedStore.toggle(t) }, each,
+            icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList, balanced = true,
+        )
     }
 }

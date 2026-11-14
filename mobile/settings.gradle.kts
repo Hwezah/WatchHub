@@ -10,6 +10,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // CloudStream's plugin library and its HTTP client (NiceHttp, NewPipeExtractor) are published there.
+        maven("https://jitpack.io")
     }
 }
 rootProject.name = "Watchly"

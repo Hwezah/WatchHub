@@ -52,7 +52,7 @@ object MediaCard {
     private var session: MediaSession? = null
     private var remote: Remote? = null
 
-    private var title = "Watchly"
+    private var title = "WatchHub"
     private var subtitle: String? = null
     private var paused = true
     private var hasNext = false

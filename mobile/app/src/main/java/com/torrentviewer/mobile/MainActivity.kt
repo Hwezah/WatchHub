@@ -8,7 +8,7 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import androidx.fragment.app.FragmentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -38,6 +38,7 @@ object Services {
         if (::engine.isInitialized) return
         Kv.init(context)
         SettingsStore.load()
+        com.torrentviewer.core.AiSearch.refresh()
         Profiles.load()
         com.torrentviewer.core.Simkl.clientId = BuildConfig.SIMKL_CLIENT_ID
         com.torrentviewer.core.Mdblist.clientId = BuildConfig.MDBLIST_CLIENT_ID
@@ -51,6 +52,8 @@ object Services {
         AppScope.launch(Dispatchers.IO) { engine.warmUp() }
         watch = Watch(engine)
         Downloads.init(context)
+        // CloudStream plugins: loaded in the background, so they're ready by the time a title opens.
+        com.torrentviewer.mobile.cs.CsPlugins.init(context)
     }
 }
 
@@ -64,20 +67,39 @@ object Pip {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && context.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
 }
 
-/** A FragmentActivity because the Cast button's device chooser is a dialog fragment. */
-class MainActivity : FragmentActivity() {
+/**
+ * An AppCompatActivity: the Cast button's device chooser is a dialog fragment, and CloudStream plugins open
+ * their settings by casting the activity to one (getSupportFragmentManager), as CloudStream's own is.
+ */
+class MainActivity : AppCompatActivity() {
     /** A magnet or .torrent handed to us by another app. */
     private val incoming = mutableStateOf<Uri?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashGuard.install(applicationContext)
+        // What an update that went through left behind (55 MB), unless one is downloading right now.
+        if (com.torrentviewer.core.Updates.progress.value == null) runCatching { java.io.File(filesDir, "update.apk").delete() }
+        // Pictures kept in memory: an eighth of the app's share rather than Coil's quarter — posters reload from disk in a blink.
+        runCatching {
+            coil3.SingletonImageLoader.setSafe { ctx ->
+                coil3.ImageLoader.Builder(ctx).memoryCache { coil3.memory.MemoryCache.Builder().maxSizePercent(ctx, 0.12).build() }.build()
+            }
+        }
         Services.init(applicationContext)
+        com.torrentviewer.mobile.cs.CsPlugins.attach(this)
+        // Plugins' settings sheets: a little space between their stacked option rows.
+        supportFragmentManager.registerFragmentLifecycleCallbacks(com.torrentviewer.mobile.cs.PluginSheetSpacing, true)
         // The TV's red glares at arm's length on a phone screen: a deeper one.
         Ink.accent = Color(0xFFB81D24)
+        // Every spinner in the app: the green ring the sources' Reload Fresh Links! has.
+        Ink.greenSpinner = true
         // The page before the first frame, so a light theme never opens on a flash of dark.
         val systemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         applyTheme(darkFor(SettingsStore.value.value.themeMode, systemDark))
         incoming.value = intent?.data
+        // Known before the first frame, so an upright phone doesn't open with the wider margins.
+        resources.configuration.let { Room.tight = it.orientation == Configuration.ORIENTATION_PORTRAIT && it.smallestScreenWidthDp < 600 }
         setContent {
             androidx.compose.foundation.layout.Box {
                 App(Services.watch, incoming)
@@ -94,6 +116,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.torrentviewer.mobile.cs.CsPlugins.attach(this)
+        // Back in front: a build pushed while away is offered (at most one check every 5 minutes).
+        com.torrentviewer.core.Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-")
         preferHighRefreshRate()
         com.torrentviewer.core.refreshWatched()
     }
@@ -111,7 +136,14 @@ class MainActivity : FragmentActivity() {
         Pip.active = isInPictureInPictureMode
     }
 
+    /** The phone is short of memory, or the app left the screen: the pictures held in memory go (they're on disk). */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) runCatching { coil3.SingletonImageLoader.get(this).memoryCache?.clear() }
+    }
+
     override fun onDestroy() {
+        if (com.lagradost.cloudstream3.CommonActivity.activity === this) com.torrentviewer.mobile.cs.CsPlugins.attach(null)
         if (isFinishing) AppScope.launch(Dispatchers.IO) { Services.engine.shutdown() }
         super.onDestroy()
     }

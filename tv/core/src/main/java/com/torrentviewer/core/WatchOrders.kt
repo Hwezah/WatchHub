@@ -119,8 +119,10 @@ object Tmdb {
     /** From the app's build; empty leaves this out. */
     var key = ""
 
+    /** Either kind of TMDB credential works: the short API key (a query parameter), or the long "Read Access Token" (a bearer header). */
     private suspend fun get(path: String) =
-        Net.get("$API$path${if ('?' in path) '&' else '?'}api_key=$key", 15_000, quiet = true)
+        if (key.startsWith("eyJ")) Net.get("$API$path", 15_000, quiet = true, headers = mapOf("Authorization" to "Bearer $key", "Accept" to "application/json"))
+        else Net.get("$API$path${if ('?' in path) '&' else '?'}api_key=$key", 15_000, quiet = true)
 
     /** This run's answers: a film's page is often opened twice, going back and forth. */
     private val titles = java.util.concurrent.ConcurrentHashMap<String, TmdbTitle>()
@@ -132,10 +134,69 @@ object Tmdb {
         return withContext(Dispatchers.Default) {
             runCatching {
                 val found = JSONObject(get("/find/$imdb?external_source=imdb_id"))
-                val tv = kind == "tv"
-                val id = found.optJSONArray(if (tv) "tv_results" else "movie_results")?.optJSONObject(0)?.optInt("id") ?: return@withContext null
+                fun first(list: String) = found.optJSONArray(list)?.optJSONObject(0)?.optInt("id")
+                // As asked; else as the other kind — a special or a mini-series some catalogues file as a film, or the reverse.
+                val asked = kind == "tv"
+                val askedId = first(if (asked) "tv_results" else "movie_results")
+                val tv = if (askedId != null) asked else !asked
+                val id = askedId ?: first(if (tv) "tv_results" else "movie_results") ?: return@withContext null
                 val json = get(if (tv) "/tv/$id?append_to_response=credits,content_ratings,recommendations" else "/movie/$id?append_to_response=credits,release_dates,recommendations")
                 parseTmdbTitle(json, if (tv) "tv" else "movie").also { titles[imdb] = it }
+            }.getOrNull()
+        }
+    }
+
+    private val trailers = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * A YouTube trailer for a title Cinemeta has none for: TMDB's videos, an official trailer first, then any
+     * trailer, then a teaser. Null with no key, nothing found, or no answer.
+     */
+    suspend fun trailer(imdb: String, kind: String): String? {
+        if (key.isEmpty()) return null
+        trailers[imdb]?.let { return it }
+        return withContext(Dispatchers.Default) {
+            runCatching {
+                val tv = kind == "tv"
+                val id = JSONObject(get("/find/$imdb?external_source=imdb_id"))
+                    .optJSONArray(if (tv) "tv_results" else "movie_results")?.optJSONObject(0)?.optInt("id") ?: return@withContext null
+                pickTrailer(get(if (tv) "/tv/$id/videos" else "/movie/$id/videos"))?.also { trailers[imdb] = it }
+            }.getOrNull()
+        }
+    }
+
+    private val episodeLists = java.util.concurrent.ConcurrentHashMap<String, List<Episode>>()
+
+    /**
+     * A series' aired episodes, every season, for one Cinemeta has no list for yet (a new show): without
+     * them the page can't offer episodes or a season download. Empty with no key, unknown, or no answer.
+     */
+    suspend fun episodes(imdb: String): List<Episode> {
+        if (key.isEmpty()) return emptyList()
+        episodeLists[imdb]?.let { return it }
+        return withContext(Dispatchers.Default) {
+            runCatching {
+                val id = JSONObject(get("/find/$imdb?external_source=imdb_id")).optJSONArray("tv_results")?.optJSONObject(0)?.optInt("id")
+                    ?: return@withContext emptyList()
+                val today = isoNow().take(10)
+                parseTmdbSeasons(get("/tv/$id")).flatMap { s -> runCatching { parseTmdbSeason(get("/tv/$id/season/$s"), imdb, today) }.getOrDefault(emptyList()) }
+                    .also { if (it.isNotEmpty()) episodeLists[imdb] = it }
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    private val byName = java.util.concurrent.ConcurrentHashMap<String, CastMember>()
+
+    /**
+     * A cast member known only by name (TMDB had no cast for the title): the person TMDB has by that name, an
+     * actor first — so their photo shows and their page opens. Null with no key, no match, or no answer.
+     */
+    suspend fun personNamed(name: String): CastMember? {
+        if (key.isEmpty()) return null
+        byName[name]?.let { return it }
+        return withContext(Dispatchers.Default) {
+            runCatching {
+                parsePersonSearch(get("/search/person?query=${java.net.URLEncoder.encode(name, "UTF-8")}"), name)?.also { byName[name] = it }
             }.getOrNull()
         }
     }
@@ -207,4 +268,17 @@ fun orderLine(order: WatchOrder, seen: Set<String>): String {
 fun totalRuntime(titles: List<Title>): String? {
     val minutes = titles.sumOf { (runtimeSeconds(it.runtime) / 60).toInt() }
     return if (minutes > 0) "${minutes / 60}h ${minutes % 60}m" else null
+}
+
+/** TMDB's /videos answer → the best YouTube key: an official trailer, then any trailer, then a teaser. */
+fun pickTrailer(json: String): String? {
+    val videos = runCatching { JSONObject(json).optJSONArray("results")?.objects() }.getOrNull().orEmpty()
+        .filter { it.optString("site").equals("YouTube", true) && !it.str("key").isNullOrBlank() }
+    fun rank(v: JSONObject) = when {
+        v.optString("type") == "Trailer" && v.optBoolean("official") -> 0
+        v.optString("type") == "Trailer" -> 1
+        v.optString("type") == "Teaser" -> 2
+        else -> 9
+    }
+    return videos.filter { rank(it) < 9 }.minByOrNull(::rank)?.str("key")
 }

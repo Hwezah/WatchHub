@@ -292,7 +292,7 @@ class ExoView(context: Context) : Video(context) {
             http.setDefaultRequestProperties(headers)
             val files = subtitleFiles.filter { subtitleMime(it) != null && File(it).let { f -> f.exists() && f.length() > 0L } }
             attached = files
-            val item = MediaItem.Builder().setUri(uri).setSubtitleConfigurations(
+            val item = MediaItem.Builder().setUri(uri).apply { mime?.let(::setMimeType) }.setSubtitleConfigurations(
                 files.map { path ->
                     val f = File(path)
                     MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(f))

@@ -230,6 +230,8 @@ data class Hit(
     val addonUrl: String = "",
     /** The release's own name: a season pack's, where [name] is the one file in it the addon meant. */
     val release: String = name,
+    /** The stream's MIME type when its link can't say (a CloudStream HLS link with no .m3u8); null to guess. */
+    val mime: String? = null,
 ) {
     /** Plays straight from its link: no swarm, no seeders to count. */
     val direct get() = !external && isDirectLink(uri)
@@ -244,12 +246,58 @@ fun isDirectLink(uri: String) = Regex("^https?://", RegexOption.IGNORE_CASE).con
 
 private val HASH = Regex("^[0-9a-fA-F]{40}$")
 
+// Compiled once: run on every release name. Word edges are letters and digits only, so "4KHDHub" (a site's
+// name) isn't 4K and "1080p" in "h264.1080p" is still found.
+private val Q4K = Regex("""(?<![a-z0-9])(2160p|4k|uhd)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q1440 = Regex("""(?<![a-z0-9])(1440p|2k)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q1080 = Regex("""(?<![a-z0-9])1080[pi](?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q720 = Regex("""(?<![a-z0-9])720p(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q480 = Regex("""(?<![a-z0-9])(480p|540p|576p)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q360 = Regex("""(?<![a-z0-9])(360p|240p)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val QCAM = Regex("""(?<![a-z0-9])(cam|camrip|hdcam|hdts|telesync|telecine|hdtc)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+
+/**
+ * A release's resolution from its name: the best one it states (a name listing "2160p" and "1080p" is the 4K),
+ * and CAM for a cinema recording whatever its pixels. Null when it says none.
+ */
 fun quality(name: String): String? = when {
-    Regex("""2160p|\buhd\b|\b4k\b""", RegexOption.IGNORE_CASE).containsMatchIn(name) -> "4K"
-    Regex("1080p", RegexOption.IGNORE_CASE).containsMatchIn(name) -> "1080p"
-    Regex("720p", RegexOption.IGNORE_CASE).containsMatchIn(name) -> "720p"
-    Regex("""\bcam\b|\bhdts\b|\btelesync\b""", RegexOption.IGNORE_CASE).containsMatchIn(name) -> "CAM"
+    QCAM.containsMatchIn(name) -> "CAM"
+    Q4K.containsMatchIn(name) -> "4K"
+    Q1440.containsMatchIn(name) -> "1440p"
+    Q1080.containsMatchIn(name) -> "1080p"
+    Q720.containsMatchIn(name) -> "720p"
+    Q480.containsMatchIn(name) -> "480p"
+    Q360.containsMatchIn(name) -> "360p"
     else -> null
+}
+
+private val SIZE_IN_NAME = Regex("""(?<![a-z0-9.])(\d{1,4}(?:\.\d{1,3})?)\s?(TB|GB|MB)(?![a-z])""", RegexOption.IGNORE_CASE)
+
+/**
+ * A size written in a link's name ("[964.83MB]", "💾 8.46 GB"): plugins give no size of their own, and without
+ * one their links can't be sorted by weight or chosen as the lightest. 0 when none is written, or it isn't
+ * plausible for a video (under 1 MB). Mbps figures ("6Mbps") aren't sizes.
+ */
+/**
+ * A plugin link's name on one line: some (PenguPlay) write five lines with an emoji each, which a one-line row
+ * squashes into "720pHLSH.264". Lines are joined with " · " and their leading emoji dropped.
+ */
+fun oneLineName(name: String): String = name.lines()
+    .map { it.trim().replace(LEADING_SYMBOLS, "").trim() }
+    .filter { it.isNotEmpty() }
+    .joinToString(" · ")
+
+private val LEADING_SYMBOLS = Regex("""^[^\p{L}\p{N}\[(]+""")
+
+fun sizeInName(name: String): Long {
+    val m = SIZE_IN_NAME.find(name) ?: return 0
+    val n = m.groupValues[1].toDoubleOrNull() ?: return 0
+    val bytes = when (m.groupValues[2].uppercase()) {
+        "TB" -> n * (1L shl 40)
+        "GB" -> n * (1L shl 30)
+        else -> n * (1L shl 20)
+    }.toLong()
+    return if (bytes >= 1L shl 20) bytes else 0
 }
 
 enum class Health(val label: String) { FAST("Fast"), GOOD("Good"), WEAK("Weak"), DEAD("No seeds") }
@@ -262,7 +310,8 @@ fun health(seeders: Int) = when {
 }
 
 private val SEEDERS = Regex("""\x{1F464}\s*(\d+)""")
-private val SIZE = Regex("""\x{1F4BE}\s*([\d.]+)\s*(TB|GB|MB|KB)""", RegexOption.IGNORE_CASE)
+/** "💾 51.3 GB"; never "💾3Mbps", a bitrate some addons put where the size usually goes. */
+private val SIZE = Regex("""\x{1F4BE}\s*([\d.]+)\s*(TB|GB|MB|KB)(?![a-z])""", RegexOption.IGNORE_CASE)
 private val UNIT = mapOf("kb" to 1024.0, "mb" to 1024.0 * 1024, "gb" to 1024.0 * 1024 * 1024, "tb" to 1024.0 * 1024 * 1024 * 1024)
 
 /**
@@ -396,11 +445,55 @@ private suspend fun fromAddons(type: String, id: String, lang: Lang?, onHits: On
  */
 suspend fun searchStreams(title: String, imdb: String? = null, year: String? = null, lang: Lang? = null, type: String = "movie", onHits: OnHits? = null): List<Hit> {
     linkHit(title)?.let { return listOf(it).also { one -> onHits?.invoke(one) } }
-    val id = imdb ?: Meta.resolve(listOfNotNull(title, year).joinToString(" "))?.takeIf { !it.isSeries }?.imdb ?: return emptyList()
-    return fromAddons(type, id, lang, onHits) { rank(it, title) }
+    if (imdb != null) return fromAddons(type, imdb, lang, onHits) { rank(it, title) }
+    val (found, episode) = typedTarget(title, year) ?: return emptyList()
+    return if (episode != null) fromAddons(found.type, "${found.imdb}:${episode.first}:${episode.second}", lang, onHits) { rankEpisode(it, found.title, episode.first) }
+    else fromAddons("movie", found.imdb, lang, onHits) { rank(it, episodeAsked(title)?.first ?: title) }
+}
+
+/**
+ * What typed text names, for a streams search: the title — found by the same forgiving search the Titles view uses
+ * (typos, "the", numbers, a year), a series when an episode is named — and for a series its episode (season to
+ * number): the one named, else S01E01, since addons and plugins list a series' streams per episode.
+ */
+suspend fun typedTarget(text: String, year: String? = null): Pair<Title, Pair<Int, Int>?>? {
+    val asked = episodeAsked(text)
+    val name = asked?.first ?: text
+    val ranked = Meta.searchEverywhere(listOfNotNull(name, year).joinToString(" "), withAddons = false)
+    val found = (if (asked != null) ranked.firstOrNull { it.isSeries } else ranked.firstOrNull())
+        ?: Meta.resolve(listOfNotNull(name, year).joinToString(" "))
+        ?: return null
+    return found to if (found.isSeries) (asked?.let { it.second to it.third } ?: (1 to 1)) else null
+}
+
+/*
+ * An episode named in typed text, however it's written: "s1e1", "S01 E01", "s01.e01", "s1ep1", "s1 ep 1", "1x01",
+ * "season 1 episode 1", "season 2 ep 3"; a season alone ("s2", "season 2") is its first episode; an episode alone
+ * ("ep 3", "episode 3", "e3") is in season 1. Each needs a word edge, so "Se7en" or "1917" name none.
+ */
+private val SEASON_EPISODE = Regex("""(?<![\p{L}\p{N}])(?:s|season)\s*[.\-_]?\s*(\d{1,2})\s*[.\-_,:]?\s*(?:e|ep|episode|x)\s*[.\-_]?\s*(\d{1,4})(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+private val CROSS = Regex("""(?<![\p{L}\p{N}])(\d{1,2})\s*x\s*(\d{1,4})(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+// Alone, a bare "s"/"e" must touch its number: "Ocean's 8" isn't season 8.
+private val SEASON_ONLY = Regex("""(?<![\p{L}\p{N}])(?:s|season\s*[.\-_]?\s*)(\d{1,2})(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+private val EPISODE_ONLY = Regex("""(?<![\p{L}\p{N}])(?:e|(?:ep|episode)\s*[.\-_]?\s*)(\d{1,4})(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+
+/** "dope thief s01e03" → the name, season 1, episode 3; null when no episode or season is named. */
+fun episodeAsked(query: String): Triple<String, Int, Int>? {
+    fun rest(m: MatchResult) = query.removeRange(m.range).replace(Regex("""\s+"""), " ").trim().trimEnd('-', '–', ':', ',').trim()
+    val hit = SEASON_EPISODE.find(query)?.let { m -> Triple(m, m.groupValues[1].toInt(), m.groupValues[2].toInt()) }
+        ?: CROSS.find(query)?.let { m -> Triple(m, m.groupValues[1].toInt(), m.groupValues[2].toInt()) }
+        ?: SEASON_ONLY.find(query)?.let { m -> Triple(m, m.groupValues[1].toInt(), 1) }
+        ?: EPISODE_ONLY.find(query)?.let { m -> Triple(m, 1, m.groupValues[1].toInt()) }
+        ?: return null
+    val name = rest(hit.first)
+    if (name.length < 2 || hit.second < 1 || hit.third < 1) return null
+    return Triple(name, hit.second, hit.third)
 }
 
 private val episodeMemo = java.util.concurrent.ConcurrentHashMap<String, List<Hit>>()
+
+/** Forget the episodes' kept answers: links in them can expire, and a retry needs fresh ones. */
+fun forgetStreams() = episodeMemo.clear()
 
 /**
  * Does release [name] say it is this episode? Null when it names none (a season pack): a batch
@@ -679,4 +772,16 @@ fun rankSubtitles(subs: List<Sub>, language: String, fileName: String): List<Sub
     return mine.ifEmpty { subs }
         .distinctBy { (it.language + it.release).lowercase().ifEmpty { it.url } }
         .sortedByDescending { (words(it.release) intersect playing).size }
+}
+
+private val SEASON_MARK = Regex("""\bs\d{1,2}(?:e\d{1,4})?\b|\bseasons?[ ._-]?\d{1,2}\b|\b\d{1,2}x\d{2}\b""", RegexOption.IGNORE_CASE)
+
+/**
+ * Whether a "film"'s releases are really a series' (S01E02, S01, Season 1 in most names): some addon
+ * catalogues list a series as a movie, and its page would then miss its episodes and season download.
+ */
+fun looksLikeSeries(names: List<String>): Boolean {
+    if (names.isEmpty()) return false
+    val marked = names.count { SEASON_MARK.containsMatchIn(it) }
+    return marked >= 2 && marked * 2 >= names.size
 }

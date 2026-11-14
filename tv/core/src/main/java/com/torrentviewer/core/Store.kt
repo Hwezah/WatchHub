@@ -158,6 +158,39 @@ data class Settings(
     val themeMode: String = "system",
     /** Jump past an episode's intro by itself, rather than offer the button. */
     val autoSkipIntro: Boolean = false,
+    /** The phone's tab bar: "bar" along the bottom edge, or "pill" floating over the page. The TV ignores it. */
+    val navStyle: String = "bar",
+    /**
+     * The phone's Home: the app's own rows (Cinemeta genres, IMDb charts, TMDB suggestions, watch orders) or,
+     * off, only the viewer's own — Continue Watching, My List and their addons' catalogues.
+     */
+    val builtInHome: Boolean = true,
+    /** Addon catalogues kept off Home, by their shelf key ([Addon.shelfKey]); the addon still gives streams. */
+    val hiddenShelves: List<String> = emptyList(),
+    /**
+     * The phone's one-tap Download: what it prefers, in order, before the lightest file. "" is any.
+     * Preferences, not filters — the nearest match is always taken.
+     */
+    val dlQuality: String = "720p",
+    val dlCodec: String = "x265",
+    val dlFormat: String = "MKV",
+    val dlSubs: Boolean = false,
+    /** "Torrent", "Link" or "" for either. */
+    val dlSource: String = "",
+    /** One-tap and season downloads: a direct link before a torrent, unless it's over 1.5× the lightest torrent's size. */
+    val dlDirect: Boolean = true,
+    /** The phone's AI search: which service ([AiProvider] id, "" for none) and its model ("" for the service's default). */
+    val aiProvider: String = "",
+    val aiModel: String = "",
+    /** The phone's plugins: names looked up over HTTPS ("cloudflare", "google"), past a provider's DNS blocks; "" is the system's. */
+    val secureDns: String = "",
+    /** The phone's sources lists: torrents with fewer than 10 seeds left out (they rarely finish), unless shown by hand. */
+    val hideFewSeeds: Boolean = true,
+    /**
+     * The phone's releases left out everywhere, never listed or picked for a download: "q:4K", "q:Auto" (no
+     * fixed resolution), "c:x264", "c:Unknown", "f:HLS", "f:Other"… — resolution, codec and format.
+     */
+    val leaveOut: List<String> = emptyList(),
 )
 
 /** Subtitle text; [size] is one of [SUB_SIZES]' keys. The Expo build's names and values. */
@@ -220,6 +253,20 @@ object SettingsStore {
         wholeFile = o.optBoolean("streamWholeFile", false),
         themeMode = o.optString("themeMode").takeIf { it == "light" || it == "dark" } ?: "system",
         autoSkipIntro = o.optBoolean("autoSkipIntro", false),
+        navStyle = o.optString("navStyle").takeIf { it == "pill" } ?: "bar",
+        builtInHome = o.optBoolean("builtInHome", true),
+        hiddenShelves = o.strings("hiddenShelves"),
+        dlQuality = if (o.has("dlQuality")) o.optString("dlQuality") else "720p",
+        dlCodec = if (o.has("dlCodec")) o.optString("dlCodec") else "x265",
+        dlFormat = if (o.has("dlFormat")) o.optString("dlFormat") else "MKV",
+        dlSubs = o.optBoolean("dlSubs"),
+        dlSource = o.optString("dlSource"),
+        dlDirect = o.optBoolean("dlDirect", true),
+        aiProvider = o.optString("aiProvider"),
+        aiModel = o.optString("aiModel"),
+        secureDns = o.optString("secureDns"),
+        hideFewSeeds = o.optBoolean("hideFewSeeds", true),
+        leaveOut = o.strings("leaveOut"),
     )
 
     /** Over what is stored, not instead of it: the TV and the phone each keep fields the other never reads. */
@@ -230,7 +277,10 @@ object SettingsStore {
             .put("cacheMb", next.cacheCapMb).put("vlcPlayer", next.vlcPlayer)
             .put("subLang", next.subLang).put("audioLang", next.audioLang)
             .put("subSize", next.subtitles.size).put("subColor", if (next.subtitles.yellow) "yellow" else "white").put("subBackground", next.subtitles.box)
-            .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro)
+            .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro).put("navStyle", next.navStyle)
+            .put("builtInHome", next.builtInHome).put("hiddenShelves", JSONArray(next.hiddenShelves))
+            .put("dlQuality", next.dlQuality).put("dlCodec", next.dlCodec).put("dlFormat", next.dlFormat).put("dlSubs", next.dlSubs).put("dlSource", next.dlSource).put("dlDirect", next.dlDirect).put("aiProvider", next.aiProvider).put("aiModel", next.aiModel)
+            .put("secureDns", next.secureDns).put("hideFewSeeds", next.hideFewSeeds).put("leaveOut", JSONArray(next.leaveOut))
         Kv.setGlobal("settings", o.toString())
         Kv.set(GENRES_KEY, JSONArray(next.genres).toString())
     }
@@ -395,6 +445,10 @@ data class Item(
     val played: Map<Int, Long> = emptyMap(),
     /** For an addon's debrid link: the manifest link of the addon it came from — see [Addons.stillServes]. */
     val addon: String? = null,
+    /** What a direct link's server wants with every request (proxyHeaders, a plugin's Referer), so it resumes too. */
+    val headers: Map<String, String> = emptyMap(),
+    /** A direct link's MIME type when the link can't say (HLS without .m3u8). */
+    val mime: String? = null,
 ) {
     val label get() = titleName ?: title
 
@@ -441,7 +495,8 @@ data class Item(
             subtitles.forEach { (k, v) -> o.put(k.toString(), JSONArray(v.map { JSONObject().put("path", it.path).put("label", it.label) })) }
         })
         .put("imdb", imdb).put("kind", kind).put("poster", poster).put("backdrop", backdrop).put("titleName", titleName)
-        .put("seeders", seeders).put("torboxFiles", torboxFiles).put("addon", addon)
+        .put("seeders", seeders).put("torboxFiles", torboxFiles).put("addon", addon).put("mime", mime)
+        .put("headers", JSONObject().also { o -> headers.forEach { (k, v) -> o.put(k, v) } })
         .put("played", JSONObject().also { o -> played.forEach { (k, v) -> o.put(k.toString(), v) } })
 
     companion object {
@@ -470,6 +525,8 @@ data class Item(
             seeders = if (o.has("seeders") && !o.isNull("seeders")) o.optInt("seeders") else null,
             torboxFiles = o.optBoolean("torboxFiles", false),
             addon = o.str("addon"),
+            headers = o.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith { h.optString(it) } }.orEmpty(),
+            mime = o.str("mime"),
             played = o.optJSONObject("played")?.let { p -> p.keys().asSequence().mapNotNull { k -> k.toIntOrNull()?.let { it to p.optLong(k) } }.toMap() }.orEmpty(),
         )
     }

@@ -440,7 +440,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     fun mediaCard() {
         if (castSession != null) return
         MediaCard.update(
-            title = title?.title ?: watch.item?.label ?: "Watchly",
+            title = title?.title ?: watch.item?.label ?: "WatchHub",
             subtitle = episode?.let { "${episodeLabel(title, it.season, it.episode)}  “${it.name}”" },
             paused = paused || !loaded,
             positionMs = (at * 1000).toLong(),
@@ -589,6 +589,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
         val r = ready ?: return@LaunchedEffect
         val v = view.value ?: return@LaunchedEffect
         v.headers = r.headers
+        v.mime = r.mime
         v.open(r.url, (at * 1000).toLong(), cacheMsFor(bitrate), r.subtitleFiles + external.map { it.path })
     }
 
@@ -744,7 +745,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
 
     /* ---------------------------------------------------- TorBox stall */
 
-    // A TorBox stream that hasn't moved goes to Watchly's own engine: a video this phone can't
+    // A TorBox stream that hasn't moved goes to WatchHub's own engine: a video this phone can't
     // decode left VLC silent, with no error to fall back on, and the film never started. Counted
     // again from the switch to VLC: Media3's failed attempt used 4–6 s of VLC's time.
     LaunchedEffect(watch.via, vlc) {
@@ -945,7 +946,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                         }
                         v.onFailed = { message ->
                             watch.engine.note("player: failed — $message")
-                            // From TorBox: on to Watchly's own engine at the same spot, not out of the film.
+                            // From TorBox: on to WatchHub's own engine at the same spot, not out of the film.
                             if (!watch.leaveTorBox(at)) {
                                 watch.notes.tryEmit(message)
                                 watch.exit()
@@ -1115,7 +1116,9 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
             finding = true
             found = null
             scope.launch {
-                found = runCatching {
+                // What the plugin found with this very link comes first: it was cut for it.
+                val withLink = com.torrentviewer.mobile.cs.CsStreams.subtitlesFor(watch.item?.uri)
+                found = withLink + runCatching {
                     // OpenSubtitles needs no key; SubDL joins in once the viewer has given theirs.
                     val ep = parseEpisode(file?.name.orEmpty())
                     findSubtitles(
@@ -1822,7 +1825,7 @@ private fun StatsPanel(s: Stats?, progress: Progress?, file: TorrentFile?, durat
             Row(Modifier.padding(vertical = 2.dp)) {
                 Text(label, Modifier.width(70.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp))
                 // The file's name is long and is the one worth reading whole: it scrolls rather than being cut.
-                val scroll = if (label == "File") Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, velocity = 40.dp) else Modifier
+                val scroll = if (label == "File") Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, spacing = androidx.compose.foundation.MarqueeSpacing(28.dp), velocity = 40.dp) else Modifier
                 Text(value, scroll, style = Type.meta.copy(color = Color.White, fontSize = 12.sp), maxLines = 1, overflow = if (label == "File") TextOverflow.Clip else TextOverflow.Ellipsis)
             }
         }

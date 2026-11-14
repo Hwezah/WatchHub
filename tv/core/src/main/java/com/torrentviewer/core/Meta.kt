@@ -322,6 +322,33 @@ object Meta {
         }
     }.getOrDefault(emptyList())
 
+    /**
+     * A search as typed, forgiving mistakes: every variant of [query] ([searchVariants]) asked of Cinemeta (films
+     * and series) and the addons' catalogues ([withAddons]) at once; when nothing close came back — a misspelt
+     * word, mostly — a second round asks with parts of it ([partialQueries]). All of it ranked by [fuzzyScore],
+     * the far-off dropped. [onPartial] hears the first round's ranking while the second is still out.
+     */
+    suspend fun searchEverywhere(query: String, withAddons: Boolean = true, onPartial: (List<Title>) -> Unit = {}): List<Title> = coroutineScope {
+        val found = java.util.concurrent.ConcurrentHashMap<String, Title>()
+        suspend fun ask(queries: List<String>, addons: Boolean) {
+            queries.flatMap { q ->
+                listOf(async { search(q, "movie") }, async { search(q, "tv") }) + if (addons) listOf(async { searchAddons(q) }) else emptyList()
+            }.awaitAll().flatten().forEach { found.putIfAbsent(it.imdb, it) }
+        }
+        fun ranked() = found.values.map { it to fuzzyScore(it.title, query, it.year?.take(4)) }
+            .filter { it.second >= FUZZY_SHOW }.sortedByDescending { it.second }.map { it.first }
+        val variants = searchVariants(query)
+        // The addons are asked as typed only: there are many of them, and they're slower.
+        ask(variants, addons = false)
+        if (withAddons) ask(variants.take(1), addons = true)
+        val first = ranked()
+        val best = first.firstOrNull()?.let { fuzzyScore(it.title, query, it.year?.take(4)) } ?: 0.0
+        if (best >= FUZZY_SURE) return@coroutineScope first
+        onPartial(first)
+        ask(partialQueries(query), addons = false)
+        ranked()
+    }
+
     /** What a torrent is, from its release name alone. Null rather than a guess. */
     suspend fun resolve(releaseName: String): Title? = coroutineScope {
         val query = searchableName(releaseName)

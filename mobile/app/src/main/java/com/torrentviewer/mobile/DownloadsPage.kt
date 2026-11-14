@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -56,7 +57,18 @@ import com.torrentviewer.core.speed
 import com.composables.icons.lucide.R as L
 
 /** A release to keep, labelled the way History labels a stream of it. */
-fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null) = DownloadJob(
+fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null, foundAt: Long = System.currentTimeMillis()) = DownloadJob(
+    fetchedAt = if (hit.direct) foundAt else 0,
+    link = hit.direct,
+    headers = if (hit.direct) hit.headers else emptyMap(),
+    playlist = hit.direct && isPlaylist(hit),
+    // An "Auto" playlist (several resolutions in one) is saved at the preferred resolution, not its biggest.
+    quality = hit.quality ?: com.torrentviewer.core.SettingsStore.value.value.dlQuality.takeIf { hit.direct && isPlaylist(hit) && it.isNotEmpty() },
+    source = hit.addon.ifEmpty { null },
+    linkName = hit.name,
+    size = hit.size,
+    epSeason = episode?.season,
+    epNumber = episode?.episode,
     uri = hit.uri,
     title = hit.name,
     titleName = if (episode != null && from != null) "${from.title} · ${episodeTag(episode.season, episode.episode)}" else from?.title,
@@ -68,27 +80,47 @@ fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null) = DownloadJob(
 
 /** What is downloading, and what is kept on this phone to watch without a connection. */
 @Composable
-fun DownloadsScreen(watch: Watch, onBack: () -> Unit) {
+fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable () -> Unit)? = null) {
     val live by Downloads.live.collectAsState()
     val finished by Downloads.finished.collectAsState()
     var cancelling by remember { mutableStateOf<LiveDownload?>(null) }
     var deleting by remember { mutableStateOf<Finished?>(null) }
+    var deletingAll by remember { mutableStateOf(false) }
 
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp)) {
+        // Inside the Library, its heading and tabs; opened on its own, a heading with a close.
         item {
-            Heading("Downloads") {
-                Tap(onBack, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Ink.muted, size = 22.dp) }
+            if (header != null) Column { header() }
+            else Heading("Downloads") {
+                if (onBack != null) Tap(onBack, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Ink.muted, size = 22.dp) }
             }
         }
         if (live.isEmpty() && finished.isEmpty()) item {
-            Note("Nothing downloaded yet. Download from a title's page, and it plays here without a connection.")
+            // Centred on an upright phone.
+            val centred = isPortraitPhone()
+            Text(
+                "Nothing downloaded yet. Download from a title's page, and it plays here without a connection.",
+                Modifier.fillMaxWidth().padding(horizontal = if (centred) 12.dp else 0.dp),
+                style = Type.body.copy(color = Ink.faint, textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start),
+            )
         }
-        if (live.isNotEmpty()) item { Label("Downloading") }
+        if (live.isNotEmpty()) item {
+            Label("Downloading")
+            // All of them at once: pause, carry on, or stop and delete (asked first).
+            SpreadRow(Modifier.padding(bottom = 12.dp)) {
+                Chip("Pause All", false, onClick = { live.forEach { if (it.state != DlState.PAUSED && it.state != DlState.FAILED) Downloads.pause(it.job.uri) } }, icon = L.drawable.lucide_ic_pause, compact = true)
+                Chip("Resume All", false, onClick = {
+                    live.forEach { if (it.state == DlState.PAUSED) Downloads.resume(it.job.uri) else if (it.state == DlState.FAILED) Downloads.retry(it.job.uri) }
+                }, icon = L.drawable.lucide_ic_play, compact = true)
+                Chip("Delete All", false, onClick = { deletingAll = true }, icon = L.drawable.lucide_ic_trash_2, compact = true)
+            }
+        }
         items(live, key = { "live-" + it.job.uri }) { row ->
             ActiveRow(
                 row,
                 onPause = { Downloads.pause(row.job.uri) },
                 onResume = { Downloads.resume(row.job.uri) },
+                onRetry = { Downloads.retry(row.job.uri) },
                 onCancel = { cancelling = row },
                 onWanted = { index, on -> Downloads.setWanted(row.job.uri, index, on) },
                 onOrder = { Downloads.setOrder(row.job.uri, it) },
@@ -110,7 +142,7 @@ fun DownloadsScreen(watch: Watch, onBack: () -> Unit) {
     cancelling?.let { row ->
         Sheet(
             title = "Stop downloading ${row.job.label}?",
-            options = listOf(Option(true, "Stop and delete what has arrived", "Files already saved stay on this phone"), Option(false, "Keep downloading")),
+            options = listOf(Option(true, "Stop and delete what has arrived", "Files already saved stay on this phone", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep downloading", icon = L.drawable.lucide_ic_download, iconTint = Ink.download)),
             selected = null,
             onPick = {
                 if (it) Downloads.cancel(row.job.uri)
@@ -119,6 +151,16 @@ fun DownloadsScreen(watch: Watch, onBack: () -> Unit) {
             onDismiss = { cancelling = null },
         )
     }
+    if (deletingAll) Sheet(
+        title = "Stop and delete all ${live.size} downloads?",
+        options = listOf(Option(true, "Stop and delete them all", "Files already saved stay on this phone", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep downloading", icon = L.drawable.lucide_ic_download, iconTint = Ink.download)),
+        selected = null,
+        onPick = {
+            if (it) live.forEach { row -> Downloads.cancel(row.job.uri) }
+            deletingAll = false
+        },
+        onDismiss = { deletingAll = false },
+    )
     deleting?.let { f ->
         Sheet(
             title = "Delete ${f.label}?",
@@ -137,7 +179,7 @@ fun DownloadsScreen(watch: Watch, onBack: () -> Unit) {
 private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -> Unit, onDelete: () -> Unit) {
     Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), RoundedCornerShape(8.dp), onLongClick = onDelete) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (poster) Artwork(f.poster, f.label, Modifier.width(48.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
+            if (poster) Artwork(f.poster, f.label, Modifier.width(60.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(name, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text("${bytes(f.size)}  ·  ${ago(f.at)}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
@@ -156,7 +198,7 @@ private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onDe
     Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
         Tap({ open = !open }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Artwork(first.poster, first.label, Modifier.width(48.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
+                Artwork(first.poster, first.label, Modifier.width(60.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(first.label.substringBefore(" · "), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("${episodes.size} episodes  ·  ${bytes(episodes.sumOf { it.size })}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
@@ -180,7 +222,7 @@ private fun Label(text: String) {
  * listed in episode order, each with its own progress and a circle to skip it or put it back.
  */
 @Composable
-private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Unit, onCancel: () -> Unit, onWanted: (Int, Boolean) -> Unit, onOrder: (Boolean) -> Unit) {
+private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Unit, onRetry: () -> Unit, onCancel: () -> Unit, onWanted: (Int, Boolean) -> Unit, onOrder: (Boolean) -> Unit) {
     val pct = (row.ratio * 100).toInt()
     val pack = row.files.size > 1
     val wanted = row.files.filter { it.wanted }
@@ -190,15 +232,18 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     var openSeasons by remember(row.job.uri) {
         mutableStateOf(setOf(row.files.firstOrNull { it.wanted && !it.saved }?.let { parseEpisode(it.name)?.season }))
     }
-    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(12.dp)) {
+    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(CARD - 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Artwork(row.job.poster, row.job.label, Modifier.width(52.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
-            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Artwork(row.job.poster, row.job.label, Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
+            // Beside the poster: the words and buttons, and under them the progress line, from the poster to the ✕'s end.
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     when (row.state) {
-                        DlState.RESOLVING -> "Finding peers…"
-                        DlState.DOWNLOADING -> listOfNotNull("$pct%", speed(row.speed), "${row.peers} peers").joinToString("  ·  ")
+                        DlState.RESOLVING -> if (row.job.link) row.error ?: "Starting…" else "Finding peers…"
+                        DlState.DOWNLOADING -> listOfNotNull("$pct%", speed(row.speed), "${row.peers} peers".takeIf { !row.job.link }).joinToString("  ·  ")
                         DlState.PAUSED -> "Paused  ·  $pct%"
                         DlState.WIFI -> "Waiting for Wi-Fi  ·  $pct%"
                         DlState.FAILED -> row.error ?: "Failed"
@@ -218,23 +263,25 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                     maxLines = 1,
                 )
             }
-            when (row.state) {
-                DlState.PAUSED, DlState.FAILED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
-                DlState.WIFI -> Unit
+            when {
+                row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
+                // Failed: ↻ asks the sources again for the next fresh link at this resolution.
+                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(10.dp)) }
+                // Looking for a fresh link: a small spinner where the button was.
+                row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(10.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
+                row.state == DlState.WIFI -> Unit
                 else -> Tap(onPause, shape = CircleShape) { Lc(L.drawable.lucide_ic_pause, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
             }
-            Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
+            // Its tap area reaches into the card's padding, so the ✕ sits as far from the right edge as the poster from the left.
+            Tap(onCancel, Modifier.offset(x = 10.dp), CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 24.dp) }
+            }
+            // A thin green line filling as the bytes arrive.
+            ProgressLine(row.ratio, Modifier.padding(top = 6.dp).clip(CircleShape), height = 2.dp, color = Ink.download)
+            }
         }
-        Spacer(Modifier.height(10.dp))
-        ProgressLine(row.ratio, height = 3.dp)
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
-        // This download's own order, over the default above.
-        val inOrder = Downloads.inOrder(row.job)
-        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("Fastest", !inOrder, onClick = { onOrder(false) })
-            Chip("In order", inOrder, onClick = { onOrder(true) })
-        }
+        // Fastest / In order live in Settings → Downloads now, for every download, not on each card.
 
         if (pack) {
             Tap({ open = !open }, Modifier.fillMaxWidth().padding(top = 6.dp), RoundedCornerShape(6.dp)) {
@@ -338,7 +385,7 @@ private fun EpisodeLine(f: DlFile, isNext: Boolean, onToggle: () -> Unit) {
         }
         Text(ep, Modifier.width(64.dp).padding(start = 4.dp), style = Type.meta.copy(color = if (f.wanted) Ink.text else Ink.faint, fontWeight = FontWeight.SemiBold), maxLines = 1)
         Box(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-            if (f.wanted && !f.saved) ProgressLine(pct / 100f, height = 3.dp)
+            if (f.wanted && !f.saved) ProgressLine(pct / 100f, Modifier.clip(CircleShape), height = 2.dp, color = Ink.download)
         }
         Text(
             when {

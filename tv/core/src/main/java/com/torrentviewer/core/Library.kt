@@ -14,7 +14,12 @@ import java.util.TimeZone
  */
 data class Lang(val code: String, val name: String, val match: Regex)
 
-private fun lang(code: String, name: String, words: String) = Lang(code, name, Regex("\\b($words)\\b", RegexOption.IGNORE_CASE))
+/**
+ * Word edges spelled out rather than `\b`: on Java 19+ `\b` only knows ASCII letters, so "Српски" never
+ * matched in unit tests, while Android's ICU regex is Unicode-aware. These lookarounds read the same on both.
+ */
+private fun lang(code: String, name: String, words: String) =
+    Lang(code, name, Regex("(?<![\\p{L}\\p{N}_])($words)(?![\\p{L}\\p{N}_])", RegexOption.IGNORE_CASE))
 
 val LANGS = listOf(
     lang("EN", "English", "english|eng"),

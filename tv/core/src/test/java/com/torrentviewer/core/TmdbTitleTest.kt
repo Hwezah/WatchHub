@@ -70,3 +70,17 @@ class TmdbTitleTest {
         assertEquals(listOf("Spider-Man", "Small"), p.credits.map { it.title })
     }
 }
+
+class PickTrailerTest {
+    @org.junit.Test fun officialTrailerFirst() {
+        val json = """{"results":[
+            {"site":"YouTube","key":"teaser1","type":"Teaser","official":true},
+            {"site":"YouTube","key":"fan","type":"Trailer","official":false},
+            {"site":"Vimeo","key":"vim","type":"Trailer","official":true},
+            {"site":"YouTube","key":"real","type":"Trailer","official":true},
+            {"site":"YouTube","key":"clip","type":"Clip","official":true}]}"""
+        org.junit.Assert.assertEquals("real", pickTrailer(json))
+        org.junit.Assert.assertEquals("teaser1", pickTrailer("""{"results":[{"site":"YouTube","key":"teaser1","type":"Teaser"},{"site":"YouTube","key":"c","type":"Clip"}]}"""))
+        org.junit.Assert.assertNull(pickTrailer("""{"results":[]}"""))
+    }
+}
