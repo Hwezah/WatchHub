@@ -272,10 +272,16 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             }
 
             val many = "${picks.size} episode${if (picks.size == 1) "" else "s"}"
-            /** Another app's downloader: every pick's link at once, in episode order — each asked for again first,
-             *  since the ones found while the season was checked may have expired already. */
+            /** Another app's downloader: every pick's link at once, in episode order — as found, straight away, when
+             *  the season was checked within [SEND_AS_FOUND_MS]; asked for again first only when older than that. */
             fun send(to: Downloader) {
                 if (sending || picks.isEmpty()) return
+                if (System.currentTimeMillis() - scan.at < SEND_AS_FOUND_MS) {
+                    val handed = sendLinks(context, picks.map { it.second }, "${title.title} · season $season", to)
+                    ExternalDownloaders.note(handed, many = true)?.let(say)
+                    if (handed != Handed.Failed) onDismiss()
+                    return
+                }
                 sending = true
                 scope.launch {
                     val gate = Semaphore(3)
@@ -326,6 +332,12 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     }
     if (choosing) DownloaderSheet(ExternalDownloaders.sendProbe(), many = true, onPick = { chosen = it }, onDismiss = { choosing = false })
 }
+
+/**
+ * Links found this recently go to another app's downloader as they are: they last well beyond this, and asking
+ * every source again only kept the viewer waiting. Older ones are renewed first, since an external app can't.
+ */
+private const val SEND_AS_FOUND_MS = 30 * 60 * 1000L
 
 private fun codecLabel(c: String) = when (c) {
     "x265" -> "x265 (HEVC)"
