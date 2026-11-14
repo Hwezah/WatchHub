@@ -75,31 +75,38 @@ object SeasonBatch {
     private const val EPISODE_MS = 40_000L
 
     /**
-     * An episode's sources, as the title page finds them — but not waited on to the end: the search stops once
-     * what's in already holds a pick as preferred ([goodEnough]), or after [EPISODE_MS]. Waiting on every plugin
-     * (up to minutes each, per episode) made a season take many minutes for links nobody needed.
+     * An episode's sources, as the title page finds them — but not waited on to the end ([gather]). Waiting on
+     * every plugin (up to minutes each, per episode) made a season take many minutes for links nobody needed.
      */
-    suspend fun sources(title: Title, ep: Episode): List<Hit> = runCatching {
+    suspend fun sources(title: Title, ep: Episode): List<Hit> =
+        gather(EPISODE_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } }
+
+    /**
+     * What [search] finds, for a download pick: it stops once what's in already holds a pick as preferred
+     * ([goodEnough]), or after [limitMs] with what has come in. The search is its own job, not the caller's child:
+     * a plugin stuck in a slow request is cancelled and left behind, not waited for — waiting on it is what made
+     * a time limit here mean nothing.
+     */
+    suspend fun gather(limitMs: Long, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
         val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource, it.dlDirect) }
         val latest = java.util.concurrent.atomic.AtomicReference<List<Hit>>(emptyList())
         val enough = kotlinx.coroutines.CompletableDeferred<Unit>()
-        // Its own job, not this one's child: a plugin stuck in a slow request is cancelled and left behind, not waited for.
-        val search = AppScope.async(kotlinx.coroutines.Dispatchers.Default) {
-            CsStreams.withPlugins(title, ep, { now ->
+        val job = AppScope.async(kotlinx.coroutines.Dispatchers.Default) {
+            search { now ->
                 latest.set(now)
                 if (!enough.isCompleted && goodEnough(allowedHits(now), prefs)) enough.complete(Unit)
-            }) { onHits -> searchEpisode(title, ep.season, ep.episode, onHits) }
+            }
         }
         try {
-            val all = withTimeoutOrNull(EPISODE_MS) {
+            val all = withTimeoutOrNull(limitMs) {
                 kotlinx.coroutines.selects.select<List<Hit>?> {
-                    search.onAwait { it }
+                    job.onAwait { it }
                     enough.onAwait { null }
                 }
             }
             allowedHits(all ?: latest.get())
         } finally {
-            search.cancel()
+            job.cancel()
         }
     }.getOrDefault(emptyList())
 

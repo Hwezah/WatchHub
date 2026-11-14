@@ -274,24 +274,21 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     /** An episode's Download: its releases to pick from, as a film's. */
     /**
      * One tap, one download: the release that best fits Settings → Preferred download, from the sources
-     * already on screen when they're this one's, else a fresh search — decided when every source has
-     * answered, or after [QUICK_PICK_MS] with what has.
+     * already on screen when they're this one's, else a fresh search — decided as soon as a pick as preferred
+     * is in ([SeasonBatch.gather]), or after [QUICK_PICK_MS] with what has come.
      */
     fun quickDownload(ep: Episode?, external: Boolean = false) {
         val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource, it.dlDirect) }
         val what = ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title
         val loaded = hits?.takeIf { !busy && episode?.id == ep?.id }
         if (loaded == null) watch.notes.tryEmit("Finding the best ${prefs.quality.ifEmpty { "source" }} for $what…")
-        scope.launch {
-            val all = loaded ?: run {
-                var latest = emptyList<Hit>()
-                val search: suspend (OnHits) -> List<Hit> = { onHits ->
-                    com.torrentviewer.mobile.cs.CsStreams.withPlugins(title, ep, onHits) { fromAddons ->
-                        if (ep != null) searchEpisode(title, ep.season, ep.episode, fromAddons)
-                        else searchStreams(title.title, title.imdb, title.year?.take(4), onHits = fromAddons, type = title.type)
-                    }
+        // Not this page's job: leaving the page mustn't drop a download that was asked for.
+        com.torrentviewer.core.AppScope.launch {
+            val all = loaded ?: SeasonBatch.gather(QUICK_PICK_MS) { onHits ->
+                com.torrentviewer.mobile.cs.CsStreams.withPlugins(title, ep, onHits) { fromAddons ->
+                    if (ep != null) searchEpisode(title, ep.season, ep.episode, fromAddons)
+                    else searchStreams(title.title, title.imdb, title.year?.take(4), onHits = fromAddons, type = title.type)
                 }
-                kotlinx.coroutines.withTimeoutOrNull(QUICK_PICK_MS) { runCatching { search { latest = it } }.getOrDefault(latest) } ?: latest
             }
             val pick = preferredPick(allowedHits(all), prefs)
             if (pick == null) watch.notes.tryEmit("Nothing that can be saved was found for $what.")
@@ -1013,7 +1010,7 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
 
 
 /** One-tap Download waits this long at most for every source to answer, then takes the best of what has. */
-private const val QUICK_PICK_MS = 15_000L
+private const val QUICK_PICK_MS = 25_000L
 
 /** The sources' reload pill: the plain (never chosen) pill look and one arrow, turning while links are still arriving. */
 @Composable
