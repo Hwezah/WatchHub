@@ -168,14 +168,28 @@ const val MIN_SEEDS = 5
  */
 fun fewSeeds(hit: Hit, cached: Set<String> = emptySet()) = !hit.direct && !hit.external && hit.seeders < MIN_SEEDS && hit.id.lowercase() !in cached
 
-/** The resolutions Settings offers to leave out, best first. */
-val QUALITY_CHOICES = listOf("4K", "1440p", "1080p", "720p", "480p", "360p", "CAM")
+/** What Settings → Streaming offers to leave out: a heading, then each choice's key and label. */
+val LEAVE_OUT = listOf(
+    "Resolution" to listOf("4K", "1440p", "1080p", "720p", "480p", "360p", "CAM").map { "q:$it" to it } + ("q:Auto" to "Auto / variable"),
+    "Codec" to listOf("c:x265" to "x265 (HEVC)", "c:x264" to "x264 (AVC)", "c:AV1" to "AV1", "c:$UNKNOWN" to "Not stated"),
+    "Format" to listOf("f:MKV" to "MKV", "f:MP4" to "MP4", "f:HLS" to "HLS stream", "f:Other" to "Other / not stated"),
+)
 
-/** Whether [hit] may show at all under Settings → Streaming's left-out resolutions; one of unknown resolution always may. */
-fun allowedQuality(hit: Hit, hidden: Collection<String>) = hit.quality == null || hit.quality !in hidden
+/**
+ * The keys a release answers to in [LEAVE_OUT]: its resolution ("Auto" when it has none — adaptive or
+ * unlabelled), codec, and format (MKV, MP4, HLS, or "Other" for anything else or unknown).
+ */
+fun leaveOutKeys(hit: Hit): List<String> {
+    val t = traitsOf(hit)
+    val format = if (t.format in setOf("MKV", "MP4", "HLS")) t.format else "Other"
+    return listOf("q:${hit.quality ?: "Auto"}", "c:${t.codec}", "f:$format")
+}
+
+/** Whether [hit] may show at all: none of its keys is among those left out. */
+fun allowed(hit: Hit, leaveOut: Collection<String>) = leaveOut.isEmpty() || leaveOutKeys(hit).none { it in leaveOut }
 
 /** The sources the viewer allows: every list and every download pick goes through this. */
 fun allowedHits(hits: List<Hit>): List<Hit> {
-    val hidden = com.torrentviewer.core.SettingsStore.value.value.hiddenQualities
-    return if (hidden.isEmpty()) hits else hits.filter { allowedQuality(it, hidden) }
+    val out = com.torrentviewer.core.SettingsStore.value.value.leaveOut
+    return if (out.isEmpty()) hits else hits.filter { allowed(it, out) }
 }

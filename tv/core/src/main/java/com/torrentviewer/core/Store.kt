@@ -181,8 +181,11 @@ data class Settings(
     val secureDns: String = "",
     /** The phone's sources lists: torrents with fewer than 5 seeds left out (they rarely finish), unless shown by hand. */
     val hideFewSeeds: Boolean = true,
-    /** The phone's resolutions left out everywhere ("4K", "CAM"…): never listed, never picked for a download. */
-    val hiddenQualities: List<String> = emptyList(),
+    /**
+     * The phone's releases left out everywhere, never listed or picked for a download: "q:4K", "q:Auto" (no
+     * fixed resolution), "c:x264", "c:Unknown", "f:HLS", "f:Other"… — resolution, codec and format.
+     */
+    val leaveOut: List<String> = emptyList(),
 )
 
 /** Subtitle text; [size] is one of [SUB_SIZES]' keys. The Expo build's names and values. */
@@ -255,7 +258,7 @@ object SettingsStore {
         dlSource = o.optString("dlSource"),
         secureDns = o.optString("secureDns"),
         hideFewSeeds = o.optBoolean("hideFewSeeds", true),
-        hiddenQualities = o.strings("hiddenQualities"),
+        leaveOut = o.strings("leaveOut"),
     )
 
     /** Over what is stored, not instead of it: the TV and the phone each keep fields the other never reads. */
@@ -269,7 +272,7 @@ object SettingsStore {
             .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro).put("navStyle", next.navStyle)
             .put("builtInHome", next.builtInHome).put("hiddenShelves", JSONArray(next.hiddenShelves))
             .put("dlQuality", next.dlQuality).put("dlCodec", next.dlCodec).put("dlFormat", next.dlFormat).put("dlSubs", next.dlSubs).put("dlSource", next.dlSource)
-            .put("secureDns", next.secureDns).put("hideFewSeeds", next.hideFewSeeds).put("hiddenQualities", JSONArray(next.hiddenQualities))
+            .put("secureDns", next.secureDns).put("hideFewSeeds", next.hideFewSeeds).put("leaveOut", JSONArray(next.leaveOut))
         Kv.setGlobal("settings", o.toString())
         Kv.set(GENRES_KEY, JSONArray(next.genres).toString())
     }

@@ -192,8 +192,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     val settingsNow by com.torrentviewer.core.SettingsStore.value.collectAsState()
     val cachedIds by TorBox.cached.collectAsState()
     var showFew by remember(title.imdb) { mutableStateOf(false) }
-    // Settings → Streaming's left-out resolutions: gone from the list, its pills and every download pick.
-    val kept = hits?.filter { allowedQuality(it, settingsNow.hiddenQualities) }
+    // Settings → Streaming's left-out resolutions, codecs and formats: gone from the list, its pills and every download pick.
+    val kept = hits?.filter { allowed(it, settingsNow.leaveOut) }
     val atQuality = kept.orEmpty().filter { quality == null || it.quality == quality }
     val shown = if (settingsNow.hideFewSeeds && !showFew) atQuality.filterNot { fewSeeds(it, cachedIds.mapTo(HashSet()) { c -> c.lowercase() }) } else atQuality
     val hiddenFew = atQuality.size - shown.size

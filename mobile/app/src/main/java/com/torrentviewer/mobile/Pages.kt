@@ -795,18 +795,23 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
-        // Resolutions left out everywhere: tapped ones (red) never show, and a download never picks them.
-        Text("Leave out resolutions", style = Type.title.copy(fontWeight = FontWeight.Bold))
+        // Left out everywhere: tapped ones (red) never show, and a download never picks them.
+        Text("Leave out", style = Type.title.copy(fontWeight = FontWeight.Bold))
         Text(
-            "Tapped ones never show in sources lists or Search, and downloads never pick them. Releases of unknown resolution always show.",
-            Modifier.padding(top = 4.dp, bottom = 10.dp), style = Type.meta.copy(color = Ink.faint),
+            "Tapped ones never show in sources lists or Search, and downloads never pick them. Careful with \"Not stated\": " +
+                "many plugin links don't say their codec or format.",
+            Modifier.padding(top = 4.dp, bottom = 6.dp), style = Type.meta.copy(color = Ink.faint),
         )
-        FlowRow(Modifier.padding(bottom = 22.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            QUALITY_CHOICES.forEach { q ->
-                val out = q in settings.hiddenQualities
-                Chip(q, out, onClick = { set(settings.copy(hiddenQualities = if (out) settings.hiddenQualities - q else settings.hiddenQualities + q)) }, icon = if (out) L.drawable.lucide_ic_x else null)
+        LEAVE_OUT.forEach { (heading, choices) ->
+            Text(heading, Modifier.padding(top = 8.dp, bottom = 6.dp), style = Type.overline.copy(color = Ink.faint))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                choices.forEach { (key, label) ->
+                    val out = key in settings.leaveOut
+                    Chip(label, out, onClick = { set(settings.copy(leaveOut = if (out) settings.leaveOut - key else settings.leaveOut + key)) }, icon = if (out) L.drawable.lucide_ic_x else null, compact = true)
+                }
             }
         }
+        Spacer(Modifier.height(22.dp))
         ToggleSection(
             "Hide torrents under $MIN_SEEDS seeds", "Left out of the sources lists: with so few seeds they rarely finish. A tap under the list still shows them.",
             settings.hideFewSeeds,
