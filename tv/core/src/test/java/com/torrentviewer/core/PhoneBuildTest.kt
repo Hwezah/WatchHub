@@ -23,4 +23,15 @@ class PhoneBuildTest {
     @Test fun notesWithoutACodeOfferNothing() {
         assertNull(parsePhoneBuild(json("Latest phone build"), listOf("arm64-v8a"), "WatchHub-phone-"))
     }
+
+    @Test fun versionFileWhenTheApiWontAnswer() {
+        val v = """{"versionCode":168,"files":{"WatchHub-phone-arm64-v8a.apk":{"size":50,"sha256":"cc"},"WatchHub-phone-universal.apk":{"size":90,"sha256":"dd"}}}"""
+        val (code, r) = parsePhoneVersion(v, listOf("arm64-v8a"), "WatchHub-phone-")!!
+        assertEquals(168, code)
+        assertEquals("build 68", r.version)
+        assertEquals("${files}WatchHub-phone-arm64-v8a.apk", r.url)
+        assertEquals("cc", r.sha256)
+        assertEquals("${files}WatchHub-phone-universal.apk", parsePhoneVersion(v, listOf("x86_64"), "WatchHub-phone-")!!.second.url)
+        assertNull(parsePhoneVersion("""{"versionCode":168,"files":{}}""", listOf("arm64-v8a"), "WatchHub-phone-"))
+    }
 }

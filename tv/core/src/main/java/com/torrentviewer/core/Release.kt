@@ -50,3 +50,27 @@ fun parsePhoneBuild(json: String, abis: List<String>, prefix: String): Pair<Int,
         ?.takeIf { it.optString("browser_download_url").startsWith(RELEASE_FILES) && it.str("digest") != null }
         ?.let { code to AppRelease("build ${code - 100}", it.getString("browser_download_url"), it.optLong("size"), it.str("digest")?.removePrefix("sha256:")) }
 }.getOrNull()
+
+/**
+ * What the phone build publishes beside its APKs, as one of the release's files: its versionCode and each APK's
+ * size and checksum. Read when GitHub's API won't answer — it allows a network 60 calls an hour, and an app
+ * checking every time it comes back can run out — since release files have no such limit.
+ */
+const val PHONE_VERSION_FILE = "phone-version.json"
+
+/** [PHONE_VERSION_FILE]'s address on the rolling pre-release. */
+internal const val PHONE_VERSION_URL = "${RELEASE_FILES}phone-latest/$PHONE_VERSION_FILE"
+
+/**
+ * [PHONE_VERSION_FILE] read as [parsePhoneBuild] reads the release: the versionCode and the [prefix] APK for the
+ * first of [abis], else the universal one, only with its checksum. Null when the file doesn't say.
+ */
+fun parsePhoneVersion(json: String, abis: List<String>, prefix: String): Pair<Int, AppRelease>? = runCatching {
+    val o = JSONObject(json)
+    val code = o.getInt("versionCode")
+    val files = o.getJSONObject("files")
+    val name = (abis + "universal").map { "$prefix$it.apk" }.firstOrNull(files::has) ?: return null
+    val f = files.getJSONObject(name)
+    val sha = f.optString("sha256").ifEmpty { null } ?: return null
+    code to AppRelease("build ${code - 100}", "${RELEASE_FILES}phone-latest/$name", f.optLong("size"), sha)
+}.getOrNull()

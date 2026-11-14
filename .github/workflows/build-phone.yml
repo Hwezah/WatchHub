@@ -69,6 +69,15 @@ jobs:
             # No build code in the name: the same link always downloads the newest build.
             cp "$apk" "out/WatchHub-phone-$abi.apk"
           done
+          # The versionCode and each APK's size and checksum, beside the APKs: the app reads this when GitHub's API
+          # (60 calls an hour per network) won't answer.
+          python3 - "$((100 + GITHUB_RUN_NUMBER))" <<'PY'
+          import hashlib, json, os, sys, glob
+          files = {}
+          for path in sorted(glob.glob("out/*.apk")):
+              files[os.path.basename(path)] = {"size": os.path.getsize(path), "sha256": hashlib.sha256(open(path, "rb").read()).hexdigest()}
+          json.dump({"versionCode": int(sys.argv[1]), "files": files}, open("out/phone-version.json", "w"))
+          PY
           ls -lh out
 
       - uses: actions/upload-artifact@v4
@@ -91,8 +100,8 @@ jobs:
             for name in $(gh release view phone-latest --json assets -q '.assets[].name'); do
               gh release delete-asset phone-latest "$name" --yes
             done
-            gh release upload phone-latest out/*.apk --clobber
+            gh release upload phone-latest out/*.apk out/phone-version.json --clobber
             gh release edit phone-latest --notes "$notes" --prerelease --target "$GITHUB_SHA"
           else
-            gh release create phone-latest out/*.apk --prerelease --title "Phone — latest build" --notes "$notes" --target "$GITHUB_SHA"
+            gh release create phone-latest out/*.apk out/phone-version.json --prerelease --title "Phone — latest build" --notes "$notes" --target "$GITHUB_SHA"
           fi

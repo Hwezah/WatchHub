@@ -90,17 +90,25 @@ object Updates {
      * installed. Asked at launch and whenever the app comes back to the front (at most every 5 minutes), so a
      * new build is offered soon after it's out. The debug and release apps alike: each installs over itself.
      */
-    fun checkPhoneBuild(versionCode: Int, prefix: String, force: Boolean = false) {
+    fun checkPhoneBuild(versionCode: Int, prefix: String, force: Boolean = false, say: ((String) -> Unit)? = null) {
         val now = System.currentTimeMillis()
         // At most once a minute: often enough that a build finished a moment ago shows the next time the app comes back.
         if (!force && now - lastPhoneCheck < 60_000L) return
         lastPhoneCheck = now
         AppScope.launch {
-            val json = runCatching { Net.get(PHONE_LATEST, 15_000, quiet = true, headers = mapOf("Accept" to "application/vnd.github+json")) }.getOrNull() ?: return@launch
-            val (code, found) = parsePhoneBuild(json, Build.SUPPORTED_ABIS.toList(), prefix) ?: return@launch
-            if (code <= versionCode) return@launch
-            _hidden.value = Kv.global(SKIPPED) == found.version
+            val abis = Build.SUPPORTED_ABIS.toList()
+            // GitHub's API first; when it won't answer (its hourly limit, a moment mid-publish), the version file
+            // published beside the APKs, which has no limit.
+            val build = runCatching { Net.get(PHONE_LATEST, 15_000, quiet = true, headers = mapOf("Accept" to "application/vnd.github+json")) }.getOrNull()
+                ?.let { parsePhoneBuild(it, abis, prefix) }
+                ?: runCatching { Net.get(PHONE_VERSION_URL, 15_000, quiet = true) }.getOrNull()?.let { parsePhoneVersion(it, abis, prefix) }
+            if (build == null) return@launch say?.invoke("Couldn't reach GitHub to check — try again in a minute") ?: Unit
+            val (code, found) = build
+            if (code <= versionCode) return@launch say?.invoke("You're on the latest build (${versionCode - 100})") ?: Unit
+            // Asked for from Settings: shown even if it was put off with "Not now".
+            _hidden.value = !force && Kv.global(SKIPPED) == found.version
             _release.value = found
+            say?.invoke("Build ${code - 100} is ready — see the update card")
         }
     }
 
