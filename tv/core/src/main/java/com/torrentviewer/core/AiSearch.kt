@@ -240,30 +240,43 @@ object AiSearch {
      * Titles the AI thinks [description] means, as Cinemeta knows them, most likely first. Throws with a message
      * to show when the provider fails.
      */
-    suspend fun suggest(description: String): List<Title> {
-        val p = provider() ?: throw IllegalStateException("Choose an AI in Settings → AI Search")
-        val key = Secrets.get(keyName(p)) ?: throw IllegalStateException("Add your ${p.label} key in Settings → AI Search")
+    /**
+     * One question to [p], answered: the reply's text and the model that gave it. The viewer's model, else one found
+     * earlier for this service, else the default; an unknown default makes it ask the service which models the key
+     * may use and switch to the newest. Throws with a message to show.
+     */
+    private suspend fun complete(p: AiProvider, key: String, prompt: String): Pair<String, String> {
         val typed = SettingsStore.value.value.aiModel
-        // The viewer's model, else one found earlier for this service, else the service's default.
         val model = typed.ifBlank { Kv.global(foundKey(p)).orEmpty() }
         suspend fun ask(m: String): String {
-            val req = aiRequest(p, m, key, aiPrompt(description))
-            return Net.postJson(req.url, req.body, timeoutMs = 60_000, quiet = true, headers = req.headers)
+            val req = aiRequest(p, m, key, prompt)
+            return aiReplyText(p, Net.postJson(req.url, req.body, timeoutMs = 60_000, quiet = true, headers = req.headers))
         }
-        val reply = try {
-            ask(model)
+        return try {
+            ask(model) to model.ifBlank { p.defaultModel }
         } catch (e: HttpException) {
-            // An unknown model (the default retired, or renamed): ask the service what this key can use, and use that.
             val better = if (e.code == 404 && typed.isBlank()) discover(p, key)?.takeIf { it != model.ifBlank { p.defaultModel } } else null
             if (better == null) throw IllegalStateException(aiErrorText(p, e.code, e.body))
             Kv.setGlobal(foundKey(p), better)
             try {
-                ask(better)
+                ask(better) to better
             } catch (again: HttpException) {
                 throw IllegalStateException(aiErrorText(p, again.code, again.body))
             }
         }
-        val guesses = aiGuesses(aiReplyText(p, reply))
+    }
+
+    /** Settings' Test Key: a one-word question, so the viewer knows the key and model answer. The model that did. */
+    suspend fun test(p: AiProvider): String {
+        val key = Secrets.get(keyName(p)) ?: throw IllegalStateException("Save your ${p.label} key first")
+        return complete(p, key, "Reply with the single word OK.").second
+    }
+
+    suspend fun suggest(description: String): List<Title> {
+        val p = provider() ?: throw IllegalStateException("Choose an AI in Settings → AI Search")
+        val key = Secrets.get(keyName(p)) ?: throw IllegalStateException("Add your ${p.label} key in Settings → AI Search")
+        val reply = complete(p, key, aiPrompt(description)).first
+        val guesses = aiGuesses(reply)
         return coroutineScope {
             guesses.map { g ->
                 async {

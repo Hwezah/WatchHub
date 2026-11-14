@@ -1116,11 +1116,29 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         }
                     }, icon = L.drawable.lucide_ic_key)
                 }
-                if (saved) Button("Remove key", {
-                    com.torrentviewer.core.AiSearch.setKey(p, "")
-                    saved = false
-                    watch.notes.tryEmit("${p.label} key removed")
-                }, Modifier.padding(top = 10.dp))
+                if (saved) {
+                    var testing by remember(p) { mutableStateOf(false) }
+                    val testScope = rememberCoroutineScope()
+                    // Side by side, sharing the width.
+                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(if (testing) "Testing…" else "Test Key", {
+                            if (!testing) {
+                                testing = true
+                                testScope.launch {
+                                    runCatching { com.torrentviewer.core.AiSearch.test(p) }
+                                        .onSuccess { m -> watch.notes.tryEmit("${p.label} key works · $m answered") }
+                                        .onFailure { e -> watch.notes.tryEmit(e.message ?: "${p.label} didn't answer") }
+                                    testing = false
+                                }
+                            }
+                        }, Modifier.weight(1f), icon = L.drawable.lucide_ic_check)
+                        Button("Remove Key", {
+                            com.torrentviewer.core.AiSearch.setKey(p, "")
+                            saved = false
+                            watch.notes.tryEmit("${p.label} key removed")
+                        }, Modifier.weight(1f), icon = L.drawable.lucide_ic_trash_2)
+                    }
+                }
             }
             Section(
                 "Model",
