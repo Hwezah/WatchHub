@@ -169,7 +169,10 @@ object CsStreams {
     /** One provider: its page for the title, the episode on it, and every link found there. Null, or why nothing came. */
     private suspend fun one(p: MainAPI, title: Title, ep: Episode?, absolute: Int?, emit: (Hit) -> Unit): String? {
         val series = ep != null
-        val url = loadUrl(p, title, series) ?: return "didn't find this title"
+        val url = when (val at = loadUrl(p, title, series)) {
+            is Found.Url -> at.url
+            is Found.Not -> return at.why
+        }
         val load = p.load(url) ?: return "its page didn't load"
         // A plugin that knows the title's IMDb id and gives another found a different title.
         val said = load.syncData["imdb"]?.takeIf { it.startsWith("tt") }
@@ -204,15 +207,28 @@ object CsStreams {
         return null
     }
 
-    /** The provider's own page for the title: straight from the IMDb id where it can, else its search's best match. */
-    private suspend fun loadUrl(p: MainAPI, title: Title, series: Boolean): String? {
+    /** Where a provider's page for a title is, or why it isn't. */
+    private sealed interface Found {
+        data class Url(val url: String) : Found
+        data class Not(val why: String) : Found
+    }
+
+    /**
+     * The provider's own page for the title: straight from the IMDb id where it can, else its search's best match.
+     * When nothing matches, the reason names what the search did return, so the "Last search" line shows a mismatch.
+     */
+    private suspend fun loadUrl(p: MainAPI, title: Title, series: Boolean): Found {
         if (title.imdb.startsWith("tt") && SyncIdName.Imdb in p.supportedSyncNames) {
-            runCatching { p.getLoadUrl(SyncIdName.Imdb, title.imdb) }.getOrNull()?.let { return it }
+            runCatching { p.getLoadUrl(SyncIdName.Imdb, title.imdb) }.getOrNull()?.let { return Found.Url(it) }
         }
         val results = p.search(title.title, 1)?.items.orEmpty()
+        if (results.isEmpty()) return Found.Not("its search for \"${title.title}\" came back empty")
         val year = title.year?.take(4)?.toIntOrNull()
-        val at = bestMatch(title.title, year, series, results.map { Candidate(it.name, yearOf(it), seriesOf(it.type)) }) ?: return null
-        return results[at].url
+        val candidates = results.map { Candidate(it.name, yearOf(it), seriesOf(it.type)) }
+        val at = bestMatch(title.title, year, series, candidates)
+            ?: return Found.Not("none of its ${results.size} results matched — first: " +
+                candidates.take(3).joinToString(", ") { c -> "${c.name.take(40)}${c.year?.let { " ($it)" } ?: ""}${c.series?.let { if (it) " series" else " film" } ?: ""}" })
+        return Found.Url(results[at].url)
     }
 
     private fun dubLabel(d: DubStatus) = when (d) {
@@ -232,7 +248,7 @@ object CsStreams {
         return Hit(
             // A torrent by its hash, so the same one from an addon is one row; a link by itself.
             id = (if (torrent) magnetHash(url) else null) ?: url,
-            name = name.ifBlank { p.name },
+            name = com.torrentviewer.core.oneLineName(name).ifBlank { p.name },
             uri = url,
             seeders = 0, leechers = 0, size = com.torrentviewer.core.sizeInName(name),
             quality = q?.let(::qualityLabel) ?: quality(name),

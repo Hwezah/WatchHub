@@ -22,6 +22,9 @@ class QualityTest {
         assertEquals((964.83 * (1L shl 20)).toLong(), sizeInName("Moviesmod Driveseed[CF] [X264] [964.83MB]"))
         assertEquals((8.46 * (1L shl 30)).toLong(), sizeInName("[HdHub...] [PixelDrain] [💾 8.46 GB] Dope.Thief.S01E01"))
         assertEquals(0L, sizeInName("💾6Mbps | Dope Thief S1E1"))
+        assertEquals(0L, toStreamHits(org.json.JSONArray().put(org.json.JSONObject().put("url", "https://x.example/a.mp4").put("name", "HdHub").put("title", "💾3Mbps | Dope Thief S1E1 720p")), "tv").single().size)
+        assertEquals("[PenguPlay] Dope Thief S01E01 · 720p • HLS · Source: Cinejoy · 2.02 GB",
+            oneLineName("[PenguPlay] Dope Thief S01E01\n🎞️ 720p • HLS\n📡 Source: Cinejoy\n💾 2.02 GB"))
         assertEquals(0L, sizeInName("Vidy [Miami]"))
     }
 }

@@ -278,6 +278,17 @@ private val SIZE_IN_NAME = Regex("""(?<![a-z0-9.])(\d{1,4}(?:\.\d{1,3})?)\s?(TB|
  * one their links can't be sorted by weight or chosen as the lightest. 0 when none is written, or it isn't
  * plausible for a video (under 1 MB). Mbps figures ("6Mbps") aren't sizes.
  */
+/**
+ * A plugin link's name on one line: some (PenguPlay) write five lines with an emoji each, which a one-line row
+ * squashes into "720pHLSH.264". Lines are joined with " · " and their leading emoji dropped.
+ */
+fun oneLineName(name: String): String = name.lines()
+    .map { it.trim().replace(LEADING_SYMBOLS, "").trim() }
+    .filter { it.isNotEmpty() }
+    .joinToString(" · ")
+
+private val LEADING_SYMBOLS = Regex("""^[^\p{L}\p{N}\[(]+""")
+
 fun sizeInName(name: String): Long {
     val m = SIZE_IN_NAME.find(name) ?: return 0
     val n = m.groupValues[1].toDoubleOrNull() ?: return 0
@@ -299,7 +310,8 @@ fun health(seeders: Int) = when {
 }
 
 private val SEEDERS = Regex("""\x{1F464}\s*(\d+)""")
-private val SIZE = Regex("""\x{1F4BE}\s*([\d.]+)\s*(TB|GB|MB|KB)""", RegexOption.IGNORE_CASE)
+/** "💾 51.3 GB"; never "💾3Mbps", a bitrate some addons put where the size usually goes. */
+private val SIZE = Regex("""\x{1F4BE}\s*([\d.]+)\s*(TB|GB|MB|KB)(?![a-z])""", RegexOption.IGNORE_CASE)
 private val UNIT = mapOf("kb" to 1024.0, "mb" to 1024.0 * 1024, "gb" to 1024.0 * 1024 * 1024, "tb" to 1024.0 * 1024 * 1024 * 1024)
 
 /**

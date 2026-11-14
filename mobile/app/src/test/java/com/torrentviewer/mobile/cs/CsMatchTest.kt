@@ -25,6 +25,10 @@ class CsMatchTest {
         // Wrong kind, wrong decade, another film.
         assertNull(bestMatch("Dune", 2021, false, listOf(Candidate("Dune", 1984, false), Candidate("Dune", 2021, true), Candidate("Dune: Prophecy", 2024, true))))
         assertNull(bestMatch("", null, false, listOf(Candidate("", null, null))))
+        // StreamPlay calls every result a movie: the kind then says nothing.
+        assertEquals(1, bestMatch("Dope Thief", 2025, true, listOf(Candidate("Dope", 2025, false), Candidate("Dope Thief", 2025, false))))
+        // Mixed kinds still count.
+        assertNull(bestMatch("Dope Thief", 2025, true, listOf(Candidate("Dope Thief", 2025, false), Candidate("Other", 2025, true))))
     }
 
     @Test fun episodes() {

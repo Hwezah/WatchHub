@@ -42,9 +42,17 @@ fun matchScore(title: String, year: Int?, series: Boolean, c: Candidate): Int? {
     return name + when_
 }
 
-/** The index in [candidates] of the best match, or null when none matches. */
-fun bestMatch(title: String, year: Int?, series: Boolean, candidates: List<Candidate>): Int? =
-    candidates.withIndex().mapNotNull { (i, c) -> matchScore(title, year, series, c)?.let { i to it } }.maxByOrNull { it.second }?.first
+/**
+ * The index in [candidates] of the best match, or null when none matches. Some plugins (StreamPlay) label every
+ * search result a movie, series included: when all of them claim the same kind, that kind says nothing, so a
+ * second pass ignores it rather than miss the show.
+ */
+fun bestMatch(title: String, year: Int?, series: Boolean, candidates: List<Candidate>): Int? {
+    fun best(list: List<Candidate>) = list.withIndex().mapNotNull { (i, c) -> matchScore(title, year, series, c)?.let { i to it } }.maxByOrNull { it.second }?.first
+    best(candidates)?.let { return it }
+    val kinds = candidates.map { it.series }.distinct()
+    return if (kinds.size == 1 && kinds[0] != null && kinds[0] != series) best(candidates.map { it.copy(series = null) }) else null
+}
 
 /**
  * The index in [episodes] (each a plugin episode's season and number, either possibly unknown) of
