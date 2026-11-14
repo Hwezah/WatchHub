@@ -132,8 +132,12 @@ object Tmdb {
         return withContext(Dispatchers.Default) {
             runCatching {
                 val found = JSONObject(get("/find/$imdb?external_source=imdb_id"))
-                val tv = kind == "tv"
-                val id = found.optJSONArray(if (tv) "tv_results" else "movie_results")?.optJSONObject(0)?.optInt("id") ?: return@withContext null
+                fun first(list: String) = found.optJSONArray(list)?.optJSONObject(0)?.optInt("id")
+                // As asked; else as the other kind — a special or a mini-series some catalogues file as a film, or the reverse.
+                val asked = kind == "tv"
+                val askedId = first(if (asked) "tv_results" else "movie_results")
+                val tv = if (askedId != null) asked else !asked
+                val id = askedId ?: first(if (tv) "tv_results" else "movie_results") ?: return@withContext null
                 val json = get(if (tv) "/tv/$id?append_to_response=credits,content_ratings,recommendations" else "/movie/$id?append_to_response=credits,release_dates,recommendations")
                 parseTmdbTitle(json, if (tv) "tv" else "movie").also { titles[imdb] = it }
             }.getOrNull()
@@ -176,6 +180,22 @@ object Tmdb {
                 parseTmdbSeasons(get("/tv/$id")).flatMap { s -> runCatching { parseTmdbSeason(get("/tv/$id/season/$s"), imdb, today) }.getOrDefault(emptyList()) }
                     .also { if (it.isNotEmpty()) episodeLists[imdb] = it }
             }.getOrDefault(emptyList())
+        }
+    }
+
+    private val byName = java.util.concurrent.ConcurrentHashMap<String, CastMember>()
+
+    /**
+     * A cast member known only by name (TMDB had no cast for the title): the person TMDB has by that name, an
+     * actor first — so their photo shows and their page opens. Null with no key, no match, or no answer.
+     */
+    suspend fun personNamed(name: String): CastMember? {
+        if (key.isEmpty()) return null
+        byName[name]?.let { return it }
+        return withContext(Dispatchers.Default) {
+            runCatching {
+                parsePersonSearch(get("/search/person?query=${java.net.URLEncoder.encode(name, "UTF-8")}"), name)?.also { byName[name] = it }
+            }.getOrNull()
         }
     }
 

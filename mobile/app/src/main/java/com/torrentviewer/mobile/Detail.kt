@@ -469,7 +469,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     inOrder?.let { order -> FranchiseRail(order, title.imdb, { onOrder(order) }, onOpen, Modifier.padding(top = 20.dp)) }
                     val people = tmdb?.cast.orEmpty()
                     if (people.isNotEmpty()) PeopleRow(people, onPerson.takeUnless { com.torrentviewer.core.Kids.on })
-                    else if (title.cast.isNotEmpty()) CastRow(title.cast)
+                    else if (title.cast.isNotEmpty()) CastRow(title.cast, onPerson.takeUnless { com.torrentviewer.core.Kids.on })
                     title.awards?.let { AwardsCard(it) }
                     // Not for kids: recommendations have no rating until they're opened.
                     val similar = tmdb?.similar.orEmpty()
@@ -837,14 +837,21 @@ private fun Crew(label: String, names: List<String>, known: List<com.torrentview
 
 /** The cast as faces: a round photo over each name, scrolled sideways. Photos arrive one by one; initials until they do. */
 @Composable
-private fun CastRow(names: List<String>) {
+private fun CastRow(names: List<String>, onPerson: ((com.torrentviewer.core.CastMember) -> Unit)?) {
     Column(Modifier.padding(top = 18.dp)) {
         Text("Cast", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold))
         // Spread across the row when few; 14 dp apart and scrolling when many.
         LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = spreadArrangement(14.dp)) {
             items(names.take(12)) { name ->
-                val photo by produceState<String?>(null, name) { value = castPhoto(name) }
-                Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                // TMDB's person by that name (their photo, and their page on a tap), else Wikipedia's photo alone.
+                val person by produceState<com.torrentviewer.core.CastMember?>(null, name) { value = com.torrentviewer.core.Tmdb.personNamed(name) }
+                val wiki by produceState<String?>(null, name, person) { if (person?.photo == null) value = castPhoto(name) }
+                val photo = person?.photo ?: wiki
+                val open = person?.takeIf { onPerson != null }
+                Column(
+                    Modifier.width(72.dp).then(if (open != null) Modifier.clip(RoundedCornerShape(8.dp)).clickable { onPerson?.invoke(open) } else Modifier),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     Box(Modifier.size(64.dp).clip(CircleShape).background(Ink.surface2), contentAlignment = Alignment.Center) {
                         Text(name.split(' ').mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString(""), style = Type.label.copy(fontWeight = FontWeight.Bold, color = Ink.muted))
                         photo?.let { Artwork(it, name, Modifier.fillMaxSize(), fill = false) }

@@ -149,3 +149,11 @@ fun episodesFromReleases(imdb: String, names: List<String>): List<Episode> =
     names.mapNotNull(::parseEpisode).filter { it.season > 0 && it.episode > 0 }.distinct()
         .sortedWith(compareBy({ it.season }, { it.episode }))
         .map { Episode("$imdb:${it.season}:${it.episode}", it.season, it.episode, "Episode ${it.episode}", null, null, null) }
+
+/** The person a /search/person answer has by [name] (the same name, an actor first, then the best known); null when none is. */
+fun parsePersonSearch(json: String, name: String): CastMember? =
+    JSONObject(json).optJSONArray("results")?.objects().orEmpty()
+        .filter { sameName(it.optString("name"), name) }
+        .sortedWith(compareByDescending<JSONObject> { it.optString("known_for_department") == "Acting" }.thenByDescending { it.optDouble("popularity") })
+        .firstOrNull()
+        ?.let { CastMember(it.optInt("id"), it.optString("name"), null, image("w185", it.str("profile_path"))) }
