@@ -521,8 +521,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                 // The whole season, episode by episode, with filters over what was found.
                                 Tap({ askSeason = s }, shape = RoundedCornerShape(6.dp)) {
                                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        // As big as the "Episodes" heading beside it.
-                                        Lc(L.drawable.lucide_ic_download, tint = Ink.download, size = 24.dp)
+                                        // As big as the "Episodes" heading beside it; the stacked layers say "all of them" (a whole season).
+                                        Lc(L.drawable.lucide_ic_layers, tint = Ink.download, size = 24.dp)
                                         Text("  Download Season $s", style = Type.title.copy(fontWeight = FontWeight.Bold))
                                     }
                                 }
