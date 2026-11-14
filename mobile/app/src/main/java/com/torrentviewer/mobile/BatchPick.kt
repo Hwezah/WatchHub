@@ -206,6 +206,16 @@ fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     ).first()
 }
 
+/**
+ * Whether a season scan can stop asking for this episode: what [preferredPick] would take already is the preferred
+ * resolution and quick to download, and a direct link when those are preferred. Slow plugins are then not waited
+ * on — they could only add alternatives to a pick that's already what was asked for.
+ */
+fun goodEnough(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
+    val pick = preferredPick(hits, prefs) ?: return false
+    return resolutionDistance(pick.quality, prefs.quality) == 0 && pick.quality != null && quick(pick) && (!prefs.direct || pick.direct)
+}
+
 /** What a pick was, for the one-line message: "720p · x265 · MKV · 412 MB · HdHub". */
 fun describePick(hit: Hit): String {
     val t = traitsOf(hit)

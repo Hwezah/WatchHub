@@ -87,4 +87,19 @@ class PreferredPickTest {
         // Both thin: codec and size decide as before.
         assertEquals(thin, preferredPick(listOf(thin, busy.copy(seeders = 9)), defaults))
     }
+
+    /** A season scan stops asking about an episode once its pick is what was asked for. */
+    @Test fun whenAScanCanStop() {
+        val prefs = defaults.copy(direct = true)
+        val torrent = hit("E01.720p.x265.mkv", "720p", 423 * mb, seeders = 41)
+        val link = link("PenguPlay 720p 589 MB", "720p", 589 * mb, "https://cdn.x/a.m3u8")
+        assertEquals(false, goodEnough(emptyList(), prefs))
+        // Direct links preferred: a torrent alone isn't the end of it; with the link it is.
+        assertEquals(false, goodEnough(listOf(torrent), prefs))
+        assertEquals(true, goodEnough(listOf(torrent, link), prefs))
+        // Torrents will do: a well-seeded 720p is enough, a thin one or a 1080p isn't.
+        assertEquals(true, goodEnough(listOf(torrent), defaults))
+        assertEquals(false, goodEnough(listOf(torrent.copy(seeders = 3)), defaults))
+        assertEquals(false, goodEnough(listOf(hit("E01.1080p.x265.mkv", "1080p", 900 * mb, seeders = 41)), defaults))
+    }
 }

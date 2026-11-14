@@ -38,6 +38,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -70,9 +71,36 @@ object SeasonBatch {
     val scan: StateFlow<SeasonScan?> = _scan
     private var job: Job? = null
 
-    /** An episode's sources, as the title page finds them. */
+    /** How long one episode may be asked about: past this, what has come in is what it gets. */
+    private const val EPISODE_MS = 40_000L
+
+    /**
+     * An episode's sources, as the title page finds them — but not waited on to the end: the search stops once
+     * what's in already holds a pick as preferred ([goodEnough]), or after [EPISODE_MS]. Waiting on every plugin
+     * (up to minutes each, per episode) made a season take many minutes for links nobody needed.
+     */
     suspend fun sources(title: Title, ep: Episode): List<Hit> = runCatching {
-        allowedHits(CsStreams.withPlugins(title, ep, {}) { onHits -> searchEpisode(title, ep.season, ep.episode, onHits) })
+        val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource, it.dlDirect) }
+        val latest = java.util.concurrent.atomic.AtomicReference<List<Hit>>(emptyList())
+        val enough = kotlinx.coroutines.CompletableDeferred<Unit>()
+        // Its own job, not this one's child: a plugin stuck in a slow request is cancelled and left behind, not waited for.
+        val search = AppScope.async(kotlinx.coroutines.Dispatchers.Default) {
+            CsStreams.withPlugins(title, ep, { now ->
+                latest.set(now)
+                if (!enough.isCompleted && goodEnough(allowedHits(now), prefs)) enough.complete(Unit)
+            }) { onHits -> searchEpisode(title, ep.season, ep.episode, onHits) }
+        }
+        try {
+            val all = withTimeoutOrNull(EPISODE_MS) {
+                kotlinx.coroutines.selects.select<List<Hit>?> {
+                    search.onAwait { it }
+                    enough.onAwait { null }
+                }
+            }
+            allowedHits(all ?: latest.get())
+        } finally {
+            search.cancel()
+        }
     }.getOrDefault(emptyList())
 
     /** Starts gathering the season's sources, unless that's already under way or done for this season. */
@@ -83,7 +111,8 @@ object SeasonBatch {
         job?.cancel()
         _scan.value = SeasonScan(title.imdb, season, episodes)
         val gate = Semaphore(AT_ONCE)
-        job = AppScope.launch {
+        // Off the main thread: ranking and filtering hundreds of releases per episode there made the app stutter.
+        job = AppScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             for (ep in episodes) launch {
                 val hits = gate.withPermit { sources(title, ep) }
                 synchronized(this@SeasonBatch) {
@@ -124,7 +153,13 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
 
     BottomSheet("Download season $season", onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = CARD).padding(bottom = 12.dp)) {
-            if (scan == null) return@Column
+            if (scan == null) {
+                Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Spinner(size = 20.dp)
+                    Text("   Starting…", style = Type.meta.copy(color = Ink.muted))
+                }
+                return@Column
+            }
             val all = scan.found.values.flatten()
             if (!scan.done) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spinner(size = 20.dp)
@@ -136,14 +171,21 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             }
 
             // Each row offers what the others leave possible; tapping the chosen value again clears it.
-            FilterRow("Resolution", filterOptions(all, filter.copy(quality = null)) { it.quality }, filter.quality) { filter = filter.copy(quality = it) }
-            FilterRow("Codec", filterOptions(all, filter.copy(codec = null)) { it.codec }, filter.codec, label = ::codecLabel) { filter = filter.copy(codec = it) }
-            FilterRow("Format", filterOptions(all, filter.copy(format = null)) { it.format }, filter.format) { filter = filter.copy(format = it) }
-            FilterRow(
-                "Subtitles", filterOptions(all, filter.copy(subsOnly = false)) { if (it.subs) "With subs" else null },
-                if (filter.subsOnly) "With subs" else null,
-            ) { filter = filter.copy(subsOnly = it != null) }
-            FilterRow("Source", filterOptions(all, filter.copy(source = null)) { it.source }, filter.source, label = { if (it == "Link") "Direct link" else it }) { filter = filter.copy(source = it) }
+            // The rows' choices are counted when the scan or the chips change, not on every redraw.
+            val options = remember(scan, filter) {
+                listOf(
+                    filterOptions(all, filter.copy(quality = null)) { it.quality },
+                    filterOptions(all, filter.copy(codec = null)) { it.codec },
+                    filterOptions(all, filter.copy(format = null)) { it.format },
+                    filterOptions(all, filter.copy(subsOnly = false)) { if (it.subs) "With subs" else null },
+                    filterOptions(all, filter.copy(source = null)) { it.source },
+                )
+            }
+            FilterRow("Resolution", options[0], filter.quality) { filter = filter.copy(quality = it) }
+            FilterRow("Codec", options[1], filter.codec, label = ::codecLabel) { filter = filter.copy(codec = it) }
+            FilterRow("Format", options[2], filter.format) { filter = filter.copy(format = it) }
+            FilterRow("Subtitles", options[3], if (filter.subsOnly) "With subs" else null) { filter = filter.copy(subsOnly = it != null) }
+            FilterRow("Source", options[4], filter.source, label = { if (it == "Link") "Direct link" else it }) { filter = filter.copy(source = it) }
 
             // For another app: links that need no headers first, since a shared link can't carry them.
             // Worked out when the scan, the chips or the preferences change, not on every redraw of the sheet.
