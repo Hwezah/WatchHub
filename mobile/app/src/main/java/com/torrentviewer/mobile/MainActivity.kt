@@ -38,6 +38,7 @@ object Services {
         if (::engine.isInitialized) return
         Kv.init(context)
         SettingsStore.load()
+        com.torrentviewer.core.AiSearch.refresh()
         Profiles.load()
         com.torrentviewer.core.Simkl.clientId = BuildConfig.SIMKL_CLIENT_ID
         com.torrentviewer.core.Mdblist.clientId = BuildConfig.MDBLIST_CLIENT_ID

@@ -206,6 +206,27 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
     val filtered = !torrents && (kind != null || genre != null || decade != null || atLeast != null || sort != Sort.POPULAR) || torrents && (streamFilter != BatchFilter() || order != HitOrder.BEST)
     /** Going by rating: browse the best of the genre, or of everything, not only what's popular this week. */
     val byRating = sort == Sort.RATING || atLeast != null
+    // AI search: a description ("the one where a man relives the same day") also goes to the viewer's AI, whose
+    // guesses show above the usual results. Only with a service and key set (Settings → AI Search), never for kids.
+    val aiReady by com.torrentviewer.core.AiSearch.ready.collectAsState()
+    var aiTitles by remember { mutableStateOf<List<Title>?>(null) }
+    var aiBusy by remember { mutableStateOf(false) }
+    var aiNote by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(query, torrents, aiReady) {
+        val q = query.trim()
+        aiTitles = null
+        aiNote = null
+        aiBusy = false
+        if (torrents || Kids.on || !aiReady || !com.torrentviewer.core.looksLikeDescription(q) || com.torrentviewer.core.episodeAsked(q) != null) return@LaunchedEffect
+        // Longer than the title search's pause: a description is still being typed, and each ask costs the viewer.
+        delay(1200)
+        aiBusy = true
+        runCatching { com.torrentviewer.core.AiSearch.suggest(q) }
+            .onSuccess { aiTitles = it; if (it.isEmpty()) aiNote = "The AI's guesses aren't in the catalogue — try more detail" }
+            .onFailure { e -> if (e !is kotlinx.coroutines.CancellationException) aiNote = e.message ?: "AI search failed" }
+        aiBusy = false
+    }
+    val aiShown = !torrents && (aiBusy || aiNote != null || !aiTitles.isNullOrEmpty())
 
     LaunchedEffect(query, torrents, genre, kind, byRating) {
         val q = query.trim()
@@ -264,6 +285,18 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
             HitOrder.SMALLEST -> q.sortedWith(compareBy<Hit> { if (it.size > 0) 0 else 1 }.thenBy { it.size })
             HitOrder.SEEDS -> q.sortedByDescending { it.seeders }
         } to (matching.size - q.size)
+    }
+
+    // The results' heading: in the search header, or under the AI's suggestions when they show.
+    val typed = query.trim()
+    val heading = when {
+        torrents && releases != null -> if (releases.isEmpty()) if (busy) "Searching…" else if (hits!!.isNotEmpty()) "No releases match the filters" else "No releases for “$typed”" else "${releases.size} releases" + if (busy) "  ·  finding more…" else ""
+        !torrents && titles != null -> when {
+            titles.isNotEmpty() -> if (browsing) genre ?: "Top results" else "Top results"
+            results!!.isNotEmpty() -> "Nothing matches the filters"
+            else -> "Nothing found for “$typed”"
+        }
+        else -> null
     }
 
     LazyVerticalGrid(
@@ -328,6 +361,17 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                         streamFilter = f.copy(source = it)
                     }
                 }
+                // What AI search can do, said once where a search starts: centred on an upright phone.
+                if (!torrents && !Kids.on && query.isBlank()) {
+                    val portrait = isPortraitPhone()
+                    Text(
+                        "Can't remember the name? Describe it — “a man relives the same day over and over” — and AI suggests titles." +
+                            if (aiReady) "" else " Set it up in Settings → AI Search.",
+                        Modifier.fillMaxWidth().padding(top = 18.dp, start = if (portrait) 12.dp else 0.dp, end = if (portrait) 12.dp else 0.dp),
+                        style = Type.meta.copy(color = Ink.faint),
+                        textAlign = if (portrait) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                    )
+                }
                 if (recents.isNotEmpty() && results == null && hits == null) {
                     Row(Modifier.padding(top = 26.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Recent searches", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
@@ -337,18 +381,23 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                         recents.forEach { r -> Chip(r, false, onClick = { query = r }, icon = L.drawable.lucide_ic_history) }
                     }
                 }
-                val q = query.trim()
-                val heading = when {
-                    torrents && releases != null -> if (releases.isEmpty()) if (busy) "Searching…" else if (hits!!.isNotEmpty()) "No releases match the filters" else "No releases for “$q”" else "${releases.size} releases" + if (busy) "  ·  finding more…" else ""
-                    !torrents && titles != null -> when {
-                        titles.isNotEmpty() -> if (browsing) genre ?: "Top results" else "Top results"
-                        results!!.isNotEmpty() -> "Nothing matches the filters"
-                        else -> "Nothing found for “$q”"
-                    }
-                    else -> null
+                if (!aiShown) heading?.let { Text(it, Modifier.padding(top = 24.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) }
+                else Row(Modifier.padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Lc(L.drawable.lucide_ic_sparkles, tint = Ink.accent, size = 20.dp)
+                    Text("  AI Suggestions", style = Type.title.copy(fontWeight = FontWeight.Bold))
+                    if (aiBusy) Spinner(Modifier.padding(start = 10.dp), size = 18.dp)
                 }
-                heading?.let { Text(it, Modifier.padding(top = 24.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) }
             }
+        }
+        if (aiShown) {
+            aiNote?.let { note -> item(span = { GridItemSpan(maxLineSpan) }) { Text(note, Modifier.padding(bottom = 8.dp), style = Type.meta.copy(color = Ink.muted)) } }
+            items(aiTitles.orEmpty(), key = { "ai-" + it.imdb }) { t ->
+                PosterCard(t, {
+                    recents = Searches.remember(query)
+                    onOpen(t)
+                }, sub = subOf(t))
+            }
+            heading?.let { h -> item(span = { GridItemSpan(maxLineSpan) }) { Text(h, Modifier.padding(top = 16.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) } }
         }
         if (torrents) {
             if (hiddenFew > 0) item(span = { GridItemSpan(maxLineSpan) }) {
@@ -675,6 +724,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     listOf(
                         Entry(L.drawable.lucide_ic_link, "Integrations", "Simkl and MDBList", "tracking watched sync") { page = "Integrations" },
                         Entry(L.drawable.lucide_ic_key, "Services", "SubDL and TorBox keys", "subtitles api") { page = "Services" },
+                        Entry(L.drawable.lucide_ic_sparkles, "AI Search", "Describe a film or show; your AI names it", "ai claude gemini chatgpt openai deepseek openrouter describe") { page = "AI Search" },
                     ),
                     listOf(
                         Entry(L.drawable.lucide_ic_history, "Backup", "Save or restore your library", "export import") { page = "Backup" },
@@ -1012,6 +1062,58 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 "unless it's over 1.5× the size of the lightest torrent (or its size isn't known while the torrent's is).",
             settings.dlDirect,
         ) { set(settings.copy(dlDirect = it)) }
+        }
+
+        if (page == "AI Search") Panel {
+        Text(
+            "Type a description in Search — “heist film where they enter people's dreams” — and the AI you choose here names " +
+                "what it might be; its guesses show above the usual results. Bring your own key: requests go from this phone " +
+                "straight to that service and are charged to your account there. Descriptions of four words or more are sent; titles aren't.",
+            Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
+        )
+        PrefRow("Service", listOf("" to "Off") + com.torrentviewer.core.AiProvider.entries.map { it.id to it.label }, settings.aiProvider) {
+            set(settings.copy(aiProvider = it, aiModel = ""))
+            com.torrentviewer.core.AiSearch.refresh()
+        }
+        com.torrentviewer.core.AiProvider.of(settings.aiProvider)?.let { p ->
+            var aiKey by remember(p) { mutableStateOf("") }
+            var aiModel by remember(p) { mutableStateOf(settings.aiModel) }
+            var saved by remember(p) { mutableStateOf(com.torrentviewer.core.AiSearch.hasKey(p)) }
+            Section(
+                "${p.label} key",
+                if (saved) "Saved, encrypted on this phone. Enter another to replace it."
+                else "Create one at ${p.keyFrom}. It stays encrypted on this phone.",
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Field(aiKey, { aiKey = it.trim() }, if (saved) "••••••••••••" else "Your ${p.label} API key", Modifier.weight(1f), secret = true)
+                    Spacer(Modifier.width(10.dp))
+                    Button("Save", {
+                        if (aiKey.isEmpty()) watch.notes.tryEmit("Paste your ${p.label} key first")
+                        else {
+                            com.torrentviewer.core.AiSearch.setKey(p, aiKey)
+                            aiKey = ""
+                            saved = true
+                            watch.notes.tryEmit("${p.label} key saved")
+                        }
+                    }, icon = L.drawable.lucide_ic_key)
+                }
+                if (saved) Button("Remove key", {
+                    com.torrentviewer.core.AiSearch.setKey(p, "")
+                    saved = false
+                    watch.notes.tryEmit("${p.label} key removed")
+                }, Modifier.padding(top = 10.dp))
+            }
+            Section("Model", "Leave empty for ${p.defaultModel}. Type another model name the service offers to use that one.") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Field(aiModel, { aiModel = it.trim() }, p.defaultModel, Modifier.weight(1f))
+                    Spacer(Modifier.width(10.dp))
+                    Button("Save", {
+                        set(settings.copy(aiModel = aiModel))
+                        watch.notes.tryEmit(if (aiModel.isEmpty()) "Using ${p.defaultModel}" else "Using $aiModel")
+                    })
+                }
+            }
+        }
         }
 
         if (page == "Secure DNS") Panel {
