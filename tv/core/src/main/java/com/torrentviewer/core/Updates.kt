@@ -92,7 +92,8 @@ object Updates {
      */
     fun checkPhoneBuild(versionCode: Int, prefix: String, force: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (!force && now - lastPhoneCheck < 5 * 60_000L) return
+        // At most once a minute: often enough that a build finished a moment ago shows the next time the app comes back.
+        if (!force && now - lastPhoneCheck < 60_000L) return
         lastPhoneCheck = now
         AppScope.launch {
             val json = runCatching { Net.get(PHONE_LATEST, 15_000, quiet = true, headers = mapOf("Accept" to "application/vnd.github+json")) }.getOrNull() ?: return@launch
