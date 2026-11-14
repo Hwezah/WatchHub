@@ -673,10 +673,10 @@ private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
 @Composable
 private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: () -> Unit) {
     Tap(onPlay, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), onLongClick = onMore) { pressed ->
-        // The ⋮'s dots are a thin line in the middle of a 20dp icon: with no padding at its end and none beside it, the
-        // dots sit about as far from the card's edge as the poster does (10dp).
+        // A little room all round (14dp). The ⋮'s dots are a thin line in the middle of a 20dp icon: 4dp at the end
+        // puts them about as far from the card's edge as the poster is.
         Row(
-            Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(start = 10.dp, top = 10.dp, bottom = 10.dp, end = 0.dp),
+            Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(start = 14.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))) {
