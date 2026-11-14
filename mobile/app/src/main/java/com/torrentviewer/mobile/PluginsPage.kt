@@ -222,7 +222,10 @@ private fun OfferedRow(w: PluginWrapper, busy: androidx.compose.runtime.MutableS
             busy.value = busy.value - p.url
         }
     }
-    Row(Modifier.padding(top = 14.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    // One you have: its words take the row, and its buttons (update, settings, remove) a row of their own under them.
+    val below = have != null && !working
+    Column(Modifier.padding(top = 14.dp).fillMaxWidth()) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(Ink.text.copy(alpha = 0.06f)), contentAlignment = Alignment.Center) {
             Lc(L.drawable.lucide_ic_puzzle, tint = Ink.faint, size = 18.dp)
             p.iconUrl?.takeIf { it.startsWith("http") }?.let { Artwork(it, p.name, Modifier.fillMaxSize(), fill = false) }
@@ -241,19 +244,21 @@ private fun OfferedRow(w: PluginWrapper, busy: androidx.compose.runtime.MutableS
         when {
             working -> Spinner(size = 22.dp, modifier = Modifier.padding(8.dp))
             have == null -> RoundTap(L.drawable.lucide_ic_circle_arrow_down, Ink.download, ::install)
-            else -> {
-                if (p.version > have.version) RoundTap(L.drawable.lucide_ic_refresh_cw, Ink.download, ::install)
-                if (CsPlugins.loaded(have) && CsPlugins.settingsOf(have) != null) {
-                    RoundTap(L.drawable.lucide_ic_sliders_horizontal) { CsPlugins.openSettings(have)?.let { watch.notes.tryEmit(it) } }
-                }
-                RoundTap(L.drawable.lucide_ic_trash_2) {
-                    scope.launch {
-                        CsPlugins.uninstall(have)
-                        watch.notes.tryEmit("Removed ${p.name}")
-                    }
-                }
+            else -> Unit
+        }
+    }
+    if (below && have != null) Row(Modifier.fillMaxWidth().padding(start = 52.dp, top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        if (CsPlugins.loaded(have) && CsPlugins.settingsOf(have) != null) {
+            RoundTap(L.drawable.lucide_ic_sliders_horizontal) { CsPlugins.openSettings(have)?.let { watch.notes.tryEmit(it) } }
+        } else Spacer(Modifier.width(1.dp))
+        if (p.version > have.version) RoundTap(L.drawable.lucide_ic_refresh_cw, Ink.download, ::install)
+        RoundTap(L.drawable.lucide_ic_trash_2) {
+            scope.launch {
+                CsPlugins.uninstall(have)
+                watch.notes.tryEmit("Removed ${p.name}")
             }
         }
+    }
     }
 }
 
@@ -279,11 +284,9 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
             else -> "Not running" to Ink.faint
         }
     }
-    Row(
-        Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
+    // The words take the card's full width; the buttons sit on a row of their own under them, one at each end.
+    Column(Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(horizontal = 14.dp, vertical = 10.dp)) {
+        Column(Modifier.fillMaxWidth()) {
             Text("${p.internalName}  ·  v${p.version}", style = Type.body.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
             // A failure in full: the missing class it names is what tells what to add.
             Text(state, style = Type.meta.copy(color = tint, fontSize = 12.sp), maxLines = if (tint == Ink.accent) 10 else 3, overflow = TextOverflow.Ellipsis)
@@ -295,18 +298,21 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
                 style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 6, overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.width(8.dp))
-        // The plugin's own settings — accounts, which sources it asks, languages — as CloudStream's sliders icon.
-        if (CsPlugins.loaded(p) && CsPlugins.settingsOf(p) != null) {
-            Tap({ CsPlugins.openSettings(p)?.let { watch.notes.tryEmit(it) } }, shape = androidx.compose.foundation.shape.CircleShape) {
-                Lc(L.drawable.lucide_ic_sliders_horizontal, Modifier.padding(8.dp), tint = Ink.text, size = 22.dp)
-            }
-            Spacer(Modifier.width(4.dp))
-        }
-        Outline("Remove") {
-            scope.launch {
-                CsPlugins.uninstall(p)
-                watch.notes.tryEmit("Removed ${p.internalName}")
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            // The plugin's own settings — accounts, which sources it asks, languages — as CloudStream's sliders icon.
+            if (CsPlugins.loaded(p) && CsPlugins.settingsOf(p) != null) {
+                Tap({ CsPlugins.openSettings(p)?.let { watch.notes.tryEmit(it) } }, shape = RoundedCornerShape(24.dp)) {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Lc(L.drawable.lucide_ic_sliders_horizontal, tint = Ink.text, size = 22.dp)
+                        Text("  Settings", style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                    }
+                }
+            } else Spacer(Modifier.width(1.dp))
+            Outline("Remove") {
+                scope.launch {
+                    CsPlugins.uninstall(p)
+                    watch.notes.tryEmit("Removed ${p.internalName}")
+                }
             }
         }
     }

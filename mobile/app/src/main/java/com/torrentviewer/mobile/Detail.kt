@@ -395,7 +395,12 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     // On any release here, or on a connected account from another device; a series shows it per episode.
                     val finished = history.filter { it.imdb == title.imdb && it.ratio >= com.torrentviewer.core.WATCHED_AT }.maxOfOrNull { it.at }
                     val seenIt = !title.isSeries && (finished != null || title.imdb in stremio.films)
-                    if (seenIt || certificate != null) Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Centred on an upright phone, under the centred facts; from the start elsewhere.
+                    if (seenIt || certificate != null) Row(
+                        Modifier.fillMaxWidth().padding(top = 12.dp),
+                        horizontalArrangement = if (isPortraitPhone()) Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally) else Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         certificate?.let { CertificateBadge(it) }
                         if (seenIt) WatchedBadge(finished)
                     }

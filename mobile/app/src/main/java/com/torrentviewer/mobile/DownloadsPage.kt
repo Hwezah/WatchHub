@@ -84,6 +84,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     val finished by Downloads.finished.collectAsState()
     var cancelling by remember { mutableStateOf<LiveDownload?>(null) }
     var deleting by remember { mutableStateOf<Finished?>(null) }
+    var deletingAll by remember { mutableStateOf(false) }
 
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp)) {
         // Inside the Library, its heading and tabs; opened on its own, a heading with a close.
@@ -102,7 +103,17 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 style = Type.body.copy(color = Ink.faint, textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start),
             )
         }
-        if (live.isNotEmpty()) item { Label("Downloading") }
+        if (live.isNotEmpty()) item {
+            Label("Downloading")
+            // All of them at once: pause, carry on, or stop and delete (asked first).
+            SpreadRow(Modifier.padding(bottom = 12.dp)) {
+                Chip("Pause All", false, onClick = { live.forEach { if (it.state != DlState.PAUSED && it.state != DlState.FAILED) Downloads.pause(it.job.uri) } }, icon = L.drawable.lucide_ic_pause, compact = true)
+                Chip("Resume All", false, onClick = {
+                    live.forEach { if (it.state == DlState.PAUSED) Downloads.resume(it.job.uri) else if (it.state == DlState.FAILED) Downloads.retry(it.job.uri) }
+                }, icon = L.drawable.lucide_ic_play, compact = true)
+                Chip("Delete All", false, onClick = { deletingAll = true }, icon = L.drawable.lucide_ic_trash_2, compact = true)
+            }
+        }
         items(live, key = { "live-" + it.job.uri }) { row ->
             ActiveRow(
                 row,
@@ -139,6 +150,16 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
             onDismiss = { cancelling = null },
         )
     }
+    if (deletingAll) Sheet(
+        title = "Stop and delete all ${live.size} downloads?",
+        options = listOf(Option(true, "Stop and delete them all", "Files already saved stay on this phone"), Option(false, "Keep downloading")),
+        selected = null,
+        onPick = {
+            if (it) live.forEach { row -> Downloads.cancel(row.job.uri) }
+            deletingAll = false
+        },
+        onDismiss = { deletingAll = false },
+    )
     deleting?.let { f ->
         Sheet(
             title = "Delete ${f.label}?",
@@ -213,7 +234,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(CARD - 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Artwork(row.job.poster, row.job.label, Modifier.width(52.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
-            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            // Beside the poster: the words and buttons, and under them the progress line, from the poster to the ✕'s end.
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     when (row.state) {
@@ -249,9 +273,11 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             }
             // Its tap area reaches into the card's padding, so the ✕ sits as far from the right edge as the poster from the left.
             Tap(onCancel, Modifier.offset(x = 10.dp), CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 24.dp) }
+            }
+            // A thin green line filling as the bytes arrive.
+            ProgressLine(row.ratio, Modifier.padding(top = 6.dp).clip(CircleShape), height = 2.dp, color = Ink.download)
+            }
         }
-        // Under the row, across the whole card from padding to padding: a thin green line filling as the bytes arrive.
-        ProgressLine(row.ratio, Modifier.padding(top = 10.dp).clip(CircleShape), height = 2.dp, color = Ink.download)
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
         // Fastest / In order live in Settings → Downloads now, for every download, not on each card.

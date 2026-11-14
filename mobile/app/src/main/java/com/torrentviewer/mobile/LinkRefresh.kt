@@ -5,6 +5,7 @@ import com.torrentviewer.core.Meta
 import com.torrentviewer.core.forgetStreams
 import com.torrentviewer.core.searchStreams
 import com.torrentviewer.mobile.cs.CsStreams
+import kotlinx.coroutines.launch
 
 /**
  * The same source again, from a fresh search: plugin links (and many debrid ones) carry a token that
@@ -23,7 +24,15 @@ fun refreshPick(hits: List<Hit>, oldUri: String, source: String?, name: String?,
 }
 
 object LinkRefresh {
-    /** A fresh source for [job]'s film or episode, or null when it can't be placed or nothing is found. */
+    /** The longest a fresh link is looked for: plugins like StreamPlay keep answering for minutes, and a download can't wait that long. */
+    private const val FRESH_MS = 60_000L
+
+    /**
+     * A fresh source for [job]'s film or episode, or null when it can't be placed or nothing is found. Returned
+     * the moment a fitting one turns up among the answers so far — the same source again, else another at the
+     * same resolution — not after every source has finished. If the search ends (or [FRESH_MS] passes) with
+     * nothing at that resolution, what Settings → Preferred download would pick from the rest.
+     */
     suspend fun fresh(job: DownloadJob, tried: Set<String> = emptySet(), allowSame: Boolean = false): Hit? {
         val imdb = job.imdb ?: return null
         val title = Meta.title(imdb, job.kind ?: "movie") ?: return null
@@ -31,17 +40,31 @@ object LinkRefresh {
         forgetStreams()
         val season = job.epSeason
         val number = job.epNumber
-        val hits = if (season != null && number != null) {
-            val ep = title.episodes.find { it.season == season && it.episode == number } ?: return null
-            SeasonBatch.sources(title, ep)
-        } else {
-            runCatching {
-                CsStreams.withPlugins(title, null, {}) { onHits ->
-                    searchStreams(title.title, title.imdb, title.year?.take(4), type = title.type, onHits = onHits)
-                }
-            }.getOrDefault(emptyList())
-        }
+        val ep = if (season != null && number != null) title.episodes.find { it.season == season && it.episode == number } ?: return null else null
+        val st = com.torrentviewer.core.SettingsStore.value.value
+        val prefs = DownloadPrefs(st.dlQuality, st.dlCodec, st.dlFormat, st.dlSubs, st.dlSource)
         // [allowSame]: renewing a link that hasn't failed, so the same address (when it doesn't expire) is fine.
-        return refreshPick(hits, if (allowSame) "" else job.uri, job.source, job.linkName, job.quality, tried)
+        val old = if (allowSame) "" else job.uri
+        val quality = job.quality ?: prefs.quality.ifEmpty { null }
+        fun pick(hits: List<Hit>) = refreshPick(allowedHits(hits), old, job.source, job.linkName, quality, tried)
+        var latest = emptyList<Hit>()
+        val early = kotlinx.coroutines.CompletableDeferred<Hit?>()
+        val found = kotlinx.coroutines.withTimeoutOrNull(FRESH_MS) {
+            kotlinx.coroutines.coroutineScope {
+                val search = launch {
+                    val all = runCatching {
+                        CsStreams.withPlugins(title, ep, { partial -> latest = partial; pick(partial)?.let { early.complete(it) } }) { onHits ->
+                            if (ep != null) com.torrentviewer.core.searchEpisode(title, ep.season, ep.episode, onHits)
+                            else searchStreams(title.title, title.imdb, title.year?.take(4), type = title.type, onHits = onHits)
+                        }
+                    }.getOrDefault(latest)
+                    latest = all
+                    early.complete(pick(all))
+                }
+                early.await().also { search.cancel() }
+            }
+        }
+        // Nothing at that resolution: the nearest the preferences allow, from whatever was found.
+        return found ?: preferredPick(allowedHits(latest).filter { it.uri != old && it.uri !in tried }, prefs)
     }
 }

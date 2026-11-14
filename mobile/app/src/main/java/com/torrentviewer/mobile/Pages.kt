@@ -1318,9 +1318,11 @@ fun AddonsScreen(watch: Watch) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = EDGE).padding(bottom = 32.dp)) {
         Heading("Addons")
         // End to end: each the page's margin from its edge, the space between them.
-        SpreadRow(Modifier.padding(bottom = 16.dp)) {
-            Chip("Stremio addons", !plugins, onClick = { plugins = false })
-            Chip("CloudStream plugins", plugins, onClick = { plugins = true })
+        // On an upright phone the two share the width, half each (as Search's Titles / Streams); elsewhere side by side.
+        val half = isPortraitPhone()
+        Row(if (half) Modifier.fillMaxWidth().padding(bottom = 16.dp) else Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Chip("Stremio addons", !plugins, onClick = { plugins = false }, if (half) Modifier.weight(1f) else Modifier)
+            Chip("CloudStream plugins", plugins, onClick = { plugins = true }, if (half) Modifier.weight(1f) else Modifier)
         }
         if (plugins) {
             PluginsSection(watch)

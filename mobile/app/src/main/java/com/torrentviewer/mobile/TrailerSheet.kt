@@ -163,7 +163,10 @@ private fun Round(icon: Int, dark: Boolean = false, onClick: () -> Unit) {
 private fun zoomScript(zoom: Float) = """
 (function(z){var d=document;var s=d.getElementById('wh-zoom');if(!s){s=d.createElement('style');s.id='wh-zoom';(d.head||d.documentElement).appendChild(s);}
 s.textContent='html,body{background:#000!important;margin:0!important;overflow:hidden!important}'+
-'video{transform:scale('+z+')!important;transform-origin:center center!important;transition:transform .25s ease}';})($zoom);
+'video{transform:scale('+z+')!important;transform-origin:center center!important;transition:transform .25s ease}'+
+'.ytp-chrome-top,.ytp-watermark,.ytp-youtube-button,.ytp-impression-link,.ytp-pause-overlay,.ytp-share-button,.ytp-watch-later-button,'+
+'.ytp-cards-button,.ytp-cards-teaser,.ytp-ce-element,.ytp-endscreen-content,.ytp-fullscreen-button,.ytp-overflow-button,.ytp-subtitles-button,'+
+'.ytp-remote-button,.ytp-size-button,.ytp-miniplayer-button,.ytp-paid-content-overlay,.ytp-title,.ytp-show-cards-title{display:none!important}';})($zoom);
 """.trimIndent()
 
 /**
@@ -175,6 +178,14 @@ s.textContent='html,body{background:#000!important;margin:0!important;overflow:h
 @Composable
 private fun YouTubeView(id: String, zoom: Float) {
     var web by remember { mutableStateOf<WebView?>(null) }
+    /** The player's page has arrived: until then a spinner, and after a while a way out. */
+    var loaded by remember(id) { mutableStateOf(false) }
+    var slow by remember(id) { mutableStateOf(false) }
+    LaunchedEffect(id) {
+        kotlinx.coroutines.delay(10_000)
+        slow = true
+    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
     val current = androidx.compose.runtime.rememberUpdatedState(zoom)
     AndroidView(
         factory = { ctx ->
@@ -187,11 +198,18 @@ private fun YouTubeView(id: String, zoom: Float) {
                 settings.mediaPlaybackRequiresUserGesture = false
                 webChromeClient = WebChromeClient()
                 webViewClient = object : WebViewClient() {
+                    // As soon as the page starts drawing, YouTube's extra buttons are hidden; again when it has finished.
+                    override fun onPageCommitVisible(view: WebView, url: String?) {
+                        view.evaluateJavascript(zoomScript(current.value), null)
+                        loaded = true
+                    }
+
                     override fun onPageFinished(view: WebView, url: String?) {
                         view.evaluateJavascript(zoomScript(current.value), null)
+                        loaded = true
                     }
                 }
-                val url = "https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3" +
+                val url = "https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&fs=0&cc_load_policy=0&disablekb=1" +
                     "&origin=${java.net.URLEncoder.encode(origin, "UTF-8")}&widget_referrer=${java.net.URLEncoder.encode(origin, "UTF-8")}"
                 loadUrl(url, mapOf("Referer" to "$origin/"))
                 web = this
@@ -199,6 +217,14 @@ private fun YouTubeView(id: String, zoom: Float) {
         },
         modifier = Modifier.fillMaxSize(),
     )
+    if (!loaded) Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        com.torrentviewer.core.Spinner(size = 36.dp)
+        if (slow) Text(
+            "Taking long — the ↗ button above opens it in YouTube", Modifier.padding(top = 12.dp, start = 24.dp, end = 24.dp),
+            style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f), textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+        )
+    }
+    }
     // A new zoom scales the playing video in place, rather than reloading it.
     LaunchedEffect(zoom) { web?.evaluateJavascript(zoomScript(zoom), null) }
     DisposableEffect(Unit) {

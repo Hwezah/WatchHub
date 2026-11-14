@@ -89,8 +89,9 @@ object PluginSheetSpacing : FragmentManager.FragmentLifecycleCallbacks() {
             val c = v.getChildAt(i)
             if (list && isRow(c)) {
                 val lp = c.layoutParams as? ViewGroup.MarginLayoutParams
-                if (lp != null && lp.topMargin == 0 && lp.bottomMargin == 0) {
-                    lp.bottomMargin = gap
+                // Rows that touch or sit a hairline apart (a 1–2 dp margin of their own) are opened up to the full gap.
+                if (lp != null && lp.topMargin + lp.bottomMargin < gap) {
+                    lp.bottomMargin = gap - lp.topMargin
                     c.layoutParams = lp
                 }
             }

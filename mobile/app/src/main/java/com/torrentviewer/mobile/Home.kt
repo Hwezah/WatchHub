@@ -340,7 +340,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         StatusIconsOverArt(!scrolled)
         Box(Modifier.fillMaxWidth()) {
             // No shade over the hero: the art runs clean to the top; the page's own colour fades in once rows scroll under.
-            Box(Modifier.matchParentSize().graphicsLayer { alpha = solid }.background(Ink.bg).grain())
+            // Stays clear while the rows scroll under it (the owner's choice): no solid strip ever comes in.
             // Clear of the screen's edges: the wordmark and the avatar sit a little in from the sides and down from the top.
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = EDGE + 10.dp, end = EDGE + 10.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("WatchHub", Modifier.weight(1f), style = Type.title.copy(color = Ink.accent, fontWeight = FontWeight.Black, letterSpacing = 2.sp))
