@@ -94,7 +94,13 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
             }
         }
         if (live.isEmpty() && finished.isEmpty()) item {
-            Note("Nothing downloaded yet. Download from a title's page, and it plays here without a connection.")
+            // Centred on an upright phone.
+            val centred = isPortraitPhone()
+            Text(
+                "Nothing downloaded yet. Download from a title's page, and it plays here without a connection.",
+                Modifier.fillMaxWidth().padding(horizontal = if (centred) 12.dp else 0.dp),
+                style = Type.body.copy(color = Ink.faint, textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start),
+            )
         }
         if (live.isNotEmpty()) item { Label("Downloading") }
         items(live, key = { "live-" + it.job.uri }) { row ->

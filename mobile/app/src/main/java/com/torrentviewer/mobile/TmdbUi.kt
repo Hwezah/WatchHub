@@ -56,7 +56,7 @@ import kotlinx.coroutines.launch
 fun TooOldForKids(title: Title, certificate: String, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     Box(Modifier.fillMaxSize()) {
-        RoundIcon(L.drawable.lucide_ic_arrow_left, onBack, Modifier.statusBarsPadding().padding(start = 12.dp, top = 8.dp))
+        RoundIcon(L.drawable.lucide_ic_arrow_left, onBack, Modifier.statusBarsPadding().padding(start = 14.dp, top = 16.dp))
         Column(Modifier.align(Alignment.Center).padding(horizontal = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Lc(L.drawable.lucide_ic_lock, tint = Ink.muted, size = 34.dp)
             Text("Not for this profile", Modifier.padding(top = 14.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
@@ -183,6 +183,6 @@ fun PersonScreen(id: Int, name: String, onOpen: (Title) -> Unit, onBack: () -> U
                 TitleCard(card.poster, card.title, { open(card) }, Modifier.fillMaxWidth(), info = card.year)
             }
         }
-        RoundIcon(L.drawable.lucide_ic_arrow_left, onBack, Modifier.statusBarsPadding().padding(start = 12.dp, top = 8.dp))
+        RoundIcon(L.drawable.lucide_ic_arrow_left, onBack, Modifier.statusBarsPadding().padding(start = 14.dp, top = 16.dp))
     }
 }

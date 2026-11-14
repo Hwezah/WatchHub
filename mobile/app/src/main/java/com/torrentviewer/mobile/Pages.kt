@@ -705,7 +705,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 style = Type.meta.copy(color = Ink.faint, fontSize = 11.sp),
             )
         } else {
-            Row(Modifier.statusBarsPadding().padding(top = 8.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.statusBarsPadding().padding(start = 6.dp, top = 18.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 RoundIcon(L.drawable.lucide_ic_arrow_left, { page = null })
                 Text(page.orEmpty(), Modifier.padding(start = 12.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
             }

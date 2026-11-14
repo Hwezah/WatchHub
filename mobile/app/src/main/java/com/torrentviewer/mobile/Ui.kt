@@ -337,7 +337,7 @@ fun RoundIcon(@DrawableRes icon: Int, onClick: () -> Unit, modifier: Modifier = 
 /** Back, top-left under the status bar. */
 @Composable
 fun BoxScope.BackButton(onBack: () -> Unit) {
-    RoundIcon(L.drawable.lucide_ic_arrow_left, onBack, Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 8.dp, top = 6.dp))
+    RoundIcon(L.drawable.lucide_ic_arrow_left, onBack, Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 12.dp, top = 18.dp))
 }
 
 /** A text box; the ring shows where the keyboard is typing. */
@@ -625,7 +625,8 @@ fun LandscapeCard(art: String?, name: String, stamp: String? = null, progress: F
 /** A page heading under the status bar. */
 @Composable
 fun Heading(text: String, modifier: Modifier = Modifier, trailing: @Composable () -> Unit = {}) {
-    Row(modifier.statusBarsPadding().padding(top = 12.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Clear of the screen's top and sides, as Home's wordmark is: a little down and in.
+    Row(modifier.statusBarsPadding().padding(start = 10.dp, end = 10.dp, top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(text, Modifier.weight(1f), style = Type.display)
         trailing()
     }
