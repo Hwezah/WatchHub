@@ -102,6 +102,8 @@ data class DownloadJob(
     val refreshes: Int = 0,
     /** When the link was found (ms). Plugin links carry tokens that expire: an old one is renewed before it starts. 0: unknown. */
     val fetchedAt: Long = 0,
+    /** The release's size when it was picked (0 unknown): a fresh link for it should be about the same, not a far bigger file. */
+    val size: Long = 0,
 ) {
     val label get() = titleName ?: title
 
@@ -110,7 +112,7 @@ data class DownloadJob(
         .put("fileIndices", JSONArray(files)).put("savedIndices", JSONArray(saved)).put("paused", paused).put("mobileData", mobileData).put("sequential", sequential)
         .put("skipped", JSONArray(skipped))
         .put("link", link).put("playlist", playlist).put("quality", quality)
-        .put("source", source).put("linkName", linkName).put("epSeason", epSeason).put("epNumber", epNumber).put("refreshes", refreshes).put("fetchedAt", fetchedAt)
+        .put("source", source).put("linkName", linkName).put("epSeason", epSeason).put("epNumber", epNumber).put("refreshes", refreshes).put("fetchedAt", fetchedAt).put("size", size)
         .put("headers", JSONObject().also { o -> headers.forEach { (k, v) -> o.put(k, v) } })
 
     companion object {
@@ -142,6 +144,7 @@ data class DownloadJob(
                 epNumber = if (o.has("epNumber") && !o.isNull("epNumber")) o.optInt("epNumber") else null,
                 refreshes = o.optInt("refreshes"),
                 fetchedAt = o.optLong("fetchedAt"),
+                size = o.optLong("size"),
             )
         }
     }
@@ -471,9 +474,27 @@ object Downloads {
                 }
                 update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null) }
                 val work = linkWork(job.uri)
-                val result = LinkFetch.download(job.uri, job.headers, job.quality, job.playlist, work, connections) { done, total, rate ->
-                    update(job.uri) { it.copy(state = DlState.DOWNLOADING, files = listOf(DlFile(0, job.label, maxOf(total, done), done, false)), speed = rate) }
-                    notifyProgress()
+                // A host that drops connections ("connection closed", reset, timeouts) is usually saying "too many at once":
+                // the same link is tried again with half the connections, twice, where it left off, before anything else.
+                var conns = connections
+                var attempt = 0
+                val result = run {
+                    while (true) {
+                        try {
+                            return@run LinkFetch.download(job.uri, job.headers, job.quality, job.playlist, work, conns) { done, total, rate ->
+                                update(job.uri) { it.copy(state = DlState.DOWNLOADING, files = listOf(DlFile(0, job.label, maxOf(total, done), done, false)), speed = rate) }
+                                notifyProgress()
+                            }
+                        } catch (e: java.io.IOException) {
+                            if (e is LinkExpiredException || attempt >= DROPPED_RETRIES) throw e
+                            attempt++
+                            conns = maxOf(MIN_CONNECTIONS, conns / 2)
+                            Log.w(TAG, "${job.label}: ${e.message}; again with $conns connections")
+                            update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Connection dropped — trying again with $conns connections…", speed = 0) }
+                            kotlinx.coroutines.delay(3000L * attempt)
+                        }
+                    }
+                    @Suppress("UNREACHABLE_CODE") error("unreachable")
                 }
                 val dest = destOf(job, job.label, safe(job.label) + "." + result.ext)
                 dest.parentFile?.mkdirs()
@@ -491,7 +512,8 @@ object Downloads {
             } catch (e: Exception) {
                 Log.w(TAG, "link download failed: ${e.message}")
                 // An expired or unreachable link: ask the sources for a fresh one and carry on with it.
-                val dead = e is LinkExpiredException || e is java.net.UnknownHostException || e is java.net.ConnectException
+                // Dropped connections that outlived the retries above count too: that link isn't going to work today.
+                val dead = e is java.io.IOException
                 if (dead && job.refreshes < MAX_REFRESHES && job.imdb != null) {
                     update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Link expired — getting a fresh one…", speed = 0) }
                     failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
@@ -508,6 +530,12 @@ object Downloads {
 
     /** Fresh links tried per download before it is left failed. */
     private const val MAX_REFRESHES = 2
+
+    /** The same link tried again after dropped connections, each time with half the connections, before a fresh link. */
+    private const val DROPPED_RETRIES = 2
+
+    /** Never fewer connections than this on a retry: still quick, and few enough for a strict host. */
+    private const val MIN_CONNECTIONS = 4
 
     /** Swaps a dead link for [hit] — a fresh one for the same video — and starts it. */
     /** Per download (by its name): every link that failed it, so a refresh or a retry never goes back to one. */
@@ -545,6 +573,7 @@ object Downloads {
             quality = hit.quality ?: old.quality,
             source = hit.addon.ifEmpty { old.source },
             linkName = hit.name,
+            size = if (hit.size > 0) hit.size else old.size,
             refreshes = old.refreshes + 1,
             fetchedAt = System.currentTimeMillis(),
         )

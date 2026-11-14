@@ -66,6 +66,7 @@ fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null, foundAt: Long 
     quality = hit.quality ?: com.torrentviewer.core.SettingsStore.value.value.dlQuality.takeIf { hit.direct && isPlaylist(hit) && it.isNotEmpty() },
     source = hit.addon.ifEmpty { null },
     linkName = hit.name,
+    size = hit.size,
     epSeason = episode?.season,
     epNumber = episode?.episode,
     uri = hit.uri,
