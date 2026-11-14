@@ -343,7 +343,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
             Box(Modifier.matchParentSize().graphicsLayer { alpha = solid }.background(Ink.bg).grain())
             // Clear of the screen's edges: the wordmark and the avatar sit a little in from the sides and down from the top.
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = EDGE + 10.dp, end = EDGE + 10.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("WATCHLY", Modifier.weight(1f), style = Type.title.copy(color = Ink.accent, fontWeight = FontWeight.Black, letterSpacing = 2.sp))
+                Text("WatchHub", Modifier.weight(1f), style = Type.title.copy(color = Ink.accent, fontWeight = FontWeight.Black, letterSpacing = 2.sp))
                 if (!isWide()) Tap(onProfile, shape = RoundedCornerShape(6.dp)) { Avatar(who, 30.dp) }
             }
         }

@@ -42,13 +42,13 @@ import com.torrentviewer.core.bytes
  * with this app's key, so the checksum the in-app download checked isn't needed for safety.
  */
 fun downloadUpdate(context: Context, r: AppRelease, say: (String) -> Unit) {
-    val name = "Watchly-${r.version}.apk"
+    val name = "WatchHub-${r.version}.apk"
     // App-specific storage: no storage permission on Android 7–9, and the same name every tap, not "-1", "-2".
     context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.resolve(name)?.delete()
     runCatching {
         context.getSystemService(DownloadManager::class.java).enqueue(
             DownloadManager.Request(Uri.parse(r.url))
-                .setTitle("Watchly ${r.version}")
+                .setTitle("WatchHub ${r.version}")
                 .setDescription("Tap to install")
                 .setMimeType("application/vnd.android.package-archive")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)

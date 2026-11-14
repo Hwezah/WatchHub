@@ -440,7 +440,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     fun mediaCard() {
         if (castSession != null) return
         MediaCard.update(
-            title = title?.title ?: watch.item?.label ?: "Watchly",
+            title = title?.title ?: watch.item?.label ?: "WatchHub",
             subtitle = episode?.let { "${episodeLabel(title, it.season, it.episode)}  “${it.name}”" },
             paused = paused || !loaded,
             positionMs = (at * 1000).toLong(),
@@ -745,7 +745,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
 
     /* ---------------------------------------------------- TorBox stall */
 
-    // A TorBox stream that hasn't moved goes to Watchly's own engine: a video this phone can't
+    // A TorBox stream that hasn't moved goes to WatchHub's own engine: a video this phone can't
     // decode left VLC silent, with no error to fall back on, and the film never started. Counted
     // again from the switch to VLC: Media3's failed attempt used 4–6 s of VLC's time.
     LaunchedEffect(watch.via, vlc) {
@@ -946,7 +946,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                         }
                         v.onFailed = { message ->
                             watch.engine.note("player: failed — $message")
-                            // From TorBox: on to Watchly's own engine at the same spot, not out of the film.
+                            // From TorBox: on to WatchHub's own engine at the same spot, not out of the film.
                             if (!watch.leaveTorBox(at)) {
                                 watch.notes.tryEmit(message)
                                 watch.exit()

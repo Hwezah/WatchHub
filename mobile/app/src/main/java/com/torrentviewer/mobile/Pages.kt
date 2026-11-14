@@ -682,9 +682,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_refresh_cw, "Check for updates", "You have version ${BuildConfig.VERSION_NAME}", "new version upgrade") { Updates.checkNow { watch.notes.tryEmit(it) } },
                     ),
                     listOf(
-                        Entry(L.drawable.lucide_ic_scale, "Legal notice", "Watchly is a media player only", "disclaimer copyright dmca") { page = "Legal notice" },
+                        Entry(L.drawable.lucide_ic_scale, "Legal notice", "WatchHub is a media player only", "disclaimer copyright dmca") { page = "Legal notice" },
                         Entry(L.drawable.lucide_ic_shield, "Privacy policy", "What stays here and what is sent", "data") { page = "Privacy policy" },
-                        Entry(L.drawable.lucide_ic_file_text, "Terms and conditions", "The rules for using Watchly", "agreement licence") { page = "Terms and conditions" },
+                        Entry(L.drawable.lucide_ic_file_text, "Terms and conditions", "The rules for using WatchHub", "agreement licence") { page = "Terms and conditions" },
                     ),
                 ),
                 query,
@@ -712,7 +712,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         if (page == "Terms and conditions") Panel { LegalText(com.torrentviewer.core.Legal.TERMS) }
 
         if (page == "Integrations") Panel {
-            Text("What you finish here is marked watched on your accounts, and what they have watched shows here. You sign in on each service's own page, so your password never comes to Watchly.", Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint))
+            Text("What you finish here is marked watched on your accounts, and what they have watched shows here. You sign in on each service's own page, so your password never comes to WatchHub.", Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint))
             com.torrentviewer.core.WATCH_TRACKERS.forEach { TrackerSection(it) }
         }
 
@@ -920,7 +920,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
             if (!unrestricted) {
                 Text(
-                    "Battery saving can slow or stop downloads with the screen off. Let Watchly run in the background to keep them going.",
+                    "Battery saving can slow or stop downloads with the screen off. Let WatchHub run in the background to keep them going.",
                     Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
                 )
                 Solo { m -> Chip("Allow background downloads", false, onClick = { Downloads.askUnrestricted(context) }, m) }
@@ -1177,7 +1177,7 @@ fun StremioSection(me: Profile, onLater: (() -> Unit)? = null) {
     val hint = when {
         connected -> "Signed in${email?.takeIf { me.id == Stremio.profileId }?.let { " as $it" }.orEmpty()} — your Stremio library and where you stopped are here, My List is your library there, and what you finish is marked watched."
         me.isGuest -> "Your Stremio library, Continue Watching and addons here. As Guest it's forgotten when the app closes."
-        else -> "Your Stremio library, Continue Watching and addons here, kept in step both ways. Sign in on Stremio's own page — your password never comes to Watchly."
+        else -> "Your Stremio library, Continue Watching and addons here, kept in step both ways. Sign in on Stremio's own page — your password never comes to WatchHub."
     }
     val body: @Composable () -> Unit = {
         val c = code
@@ -1280,7 +1280,7 @@ fun AddonsScreen(watch: Watch) {
             return@Column
         }
         Text(
-            "Streams, subtitles and extra catalogues come from addons — public ones, your debrid service's, or your own media server's. Watchly comes with none.",
+            "Streams, subtitles and extra catalogues come from addons — public ones, your debrid service's, or your own media server's. WatchHub comes with none.",
             Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
         )
         Group("Add an addon") {
@@ -1288,7 +1288,7 @@ fun AddonsScreen(watch: Watch) {
                 Field(link, { link = it.trim() }, "https://…/manifest.json", Modifier.fillMaxWidth(), onSubmit = ::add, leading = L.drawable.lucide_ic_link)
                 Button(if (adding) "Adding…" else "Add addon", ::add, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_plus, primary = true)
                 Text(
-                    "Or tap Install on an addon's site and pick Watchly.",
+                    "Or tap Install on an addon's site and pick WatchHub.",
                     Modifier.padding(top = 10.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp),
                 )
             }
