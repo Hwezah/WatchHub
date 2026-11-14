@@ -236,8 +236,9 @@ object Downloads {
      * More is faster on most hosts; a host that refuses (429, 503) is waited out part by part.
      */
     var connections: Int
-        get() = prefs().getInt("connections", 32)
-        set(v) = prefs().edit().putInt("connections", v).apply()
+        // A new key: everyone moves to 64 (the old default, 32, was saved by anyone who opened the setting).
+        get() = prefs().getInt("connections64", 64)
+        set(v) = prefs().edit().putInt("connections64", v).apply()
 
     var sequential: Boolean
         get() = prefs().getBoolean("sequential", false)

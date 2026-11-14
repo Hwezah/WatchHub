@@ -1049,7 +1049,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
             )
             SpreadRow {
-                listOf(1, 4, 8, 16, 32).forEach { n -> Chip(if (n == 1) "1 connection" else "$n", connections == n, onClick = { connections = n; Downloads.connections = n }) }
+                listOf(1, 8, 16, 32, 64).forEach { n -> Chip(if (n == 1) "1 connection" else "$n", connections == n, onClick = { connections = n; Downloads.connections = n }) }
             }
             // Re-read on return from the system prompt.
             val context = LocalContext.current
