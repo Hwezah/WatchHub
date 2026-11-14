@@ -532,13 +532,29 @@ object Downloads {
                         return
                     }
                 }
-                errors[job.uri] = (if (dead && job.imdb != null) "No fresh link found — " else "") + (e.message ?: "Couldn't save that link")
+                // Out of fresh links for now: not left for the viewer to retry by hand — asked again on its own a little later
+                // (sources come back, links get renewed), a few times, by the same rules.
+                val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
+                val later = job.imdb != null && job.link && round <= AUTO_ROUNDS
+                errors[job.uri] = (if (dead && job.imdb != null) "No fresh link found — " else "") + (e.message ?: "Couldn't save that link") +
+                    if (later) " · trying again in ${round * 2} min" else ""
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
+                if (later) scope.launch {
+                    kotlinx.coroutines.delay(round * 2 * 60_000L)
+                    // Unless it was cancelled, paused or retried by hand meanwhile.
+                    if (_live.value.any { it.job.uri == job.uri && it.state == DlState.FAILED }) retry(job.uri)
+                }
             }
     }
 
-    /** Fresh links tried per download before it is left failed. */
-    private const val MAX_REFRESHES = 2
+    /** Fresh links tried in a row per download before it waits a while ([AUTO_ROUNDS]). */
+    private const val MAX_REFRESHES = 4
+
+    /** Times a download that ran out of fresh links is tried again on its own (after 2, 4, 6 minutes) before it waits for the viewer. */
+    private const val AUTO_ROUNDS = 3
+
+    /** Per download (by its name): how many automatic rounds it has had. */
+    private val autoRounds = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     /** The same link tried again after dropped connections, each time with half the connections, before a fresh link. */
     private const val DROPPED_RETRIES = 2
@@ -566,8 +582,20 @@ object Downloads {
             val fresh = runCatching { LinkRefresh.fresh(job, tried(job)) }.onFailure { Log.w(TAG, "retry: ${it.message}") }.getOrNull()
             // A retry by hand starts the automatic refreshes over.
             if (fresh != null) replaceLink(job.copy(refreshes = -1), fresh)
-            else update(uri) {
-                it.copy(state = DlState.FAILED, error = "No other ${job.quality ?: "working"} source right now — try again later", speed = 0)
+            else {
+                // Still nothing: asked again on its own, a few rounds, before it waits for the viewer.
+                val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
+                val later = round <= AUTO_ROUNDS
+                update(uri) {
+                    it.copy(
+                        state = DlState.FAILED, speed = 0,
+                        error = "No other ${job.quality ?: "working"} source right now" + if (later) " · trying again in ${round * 2} min" else " — tap ↻ to try again",
+                    )
+                }
+                if (later) scope.launch {
+                    kotlinx.coroutines.delay(round * 2 * 60_000L)
+                    if (_live.value.any { it.job.uri == uri && it.state == DlState.FAILED }) retry(uri)
+                }
             }
         }
     }
