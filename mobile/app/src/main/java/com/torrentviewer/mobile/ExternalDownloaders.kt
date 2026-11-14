@@ -69,10 +69,24 @@ object ExternalDownloaders {
         return found.sortedBy { known.indexOf(it.first).let { i -> if (i < 0) Int.MAX_VALUE else i } }
     }
 
-    /** The app a tap would use for [intent], by package and name; null when Android's picker would open. */
+    /** Whether [pkg] has a screen that takes [intent]. */
+    private fun takes(context: Context, intent: Intent, pkg: String) =
+        runCatching { context.packageManager.queryIntentActivities(Intent(intent).setPackage(pkg), PackageManager.MATCH_DEFAULT_ONLY).isNotEmpty() }.getOrDefault(false)
+
+    /** The link as shared text: what messengers, browsers and most downloaders take — far more apps than a video link. */
+    fun shareOf(text: String, title: String) = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text).putExtra(Intent.EXTRA_SUBJECT, title)
+
+    /**
+     * The app a tap would use for [intent], by package and name; null when Android's picker would open. The app
+     * picked last, if it takes the link either way (opened, or shared as text); else the best known downloader.
+     */
     fun default(context: Context, intent: Intent): Pair<String, String>? {
         val able = apps(context, intent)
-        val pkg = defaultDownloader(able.map { it.first }, remembered()) ?: return null
+        remembered()?.takeIf { it in able.map { a -> a.first } || takes(context, sendProbe(), it) }?.let { r ->
+            val name = runCatching { context.packageManager.let { pm -> pm.getApplicationLabel(pm.getApplicationInfo(r, 0)).toString() } }.getOrNull()
+            if (name != null) return r to name
+        }
+        val pkg = defaultDownloader(able.map { it.first }, null) ?: return null
         return able.firstOrNull { it.first == pkg }
     }
 
@@ -81,23 +95,26 @@ object ExternalDownloaders {
      * Android's picker rather than failing. [text] is what Copy puts on the clipboard.
      */
     fun hand(context: Context, intent: Intent, to: Downloader, pickerTitle: String, text: String): Handed {
+        // Android's list for a video link holds only the apps that open videos — often just one, which Android then
+        // opens without asking. The link shared as text reaches every app that takes links.
+        val share = if (intent.action == Intent.ACTION_SEND) intent else shareOf(text, pickerTitle)
         fun picker(): Handed {
             // Android reports the app picked to [ChosenDownloader], which makes it the default.
             val told = PendingIntent.getBroadcast(
                 context, 0, Intent(context, ChosenDownloader::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0,
             )
-            return runCatching { context.startActivity(Intent.createChooser(intent, pickerTitle, told.intentSender).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            return runCatching { context.startActivity(Intent.createChooser(share, pickerTitle, told.intentSender).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 .fold({ Handed.Opened }, { Handed.Failed })
         }
-        fun app(pkg: String): Handed {
+        fun app(pkg: String, what: Intent = intent): Handed {
             // One screen of that app, named outright: an app with several that take links (1DM+'s downloader and its
             // browser) otherwise brings up Android's "Open with … Just once / Always" for them. Its downloader, not a browser.
-            val screens = runCatching { context.packageManager.queryIntentActivities(Intent(intent).setPackage(pkg), PackageManager.MATCH_DEFAULT_ONLY) }
+            val screens = runCatching { context.packageManager.queryIntentActivities(Intent(what).setPackage(pkg), PackageManager.MATCH_DEFAULT_ONLY) }
                 .getOrDefault(emptyList())
             val screen = screens.firstOrNull { !it.activityInfo.name.contains("browser", true) && !it.loadLabel(context.packageManager).toString().contains("browser", true) }
                 ?: screens.firstOrNull() ?: return picker()
-            val direct = Intent(intent).setComponent(android.content.ComponentName(pkg, screen.activityInfo.name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val direct = Intent(what).setComponent(android.content.ComponentName(pkg, screen.activityInfo.name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             return runCatching { context.startActivity(direct) }.fold({ Handed.Opened }, { picker() })
         }
         return when (to) {
@@ -113,7 +130,15 @@ object ExternalDownloaders {
                 remember(to.pkg)
                 app(to.pkg)
             }
-            Downloader.Default -> defaultDownloader(apps(context, intent).map { it.first }, remembered())?.let(::app) ?: picker()
+            Downloader.Default -> {
+                val r = remembered()
+                when {
+                    // The app picked last: given the link as it opens it, else as shared text (from Android's list).
+                    r != null && takes(context, intent, r) -> app(r)
+                    r != null && takes(context, share, r) -> app(r, share)
+                    else -> defaultDownloader(apps(context, intent).map { it.first }, null)?.let { app(it) } ?: picker()
+                }
+            }
         }
     }
 
@@ -133,8 +158,10 @@ object ExternalDownloaders {
 @Composable
 fun DownloaderSheet(probe: Intent, many: Boolean, onPick: (Downloader) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val apps = remember(probe.action) { ExternalDownloaders.apps(context, probe) }
-    val current = remember(probe.action) { ExternalDownloaders.default(context, probe)?.first }
+    val chosen = remember(probe.action) { ExternalDownloaders.default(context, probe) }
+    val current = chosen?.first
+    // The default first among the rest, even one from Android's list that takes links only as shared text.
+    val apps = remember(probe.action) { ExternalDownloaders.apps(context, probe).let { a -> if (chosen == null || a.any { it.first == chosen.first }) a else listOf(chosen) + a } }
     val known = com.torrentviewer.core.KNOWN_DOWNLOADERS
     val options = apps.map { (pkg, name) ->
         Option<Downloader>(
