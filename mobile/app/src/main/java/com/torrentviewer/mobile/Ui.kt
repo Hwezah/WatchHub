@@ -250,7 +250,9 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
                 Lc(icon, tint = fg, size = 16.dp)
                 Spacer(Modifier.width(8.dp))
             }
-            Text(label, style = Type.label.copy(fontSize = if (compact) 13.sp else 14.sp, color = fg, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium), maxLines = 1)
+            Text(label, style = Type.label.copy(fontSize = if (compact) 13.sp else 14.sp, color = fg, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium),
+                maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             if (trailing != null) {
                 Spacer(Modifier.width(if (compact) 3.dp else 6.dp))
                 Lc(trailing, tint = trailingTint ?: fg, size = if (compact) 14.dp else 16.dp)

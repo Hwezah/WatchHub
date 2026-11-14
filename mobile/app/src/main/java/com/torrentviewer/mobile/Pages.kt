@@ -1313,7 +1313,7 @@ fun AddonsScreen(watch: Watch) {
         val half = isPortraitPhone()
         Row(if (half) Modifier.fillMaxWidth().padding(bottom = 16.dp) else Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Chip("Stremio addons", !plugins, onClick = { plugins = false }, if (half) Modifier.weight(1f) else Modifier)
-            Chip("CloudStream plugins", plugins, onClick = { plugins = true }, if (half) Modifier.weight(1f) else Modifier)
+            Chip("CloudStream", plugins, onClick = { plugins = true }, if (half) Modifier.weight(1f) else Modifier)
         }
         if (plugins) {
             PluginsSection(watch)
