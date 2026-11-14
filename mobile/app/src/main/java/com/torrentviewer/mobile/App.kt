@@ -445,9 +445,9 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             Sheet(
                 title = titleOf(raw).ifBlank { "This torrent" },
                 options = listOf(
-                    Option("stream", "Stream now", "Starts playing while it downloads"),
-                    Option("download", "Download", "Kept on this phone — see the Downloads tab"),
-                    Option("", "Cancel"),
+                    Option("stream", "Stream now", "Starts playing while it downloads", icon = L.drawable.lucide_ic_play),
+                    Option("download", "Download", "Kept on this phone — see the Downloads tab", icon = L.drawable.lucide_ic_download, iconTint = Ink.download),
+                    Option("", "Cancel", icon = L.drawable.lucide_ic_x),
                 ),
                 selected = null,
                 onPick = { pick ->
@@ -472,8 +472,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             Sheet(
                 title = "Add this addon?",
                 options = listOf(
-                    Option(true, "Add ${addonHost(link) ?: "this addon"}", "Only add addons you trust: it chooses what you are offered to play."),
-                    Option(false, "Cancel"),
+                    Option(true, "Add ${addonHost(link) ?: "this addon"}", "Only add addons you trust: it chooses what you are offered to play.", icon = L.drawable.lucide_ic_plus),
+                    Option(false, "Cancel", icon = L.drawable.lucide_ic_x),
                 ),
                 selected = null,
                 onPick = { yes ->
@@ -495,12 +495,12 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             Sheet(
                 title = if (all) "What should the TV copy?" else "Copy your addons to the TV?",
                 options = if (all) {
-                    Backup.GROUPS.keys.map { Option(it, it, "Replaces the TV's, for this profile") } +
-                        Option("*", "Everything", "All of the above") + Option("", "Cancel")
+                    Backup.GROUPS.keys.map { Option(it, it, "Replaces the TV's, for this profile", icon = L.drawable.lucide_ic_upload) } +
+                        Option("*", "Everything", "All of the above", icon = L.drawable.lucide_ic_layers) + Option("", "Cancel", icon = L.drawable.lucide_ic_x)
                 } else {
                     listOf(
-                        Option("addons", if (n == 0) "No addons on this phone yet" else "Send $n addon${if (n == 1) "" else "s"}", tv),
-                        Option("", "Cancel"),
+                        Option("addons", if (n == 0) "No addons on this phone yet" else "Send $n addon${if (n == 1) "" else "s"}", tv, icon = L.drawable.lucide_ic_upload),
+                        Option("", "Cancel", icon = L.drawable.lucide_ic_x),
                     )
                 },
                 selected = null,

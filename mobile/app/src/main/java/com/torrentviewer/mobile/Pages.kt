@@ -593,9 +593,9 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
         Sheet(
             title = name,
             options = listOfNotNull(
-                Option("play", "Resume"),
-                item.imdb?.let { Option("info", "Details") },
-                Option("remove", "Remove from Library", if ((sources[item.titleKey] ?: 1) > 1) "With every release it was played from" else null),
+                Option("play", "Resume", icon = L.drawable.lucide_ic_play),
+                item.imdb?.let { Option("info", "Details", icon = L.drawable.lucide_ic_info) },
+                Option("remove", "Remove from Library", if ((sources[item.titleKey] ?: 1) > 1) "With every release it was played from" else null, icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
             ),
             selected = null,
             onPick = {

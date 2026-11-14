@@ -360,8 +360,8 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         Sheet(
             title = item.label,
             options = listOfNotNull(
-                item.imdb?.let { Option("info", "Details") },
-                Option("remove", "Remove from Continue Watching"),
+                item.imdb?.let { Option("info", "Details", icon = L.drawable.lucide_ic_info) },
+                Option("remove", "Remove from Continue Watching", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
             ),
             selected = null,
             onPick = {

@@ -1199,7 +1199,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
             Panel.MORE -> Sheet(
                 title = "More",
                 options = listOfNotNull(
-                    Option("picture", "Picture", SCALES[scale].second),
+                    Option("picture", "Picture", SCALES[scale].second, icon = L.drawable.lucide_ic_maximize),
                     Option(
                         "sleep", "Sleep timer",
                         when {
@@ -1207,9 +1207,10 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                             SLEEP[sleep] < 0 -> "End of episode"
                             else -> "${maxOf(1L, (sleepEnds - System.currentTimeMillis() + 59_999) / 60_000)} min left"
                         },
+                        icon = L.drawable.lucide_ic_moon,
                     ),
-                    Option("download", "Download ahead", if (wholeFile) "Whole file" else "Next 5 minutes"),
-                    Option("open", "Open in another player"),
+                    Option("download", "Download ahead", if (wholeFile) "Whole file" else "Next 5 minutes", icon = L.drawable.lucide_ic_download, iconTint = Ink.download),
+                    Option("open", "Open in another player", icon = L.drawable.lucide_ic_external_link),
                 ),
                 selected = null,
                 onPick = { what ->

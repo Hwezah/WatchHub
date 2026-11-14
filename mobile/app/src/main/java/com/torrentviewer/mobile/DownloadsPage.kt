@@ -164,7 +164,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     deleting?.let { f ->
         Sheet(
             title = "Delete ${f.label}?",
-            options = listOf(Option(true, "Delete from this phone", bytes(f.size)), Option(false, "Keep it")),
+            options = listOf(Option(true, "Delete from this phone", bytes(f.size), icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep it", icon = L.drawable.lucide_ic_check)),
             selected = null,
             onPick = {
                 if (it) Downloads.delete(f)
