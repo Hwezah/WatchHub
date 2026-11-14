@@ -22,7 +22,8 @@ import org.json.JSONObject
  */
 enum class AiProvider(val id: String, val label: String, val defaultModel: String, val keyFrom: String) {
     CLAUDE("claude", "Claude", "claude-opus-5-5", "console.anthropic.com"),
-    GEMINI("gemini", "Gemini", "gemini-2.5-flash", "aistudio.google.com"),
+    // Google's alias for its current Flash model: it moves to each new one, so it isn't retired under the viewer.
+    GEMINI("gemini", "Gemini", "gemini-flash-latest", "aistudio.google.com"),
     OPENAI("openai", "ChatGPT", "gpt-4.1-mini", "platform.openai.com"),
     DEEPSEEK("deepseek", "DeepSeek", "deepseek-chat", "platform.deepseek.com"),
     OPENROUTER("openrouter", "OpenRouter", "openrouter/auto", "openrouter.ai"),
@@ -90,6 +91,52 @@ fun aiRequest(provider: AiProvider, model: String, key: String, prompt: String):
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
                 .toString(),
         )
+    }
+}
+
+/**
+ * The request listing the models [key] may use, for when the one asked for is unknown (retired or renamed): Gemini's
+ * and the OpenAI-format services'. Null for Claude, whose default is the current model.
+ */
+fun aiModelsRequest(provider: AiProvider, key: String): AiRequest? = when (provider) {
+    AiProvider.GEMINI -> AiRequest("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", mapOf("x-goog-api-key" to key), "")
+    AiProvider.OPENAI -> AiRequest("https://api.openai.com/v1/models", mapOf("Authorization" to "Bearer $key"), "")
+    AiProvider.DEEPSEEK -> AiRequest("https://api.deepseek.com/models", mapOf("Authorization" to "Bearer $key"), "")
+    AiProvider.OPENROUTER, AiProvider.CLAUDE -> null
+}
+
+private val VERSION = Regex("""(\d+(?:\.\d+)?)""")
+/** Words in a model's name that mean it isn't a plain text model, or isn't a stable one. */
+private val NOT_PLAIN = Regex("""lite|nano|preview|exp|image|tts|audio|live|realtime|transcribe|search|embed|vision|thinking|instruct|codex|learnlm|gemma|aqa|veo|imagen""", RegexOption.IGNORE_CASE)
+
+/**
+ * The model to ask instead, from [provider]'s list of models ([aiModelsRequest]'s reply): Gemini's own "latest
+ * Flash" alias where listed, else the newest plain Flash; ChatGPT's newest plain "mini"; DeepSeek's chat model.
+ * Null when nothing fits.
+ */
+fun aiBestModel(provider: AiProvider, reply: String): String? {
+    val o = runCatching { JSONObject(reply) }.getOrNull() ?: return null
+    fun newest(names: List<String>) = names.maxByOrNull { VERSION.find(it)?.value?.toDoubleOrNull() ?: 0.0 }
+    return when (provider) {
+        AiProvider.GEMINI -> {
+            val list = o.optJSONArray("models") ?: return null
+            val names = (0 until list.length()).mapNotNull { list.optJSONObject(it) }
+                .filter { m -> m.optJSONArray("supportedGenerationMethods")?.let { a -> (0 until a.length()).any { a.optString(it) == "generateContent" } } != false }
+                .map { it.optString("name").removePrefix("models/") }.filter { it.startsWith("gemini") }
+            names.firstOrNull { it == "gemini-flash-latest" }
+                ?: newest(names.filter { "flash" in it && !NOT_PLAIN.containsMatchIn(it) })
+                ?: newest(names.filter { !NOT_PLAIN.containsMatchIn(it) })
+                ?: names.firstOrNull()
+        }
+        else -> {
+            val list = o.optJSONArray("data") ?: return null
+            val ids = (0 until list.length()).mapNotNull { list.optJSONObject(it)?.optString("id") }
+            when (provider) {
+                AiProvider.OPENAI -> newest(ids.filter { it.startsWith("gpt-") && it.endsWith("-mini") && !NOT_PLAIN.containsMatchIn(it.removeSuffix("-mini")) })
+                    ?: newest(ids.filter { it.startsWith("gpt-") && !NOT_PLAIN.containsMatchIn(it) })
+                else -> ids.firstOrNull { it == "deepseek-chat" } ?: ids.firstOrNull()
+            }
+        }
     }
 }
 
@@ -163,6 +210,17 @@ object AiSearch {
 
     private fun keyName(p: AiProvider) = "ai-key:${p.id}"
 
+    private fun foundKey(p: AiProvider) = "ai-model-found:${p.id}"
+
+    /** The best model [key] may use on [p] ([aiBestModel]), or null when the list can't be had. */
+    private suspend fun discover(p: AiProvider, key: String): String? {
+        val req = aiModelsRequest(p, key) ?: return null
+        return runCatching { aiBestModel(p, Net.get(req.url, quiet = true, headers = req.headers)) }.getOrNull()
+    }
+
+    /** The model in use when the viewer named none: the default, or one found when the default was unknown. */
+    fun modelInUse(p: AiProvider): String = SettingsStore.value.value.aiModel.ifBlank { Kv.global(foundKey(p)) ?: p.defaultModel }
+
     fun provider(): AiProvider? = AiProvider.of(SettingsStore.value.value.aiProvider)
 
     fun hasKey(p: AiProvider): Boolean = !Secrets.get(keyName(p)).isNullOrBlank()
@@ -185,11 +243,25 @@ object AiSearch {
     suspend fun suggest(description: String): List<Title> {
         val p = provider() ?: throw IllegalStateException("Choose an AI in Settings → AI Search")
         val key = Secrets.get(keyName(p)) ?: throw IllegalStateException("Add your ${p.label} key in Settings → AI Search")
-        val req = aiRequest(p, SettingsStore.value.value.aiModel, key, aiPrompt(description))
+        val typed = SettingsStore.value.value.aiModel
+        // The viewer's model, else one found earlier for this service, else the service's default.
+        val model = typed.ifBlank { Kv.global(foundKey(p)).orEmpty() }
+        suspend fun ask(m: String): String {
+            val req = aiRequest(p, m, key, aiPrompt(description))
+            return Net.postJson(req.url, req.body, timeoutMs = 60_000, quiet = true, headers = req.headers)
+        }
         val reply = try {
-            Net.postJson(req.url, req.body, timeoutMs = 60_000, quiet = true, headers = req.headers)
+            ask(model)
         } catch (e: HttpException) {
-            throw IllegalStateException(aiErrorText(p, e.code, e.body))
+            // An unknown model (the default retired, or renamed): ask the service what this key can use, and use that.
+            val better = if (e.code == 404 && typed.isBlank()) discover(p, key)?.takeIf { it != model.ifBlank { p.defaultModel } } else null
+            if (better == null) throw IllegalStateException(aiErrorText(p, e.code, e.body))
+            Kv.setGlobal(foundKey(p), better)
+            try {
+                ask(better)
+            } catch (again: HttpException) {
+                throw IllegalStateException(aiErrorText(p, again.code, again.body))
+            }
         }
         val guesses = aiGuesses(aiReplyText(p, reply))
         return coroutineScope {

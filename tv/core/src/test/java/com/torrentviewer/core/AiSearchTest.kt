@@ -51,4 +51,20 @@ class AiSearchTest {
         assertEquals("Claude didn't accept the key — check it in Settings → AI Search", aiErrorText(AiProvider.CLAUDE, 401, ""))
         assertEquals("Gemini: quota gone", aiErrorText(AiProvider.GEMINI, 400, """{"error":{"message":"quota gone"}}"""))
     }
+
+    /** A retired default: the newest plain model the key may use. */
+    @Test fun bestModelFromTheList() {
+        val gemini = """{"models":[
+            {"name":"models/gemini-2.0-flash","supportedGenerationMethods":["generateContent"]},
+            {"name":"models/gemini-3.0-flash","supportedGenerationMethods":["generateContent","countTokens"]},
+            {"name":"models/gemini-3.0-flash-lite","supportedGenerationMethods":["generateContent"]},
+            {"name":"models/gemini-3.5-flash-preview","supportedGenerationMethods":["generateContent"]},
+            {"name":"models/text-embedding-004","supportedGenerationMethods":["embedContent"]}]}"""
+        assertEquals("gemini-3.0-flash", aiBestModel(AiProvider.GEMINI, gemini))
+        assertEquals("gemini-flash-latest", aiBestModel(AiProvider.GEMINI, """{"models":[{"name":"models/gemini-flash-latest"},{"name":"models/gemini-3.0-flash"}]}"""))
+        val openai = """{"data":[{"id":"gpt-4.1-mini"},{"id":"gpt-5-mini"},{"id":"gpt-5-mini-tts"},{"id":"gpt-realtime-mini"},{"id":"gpt-5"}]}"""
+        assertEquals("gpt-5-mini", aiBestModel(AiProvider.OPENAI, openai))
+        assertEquals("deepseek-chat", aiBestModel(AiProvider.DEEPSEEK, """{"data":[{"id":"deepseek-reasoner"},{"id":"deepseek-chat"}]}"""))
+        assertEquals(null, aiBestModel(AiProvider.GEMINI, "not json"))
+    }
 }

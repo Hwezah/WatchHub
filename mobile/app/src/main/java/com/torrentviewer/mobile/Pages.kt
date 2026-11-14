@@ -1122,7 +1122,11 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     watch.notes.tryEmit("${p.label} key removed")
                 }, Modifier.padding(top = 10.dp))
             }
-            Section("Model", "Leave empty for ${p.defaultModel}. Type another model name the service offers to use that one.") {
+            Section(
+                "Model",
+                "Leave empty and the app uses ${com.torrentviewer.core.AiSearch.modelInUse(p)} — if the service ever retires it, the app asks " +
+                    "which models your key can use and switches to the newest. Type a model name to use that one instead.",
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Field(aiModel, { aiModel = it.trim() }, p.defaultModel, Modifier.weight(1f))
                     Spacer(Modifier.width(10.dp))
