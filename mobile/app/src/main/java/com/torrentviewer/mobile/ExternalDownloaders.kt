@@ -4,7 +4,11 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.os.Build
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -24,10 +28,12 @@ sealed interface Downloader {
     data object Picker : Downloader
     /** No app: the link (or links, one a line) copied, to paste anywhere. */
     data object Copy : Downloader
+    /** Not a hand-off: forgets the app picked, so taps go back to 1DM / ADM, or Android's list. */
+    data object Clear : Downloader
 }
 
 /** What happened to the links, so the caller can say so. */
-enum class Handed { Opened, Copied, Failed }
+enum class Handed { Opened, Copied, Cleared, Failed }
 
 /**
  * The phone's apps that take links, and the one a tap goes to. Kept app-wide: it is the phone's downloader,
@@ -36,8 +42,14 @@ enum class Handed { Opened, Copied, Failed }
 object ExternalDownloaders {
     private const val KEY = "extDownloader"
 
-    /** The app picked last in the "Download With" sheet, by package. */
+    /** The app picked last in the "Download With" sheet (or in Android's list from it), by package. */
     fun remembered(): String? = Kv.global(KEY)
+
+    /** [pkg] is what taps use from now on. */
+    fun remember(pkg: String) = Kv.setGlobal(KEY, pkg)
+
+    /** Taps go back to the best known downloader, or Android's list. */
+    fun forget() = Kv.setGlobal(KEY, null)
 
     /** A stand-in for one file's link: what a single episode or source hands out (ACTION_VIEW). */
     fun viewProbe() = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse("https://example.com/video.mkv"), "video/*")
@@ -69,8 +81,15 @@ object ExternalDownloaders {
      * Android's picker rather than failing. [text] is what Copy puts on the clipboard.
      */
     fun hand(context: Context, intent: Intent, to: Downloader, pickerTitle: String, text: String): Handed {
-        fun picker() = runCatching { context.startActivity(Intent.createChooser(intent, pickerTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            .fold({ Handed.Opened }, { Handed.Failed })
+        fun picker(): Handed {
+            // Android reports the app picked to [ChosenDownloader], which makes it the default.
+            val told = PendingIntent.getBroadcast(
+                context, 0, Intent(context, ChosenDownloader::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0,
+            )
+            return runCatching { context.startActivity(Intent.createChooser(intent, pickerTitle, told.intentSender).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                .fold({ Handed.Opened }, { Handed.Failed })
+        }
         fun app(pkg: String): Handed {
             // One screen of that app, named outright: an app with several that take links (1DM+'s downloader and its
             // browser) otherwise brings up Android's "Open with … Just once / Always" for them. Its downloader, not a browser.
@@ -86,8 +105,12 @@ object ExternalDownloaders {
                 (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(pickerTitle, text))
             }.fold({ Handed.Copied }, { Handed.Failed })
             Downloader.Picker -> picker()
+            Downloader.Clear -> {
+                forget()
+                Handed.Cleared
+            }
             is Downloader.App -> {
-                Kv.setGlobal(KEY, to.pkg)
+                remember(to.pkg)
                 app(to.pkg)
             }
             Downloader.Default -> defaultDownloader(apps(context, intent).map { it.first }, remembered())?.let(::app) ?: picker()
@@ -98,6 +121,7 @@ object ExternalDownloaders {
     fun note(handed: Handed, many: Boolean): String? = when (handed) {
         Handed.Opened -> null
         Handed.Copied -> if (many) "Links copied — paste them into your downloader" else "Link copied"
+        Handed.Cleared -> "Default cleared"
         Handed.Failed -> if (many) "No app on this phone can take those links." else "No app on this phone can take that link."
     }
 }
@@ -120,6 +144,30 @@ fun DownloaderSheet(probe: Intent, many: Boolean, onPick: (Downloader) -> Unit, 
             iconTint = if (pkg == current) Ink.download else null,
         )
     } + Option<Downloader>(Downloader.Picker, "Other Apps…", "Android's own list", icon = L.drawable.lucide_ic_share_2) +
-        Option<Downloader>(Downloader.Copy, if (many) "Copy Links" else "Copy Link", if (many) "One a line, to paste anywhere" else "To paste anywhere", icon = L.drawable.lucide_ic_copy)
-    Sheet("Download With", options, current?.let { Downloader.App(it) }, onPick = { onDismiss(); onPick(it) }, onDismiss = onDismiss)
+        Option<Downloader>(Downloader.Copy, if (many) "Copy Links" else "Copy Link", if (many) "One a line, to paste anywhere" else "To paste anywhere", icon = L.drawable.lucide_ic_copy) +
+        // Only once something was picked: taps then go back to 1DM / ADM, or Android's list.
+        listOfNotNull(
+            ExternalDownloaders.remembered()?.let {
+                Option<Downloader>(Downloader.Clear, "Clear Default", "Taps go back to 1DM, ADM or Android's list", icon = L.drawable.lucide_ic_x)
+            },
+        )
+    Sheet("Download With", options, current?.let { Downloader.App(it) }, onPick = {
+        onDismiss()
+        if (it == Downloader.Clear) {
+            ExternalDownloaders.forget()
+            android.widget.Toast.makeText(context, "Default cleared", android.widget.Toast.LENGTH_SHORT).show()
+        } else onPick(it)
+    }, onDismiss = onDismiss)
+}
+
+/** Android's word on which app was picked in its list: that one becomes what taps use. */
+class ChosenDownloader : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        @Suppress("DEPRECATION")
+        val picked = (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_CHOSEN_COMPONENT, ComponentName::class.java)
+        else intent.getParcelableExtra<ComponentName>(Intent.EXTRA_CHOSEN_COMPONENT)) ?: return
+        if (picked.packageName == context.packageName) return
+        Kv.init(context)
+        ExternalDownloaders.remember(picked.packageName)
+    }
 }

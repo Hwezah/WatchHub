@@ -110,6 +110,11 @@
         <!-- The playback card's Play/Pause on older Android, and a headset's buttons on ROMs
              that route them by receiver. Exported because the system is the sender; it acts
              only on ACTION_MEDIA_BUTTON key events. -->
+        <!-- Told by Android which app was picked in its "Other Apps…" list, so that one becomes the default. -->
+        <receiver
+            android:name=".ChosenDownloader"
+            android:exported="false" />
+
         <receiver
             android:name=".MediaButtons"
             android:exported="true">
