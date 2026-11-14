@@ -96,6 +96,15 @@ object CsPlugins {
         CommonActivity.activity = null
     }
 
+    /**
+     * The pages plugins fetched, kept by their web client: dropped before any reload, so a reload asks the sites
+     * themselves and never gets back a stored page with yesterday's (expired) links in it.
+     */
+    suspend fun forgetPages() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching { app.baseClient.cache?.evictAll() }
+        Unit
+    }
+
     /** Every provider the loaded plugins registered. */
     fun providers(): List<MainAPI> = APIHolder.allProviders.withLock { APIHolder.allProviders.toList() }
 

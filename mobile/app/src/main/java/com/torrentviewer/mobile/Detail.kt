@@ -256,7 +256,10 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     fun reloadSources(ep: Episode?) {
         if (busy) return
         com.torrentviewer.core.forgetStreams()
-        findSources(ep)
+        scope.launch {
+            com.torrentviewer.mobile.cs.CsPlugins.forgetPages()
+            findSources(ep)
+        }
     }
 
     /** Keep a release on the phone, in the Downloads tab. */

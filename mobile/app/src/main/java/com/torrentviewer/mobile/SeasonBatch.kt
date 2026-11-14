@@ -116,10 +116,13 @@ object SeasonBatch {
         if (!again && now != null && now.titleImdb == title.imdb && now.season == season) return
         val episodes = title.episodes.filter { it.season == season }.sortedBy { it.episode }
         job?.cancel()
+        // Asked again: from the sites themselves, not answers or pages kept from the last scan.
+        if (again) com.torrentviewer.core.forgetStreams()
         _scan.value = SeasonScan(title.imdb, season, episodes)
         val gate = Semaphore(AT_ONCE)
         // Off the main thread: ranking and filtering hundreds of releases per episode there made the app stutter.
         job = AppScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            if (again) com.torrentviewer.mobile.cs.CsPlugins.forgetPages()
             for (ep in episodes) launch {
                 val hits = gate.withPermit { sources(title, ep) }
                 synchronized(this@SeasonBatch) {

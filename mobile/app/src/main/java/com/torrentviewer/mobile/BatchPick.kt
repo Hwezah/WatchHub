@@ -186,41 +186,51 @@ fun resolutionDistance(quality: String?, wanted: String): Int {
 }
 
 /**
- * One-tap Download: never fails to pick while anything can be saved. Ranked, in order: the preferred
- * resolution, else the next one up; can download at all; a direct link not much heavier than the torrents (when
- * [DownloadPrefs.direct]); a torrent with 20+ seeds before a thinner one; a single file before an HLS playlist; codec, format, subtitles and
- * source as preferred; the lightest known size (unknown after every known one); the bigger swarm.
+ * One-tap Download, the season sheet and every automatic rescue: never fails to pick while anything can be saved.
+ * The owner's rule: the smallest 720p MKV, torrents and links alike; with no 720p MKV anywhere, up the chain
+ * (1080p, 1440p, 4K MKV), and only then other formats the same way. In order:
+ *  1. the preferred format (MKV) before any other;
+ *  2. the preferred resolution, else the next one up, lower only last ([resolutionDistance]);
+ *  3. can download at all (a live swarm, or a link);
+ *  4. the lightest known size — though among those within [NEAR_SIZE] of the lightest, a direct link (when
+ *     [DownloadPrefs.direct]), a well-seeded torrent, a single file before a playlist and the preferred codec go first.
+ * Unknown sizes come after every known one.
  */
 fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     val candidates = prefs.usable(hits).filter(::batchable)
     if (candidates.isEmpty()) return null
     val traits = candidates.associateWith(::traitsOf)
     fun t(h: Hit) = traits.getValue(h)
-    val links = if (prefs.direct) preferableLinks(candidates) else emptySet()
-    return candidates.sortedWith(
-        compareBy<Hit> { resolutionDistance(it.quality, prefs.quality) }
-            .thenByDescending { alive(it) }
-            .thenByDescending { it in links }
+    val wrongFormat = { h: Hit -> if (prefs.format.isNotEmpty() && t(h).format != prefs.format) 1 else 0 }
+    val tier = compareBy<Hit> { wrongFormat(it) }.thenBy { resolutionDistance(it.quality, prefs.quality) }.thenByDescending { alive(it) }
+    val best = candidates.minWith(tier)
+    val top = candidates.filter { tier.compare(it, best) == 0 }
+    // Two steps, not one comparator: "about as light" isn't transitive, and a sort needs it to be.
+    val lightest = top.filter { it.size > 0 }.minOfOrNull { it.size }
+    val near = if (lightest == null) top else top.filter { it.size > 0 && it.size <= (lightest * NEAR_SIZE).toLong() }
+    return near.sortedWith(
+        compareByDescending<Hit> { prefs.direct && it.direct }
             .thenByDescending { quick(it) }
             .thenByDescending { !(it.direct && isPlaylist(it)) }
             .thenByDescending { prefs.codec.isNotEmpty() && t(it).codec == prefs.codec }
-            .thenByDescending { prefs.format.isNotEmpty() && t(it).format == prefs.format }
             .thenByDescending { prefs.subs && t(it).subs }
-            .thenByDescending { prefs.source.isNotEmpty() && t(it).source == prefs.source }
-            .thenBy { if (it.size > 0) 0 else 1 }
             .thenBy { it.size }
             .thenByDescending { it.seeders },
     ).first()
 }
 
+/** Files within this of the lightest count as "the smallest" too: then a link, a quick swarm or the preferred codec decide. */
+const val NEAR_SIZE = 1.1
+
 /**
  * Whether a season scan can stop asking for this episode: what [preferredPick] would take already is the preferred
- * resolution and quick to download, and a direct link when those are preferred. Slow plugins are then not waited
- * on — they could only add alternatives to a pick that's already what was asked for.
+ * format at the preferred resolution, quick to download. Slow plugins are then not waited on.
+ * ponytail: a smaller file may still be on its way from a slow plugin; the scan trades that for not waiting minutes.
  */
 fun goodEnough(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
     val pick = preferredPick(hits, prefs) ?: return false
-    return resolutionDistance(pick.quality, prefs.quality) == 0 && pick.quality != null && quick(pick) && (!prefs.direct || pick.direct)
+    return resolutionDistance(pick.quality, prefs.quality) == 0 && pick.quality != null && quick(pick) &&
+        (prefs.format.isEmpty() || traitsOf(pick).format == prefs.format)
 }
 
 /** What a pick was, for the one-line message: "720p · x265 · MKV · 412 MB · HdHub". */

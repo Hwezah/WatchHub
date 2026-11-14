@@ -61,31 +61,40 @@ class PreferredPickTest {
     }
 
     /** Dope Thief S01E01: Torrentio's 720p x265 MKV (423 MB) against PenguPlay's 720p H.264 HLS links. */
-    @Test fun directLinksFirstUnlessHeavy() {
+    @Test fun mkvFirstThenLightestThenLinks() {
         val torrent = hit("Dope.Thief.S01E01.720p.x265.mkv", "720p", 423 * mb)
         val light = link("PenguPlay 720p HLS H.264 589 MB", "720p", 589 * mb, "https://cdn.x/a.m3u8")
         val heavy = link("PenguPlay 720p HLS H.264 2.02 GB", "720p", 2068 * mb, "https://cdn.x/b.m3u8")
-        val unknown = link("Vidy 720p", "720p", 0, "https://cdn.x/c.m3u8")
         val prefs = defaults.copy(direct = true)
-        assertEquals(light, preferredPick(listOf(torrent, light, heavy, unknown), prefs))
-        // Over 1.5× the torrent, or of unknown size: the torrent.
-        assertEquals(torrent, preferredPick(listOf(torrent, heavy, unknown), prefs))
-        // Off: as before, the preferred codec and format.
-        assertEquals(torrent, preferredPick(listOf(torrent, light), defaults))
-        // With no torrent to compare against, any link will do.
-        assertEquals(setOf(heavy, unknown), preferableLinks(listOf(heavy, unknown)))
-        // The season sheet's chips: the link within the filter wins too.
+        // The MKV wins: HLS links aren't MKV.
+        assertEquals(torrent, preferredPick(listOf(torrent, light, heavy), prefs))
+        // An MKV link about as light as the torrent: the link, which needs no seeds.
+        val mkvLink = link("Moviesmod 720p [440MB].mkv", "720p", 440 * mb, "https://mm.x/e01.mkv")
+        assertEquals(mkvLink, preferredPick(listOf(torrent, mkvLink), prefs))
+        // Clearly heavier: the lighter torrent.
+        assertEquals(torrent, preferredPick(listOf(torrent, mkvLink.copy(size = 600 * mb)), prefs))
+        // No MKV at all: the lightest of the rest.
+        assertEquals(light, preferredPick(listOf(light, heavy), prefs))
+        assertEquals(setOf(heavy), preferableLinks(listOf(heavy)))
+        // The season sheet's chips: the link within the filter wins.
         assertEquals(light, batchPick(listOf(torrent, light), BatchFilter(quality = "720p"), preferDirect = true))
     }
 
-    /** S01E01: an x265 torrent with 8 seeds loses to an x264 one with 41 — the quick download first. */
-    @Test fun wellSeededFirst() {
-        val thin = hit("E01.720p.x265.mkv", "720p", 400 * mb, seeders = 8)
+    /** No 720p MKV anywhere: up the chain to 1080p MKV, before a 720p in another format. */
+    @Test fun mkvUpTheChainBeforeOtherFormats() {
+        val mp4 = hit("E01.720p.x264.mp4", "720p", 300 * mb)
+        val mkv1080 = hit("E01.1080p.x265.mkv", "1080p", 900 * mb)
+        assertEquals(mkv1080, preferredPick(listOf(mp4, mkv1080), defaults))
+        assertEquals(mp4, preferredPick(listOf(mp4), defaults))
+    }
+
+    /** The lightest wins; among the near-lightest, the well-seeded swarm. */
+    @Test fun lightestThenWellSeeded() {
+        val thin = hit("E01.720p.x265.mkv", "720p", 400 * mb, seeders = 12)
         val busy = hit("E01.720p.x264.mkv", "720p", 575 * mb, seeders = 41)
-        assertEquals(busy, preferredPick(listOf(thin, busy), defaults))
-        assertEquals(busy, batchPick(listOf(thin, busy), BatchFilter(quality = "720p")))
-        // Both thin: codec and size decide as before.
-        assertEquals(thin, preferredPick(listOf(thin, busy.copy(seeders = 9)), defaults))
+        assertEquals(thin, preferredPick(listOf(thin, busy), defaults))
+        assertEquals(busy, preferredPick(listOf(thin, busy.copy(size = 420 * mb)), defaults))
+        assertEquals(busy, batchPick(listOf(thin.copy(seeders = 8), busy), BatchFilter(quality = "720p")))
     }
 
     /** A season scan stops asking about an episode once its pick is what was asked for. */
@@ -94,9 +103,11 @@ class PreferredPickTest {
         val torrent = hit("E01.720p.x265.mkv", "720p", 423 * mb, seeders = 41)
         val link = link("PenguPlay 720p 589 MB", "720p", 589 * mb, "https://cdn.x/a.m3u8")
         assertEquals(false, goodEnough(emptyList(), prefs))
-        // Direct links preferred: a torrent alone isn't the end of it; with the link it is.
-        assertEquals(false, goodEnough(listOf(torrent), prefs))
+        // A quick 720p MKV is the end of it, link or torrent.
+        assertEquals(true, goodEnough(listOf(torrent), prefs))
         assertEquals(true, goodEnough(listOf(torrent, link), prefs))
+        // Only the HLS link: not MKV, keep asking.
+        assertEquals(false, goodEnough(listOf(link), prefs))
         // Torrents will do: a well-seeded 720p is enough, a thin one or a 1080p isn't.
         assertEquals(true, goodEnough(listOf(torrent), defaults))
         assertEquals(false, goodEnough(listOf(torrent.copy(seeders = 3)), defaults))

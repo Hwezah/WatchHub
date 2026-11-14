@@ -12,8 +12,8 @@ import kotlinx.coroutines.launch
  * expires within hours, so a download that failed on its link asks the sources again and carries on.
  * Never the link that just failed, nor one in [tried] (every link that already failed this download).
  * In order: the same source and link name (the same file, renewed); else, at the same resolution, the
- * smallest that will work ([preferredPick] without codec or format: direct links first unless far heavier,
- * quick, a single file before a playlist, lightest), from the same source first — but among releases no more than [GROWTH] times [oldSize], when any are,
+ * smallest that will work ([preferredPick] without codec: MKV first, then the lightest, a link or a quick swarm
+ * among the near-lightest), from the same source first — but among releases no more than [GROWTH] times [oldSize], when any are,
  * so a 450 MB episode isn't swapped for a 1.7 GB one.
  */
 fun refreshPick(
@@ -26,8 +26,8 @@ fun refreshPick(
     if (atQuality.isEmpty()) return null
     val near = if (oldSize <= 0) atQuality else
         atQuality.filter { it.size in 1..(oldSize * GROWTH).toLong() }.ifEmpty { atQuality.filter { it.size <= (oldSize * GROWTH).toLong() } }.ifEmpty { atQuality }
-    // The smallest that will work at that resolution: codec, format and the rest of the preferences don't come into a rescue.
-    val pick = prefs.copy(quality = quality ?: prefs.quality, codec = "", format = "", subs = false, source = "")
+    // The smallest that will work at that resolution, MKV first: codec and the rest of the preferences don't come into a rescue.
+    val pick = prefs.copy(quality = quality ?: prefs.quality, codec = "", subs = false, source = "")
     return near.filter { source != null && it.addon == source }.let { preferredPick(it, pick) } ?: preferredPick(near, pick)
 }
 
@@ -53,6 +53,7 @@ object LinkRefresh {
         val title = Meta.title(imdb, job.kind ?: "movie") ?: return null
         // The addons' answers are kept for the session; this needs new ones.
         forgetStreams()
+        com.torrentviewer.mobile.cs.CsPlugins.forgetPages()
         val season = job.epSeason
         val number = job.epNumber
         val ep = if (season != null && number != null) title.episodes.find { it.season == season && it.episode == number } ?: return null else null
