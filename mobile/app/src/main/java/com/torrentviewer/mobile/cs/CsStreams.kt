@@ -107,7 +107,8 @@ object CsStreams {
         val lock = Any()
         var fromAddons = emptyList<Hit>()
         var fromPlugins = emptyList<Hit>()
-        fun now() = synchronized(lock) { fromPlugins + fromAddons }
+        // One row per link: a plugin and an addon can both find the same file (a list can't hold two rows with one id).
+        fun now() = synchronized(lock) { (fromPlugins + fromAddons).distinctBy { it.id } }
         val plugins = async { find(title, ep) { list -> synchronized(lock) { fromPlugins = list }; onHits(now()) } }
         val got = addons { list -> synchronized(lock) { fromAddons = list }; onHits(now()) }
         synchronized(lock) { fromAddons = got }
@@ -124,7 +125,7 @@ object CsStreams {
         if (providers.isEmpty()) return emptyList()
         val absolute = ep?.let { absoluteNumber(title.episodes, it.season, it.episode) }
         val found = mutableListOf<Hit>()
-        fun now() = synchronized(found) { found.sortedByDescending { rankOf(it.quality) } }
+        fun now() = synchronized(found) { found.sortedByDescending { rankOf(it.quality) }.distinctBy { it.id } }
         // The list is redrawn at most a few times a second, not once per link: StreamPlay alone sends hundreds.
         val lastTold = java.util.concurrent.atomic.AtomicLong(0)
         fun tell() {

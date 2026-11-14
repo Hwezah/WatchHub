@@ -276,7 +276,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
     val (releases, hiddenFew) = remember<Pair<List<Hit>?, Int>>(hits, streamFilter, order, hideFew, showFew, cachedIds, leaveOut) {
         val list = hits ?: return@remember null to 0
         val cached = cachedIds.mapTo(HashSet()) { it.lowercase() }
-        val matching = list.filter { allowed(it, leaveOut, cached) && notJunk(it) && streamFilter.accepts(traitsOf(it)) }
+        val matching = list.filter { allowed(it, leaveOut, cached) && notJunk(it) && streamFilter.accepts(traitsOf(it)) }.distinctBy { it.id }
         val q = if (hideFew && !showFew) matching.filterNot { fewSeeds(it, cached) } else matching
         when (order) {
             HitOrder.BEST -> q

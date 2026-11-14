@@ -197,7 +197,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     val leaveOut = settingsNow.leaveOut
     val hideFew = settingsNow.hideFewSeeds
     val cachedLower = remember(cachedIds) { cachedIds.mapTo(HashSet()) { c -> c.lowercase() } }
-    val kept = remember(hits, leaveOut, cachedLower) { hits?.filter { allowed(it, leaveOut, cachedLower) } }
+    // distinctBy: a list crashes on two rows with one id, wherever the sources came from.
+    val kept = remember(hits, leaveOut, cachedLower) { hits?.filter { allowed(it, leaveOut, cachedLower) }?.distinctBy { it.id } }
     val atQuality = remember(kept, quality) { kept.orEmpty().filter { quality == null || it.quality == quality } }
     val shown = remember(atQuality, hideFew, showFew, cachedLower) { if (hideFew && !showFew) atQuality.filterNot { fewSeeds(it, cachedLower) } else atQuality }
     val hiddenFew = atQuality.size - shown.size
@@ -699,7 +700,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     else "No season $s pack in ${langName(lang)} — change the language and try again, or download the episodes one by one.",
 Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
                 else -> LazyColumn {
-                    items(packs.take(MAX_SOURCES), key = { "pack-" + it.id }) { hit ->
+                    items(packs.distinctBy { it.id }.take(MAX_SOURCES), key = { "pack-" + it.id }) { hit ->
                         // Under the pack's own name, not the one episode file the addon pointed into it.
                         Source(hit.copy(name = hit.release), Modifier.padding(start = EDGE, end = EDGE, bottom = 8.dp), onDownload = { keepSeason(hit, s) }) { keepSeason(hit, s) }
                     }
