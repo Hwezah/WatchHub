@@ -282,17 +282,15 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                         }
                     },
                 )
-                // A kids profile searches titles only.
-                // The two modes: on an upright phone they share the width, half each; elsewhere side by side.
-                if (!Kids.on) {
-                    val half = isPortraitPhone()
-                    Row(if (half) Modifier.fillMaxWidth().padding(top = 12.dp) else Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Chip("Titles", !torrents, onClick = { torrents = false; hits = null }, if (half) Modifier.weight(1f) else Modifier)
-                        Chip("Streams", torrents, onClick = { torrents = true; results = null }, if (half) Modifier.weight(1f) else Modifier, icon = L.drawable.lucide_ic_layers)
-                    }
-                }
                 // One chip per filter, red while it narrows anything.
-                SpreadRow(Modifier.padding(top = 10.dp)) {
+                // The search's two modes, as the row's first chip: titles, or (red, with ✕) releases from every addon.
+                // A kids profile searches titles only.
+                SpreadRow(Modifier.padding(top = 12.dp)) {
+                    if (!Kids.on) Chip(
+                        "Streams", torrents,
+                        onClick = { if (torrents) { torrents = false; hits = null } else { torrents = true; results = null } },
+                        icon = L.drawable.lucide_ic_layers, trailing = if (torrents) L.drawable.lucide_ic_x else null,
+                    )
                     if (!torrents) {
                         Chip(when (kind) { "movie" -> "Films"; "tv" -> "Series"; else -> "Films & series" }, kind != null, onClick = { picking = Picking.KIND })
                         Chip(genre ?: "Any genre", genre != null, onClick = { picking = Picking.GENRE })
