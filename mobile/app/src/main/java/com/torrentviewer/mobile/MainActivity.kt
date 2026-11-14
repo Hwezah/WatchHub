@@ -76,6 +76,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashGuard.install(applicationContext)
+        // Pictures kept in memory: an eighth of the app's share rather than Coil's quarter — posters reload from disk in a blink.
+        runCatching {
+            coil3.SingletonImageLoader.setSafe { ctx ->
+                coil3.ImageLoader.Builder(ctx).memoryCache { coil3.memory.MemoryCache.Builder().maxSizePercent(ctx, 0.12).build() }.build()
+            }
+        }
         Services.init(applicationContext)
         com.torrentviewer.mobile.cs.CsPlugins.attach(this)
         // Plugins' settings sheets: a little space between their stacked option rows.
@@ -124,6 +131,12 @@ class MainActivity : AppCompatActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         Pip.active = isInPictureInPictureMode
+    }
+
+    /** The phone is short of memory, or the app left the screen: the pictures held in memory go (they're on disk). */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) runCatching { coil3.SingletonImageLoader.get(this).memoryCache?.clear() }
     }
 
     override fun onDestroy() {

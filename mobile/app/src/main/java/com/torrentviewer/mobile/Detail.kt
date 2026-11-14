@@ -193,9 +193,13 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     val cachedIds by TorBox.cached.collectAsState()
     var showFew by remember(title.imdb) { mutableStateOf(false) }
     // Settings → Streaming's left-out resolutions, codecs and formats: gone from the list, its pills and every download pick.
-    val kept = hits?.filter { allowed(it, settingsNow.leaveOut) }
-    val atQuality = kept.orEmpty().filter { quality == null || it.quality == quality }
-    val shown = if (settingsNow.hideFewSeeds && !showFew) atQuality.filterNot { fewSeeds(it, cachedIds.mapTo(HashSet()) { c -> c.lowercase() }) } else atQuality
+    // Worked out only when what they depend on changes, not on every redraw: hundreds of sources, each read by several regexes.
+    val leaveOut = settingsNow.leaveOut
+    val hideFew = settingsNow.hideFewSeeds
+    val cachedLower = remember(cachedIds) { cachedIds.mapTo(HashSet()) { c -> c.lowercase() } }
+    val kept = remember(hits, leaveOut) { hits?.filter { allowed(it, leaveOut) } }
+    val atQuality = remember(kept, quality) { kept.orEmpty().filter { quality == null || it.quality == quality } }
+    val shown = remember(atQuality, hideFew, showFew, cachedLower) { if (hideFew && !showFew) atQuality.filterNot { fewSeeds(it, cachedLower) } else atQuality }
     val hiddenFew = atQuality.size - shown.size
     var sheet by remember { mutableStateOf(false) }
     /** Download on a film or an episode: its releases, to pick one from. */

@@ -119,8 +119,10 @@ object Tmdb {
     /** From the app's build; empty leaves this out. */
     var key = ""
 
+    /** Either kind of TMDB credential works: the short API key (a query parameter), or the long "Read Access Token" (a bearer header). */
     private suspend fun get(path: String) =
-        Net.get("$API$path${if ('?' in path) '&' else '?'}api_key=$key", 15_000, quiet = true)
+        if (key.startsWith("eyJ")) Net.get("$API$path", 15_000, quiet = true, headers = mapOf("Authorization" to "Bearer $key", "Accept" to "application/json"))
+        else Net.get("$API$path${if ('?' in path) '&' else '?'}api_key=$key", 15_000, quiet = true)
 
     /** This run's answers: a film's page is often opened twice, going back and forth. */
     private val titles = java.util.concurrent.ConcurrentHashMap<String, TmdbTitle>()

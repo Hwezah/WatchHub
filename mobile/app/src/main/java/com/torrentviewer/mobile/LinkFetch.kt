@@ -51,7 +51,8 @@ object LinkFetch {
 
     suspend fun download(url: String, headers: Map<String, String>, quality: String?, playlist: Boolean, work: File, connections: Int = 1, progress: Progress): Result {
         work.mkdirs()
-        return if (playlist) hls(url, headers, quality, work, connections.coerceIn(PARALLEL, 16), progress)
+        return if (playlist) // Whole segments are held in memory while they're fetched and decrypted: six at once keeps that to a few tens of MB.
+        hls(url, headers, quality, work, connections.coerceIn(PARALLEL, 6), progress)
         else multi(url, headers, work, connections, progress) ?: single(url, headers, work, progress)
     }
 

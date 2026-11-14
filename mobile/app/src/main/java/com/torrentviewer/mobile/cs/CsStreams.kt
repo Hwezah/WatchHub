@@ -34,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 
@@ -53,6 +54,15 @@ object CsStreams {
      * for all of them); links show as they come, so a long wait costs nothing.
      */
     private const val PROVIDER_MS = 150_000L
+
+    /** The sources list hears of new links at most this often. */
+    private const val TELL_MS = 350L
+
+    /**
+     * Providers searching at once, across every search under way (a season scan runs several): each holds pages,
+     * parsers and connections in memory, and dozens together are what ran the phone out of it.
+     */
+    private val providerSlots = kotlinx.coroutines.sync.Semaphore(10)
 
     /** How each provider's last search went, by its name, for the plugin list: "38 links in 64s", "didn't find this title"… */
     private val _outcomes = kotlinx.coroutines.flow.MutableStateFlow<Map<String, String>>(emptyMap())
@@ -114,8 +124,15 @@ object CsStreams {
         val absolute = ep?.let { absoluteNumber(title.episodes, it.season, it.episode) }
         val found = mutableListOf<Hit>()
         fun now() = synchronized(found) { found.sortedByDescending { rankOf(it.quality) } }
+        // The list is redrawn at most a few times a second, not once per link: StreamPlay alone sends hundreds.
+        val lastTold = java.util.concurrent.atomic.AtomicLong(0)
+        fun tell() {
+            val at = System.currentTimeMillis()
+            val last = lastTold.get()
+            if (at - last >= TELL_MS && lastTold.compareAndSet(last, at)) onHits(now())
+        }
         coroutineScope {
-            for (p in providers) launch(Dispatchers.IO) {
+            for (p in providers) launch(Dispatchers.IO) { providerSlots.withPermit {
                 val start = System.currentTimeMillis()
                 val limit = maxOf(PROVIDER_MS, (p.loadLinksTimeoutMs ?: 0L) + 15_000L)
                 var links = 0
@@ -125,7 +142,7 @@ object CsStreams {
                             val added = synchronized(found) { found.none { it.uri == hit.uri } && found.add(hit) }
                             if (added) {
                                 links++
-                                onHits(now())
+                                tell()
                             }
                         }
                     }.onFailure { Log.w(TAG, "${p.name}: ${it::class.java.simpleName} ${it.message}") }
@@ -142,9 +159,11 @@ object CsStreams {
                     },
                 )
                 Log.i("releases", "${p.name} (plugin) ${secs}s, $links links${if (done == null) " timed out" else ""}")
-            }
+                // Each provider's last links, whatever the throttle skipped.
+                onHits(now())
+            } }
         }
-        return now()
+        return now().also(onHits)
     }
 
     /** One provider: its page for the title, the episode on it, and every link found there. Null, or why nothing came. */

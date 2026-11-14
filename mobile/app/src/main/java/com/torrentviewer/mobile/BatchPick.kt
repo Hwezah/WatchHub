@@ -21,11 +21,15 @@ private val FORMAT = Regex("(?i)\\.(mkv|mp4|avi|webm|m4v|mov|ts)(?![a-z0-9])")
 /** HEVC (x265): the same picture in roughly half the bytes of x264. */
 fun isHevc(hit: Hit) = HEVC.containsMatchIn(hit.name) || HEVC.containsMatchIn(hit.release)
 
+// Compiled once: these run for every source row, on every list update.
+private val M3U8 = Regex("\\.m3u8(\\?|$)", RegexOption.IGNORE_CASE)
+private val MPD = Regex("\\.mpd(\\?|$)", RegexOption.IGNORE_CASE)
+
 /** A link that is an HLS playlist (.m3u8): saved by joining its segments ([LinkFetch]). */
-fun isPlaylist(hit: Hit) = hit.mime == MimeTypes.APPLICATION_M3U8 || Regex("\\.m3u8(\\?|$)", RegexOption.IGNORE_CASE).containsMatchIn(hit.uri)
+fun isPlaylist(hit: Hit) = hit.mime == MimeTypes.APPLICATION_M3U8 || M3U8.containsMatchIn(hit.uri)
 
 /** A DASH manifest (.mpd): it plays, but separate video and audio tracks can't be saved as one file yet. */
-fun isDash(hit: Hit) = hit.mime == MimeTypes.APPLICATION_MPD || Regex("\\.mpd(\\?|$)", RegexOption.IGNORE_CASE).containsMatchIn(hit.uri)
+fun isDash(hit: Hit) = hit.mime == MimeTypes.APPLICATION_MPD || MPD.containsMatchIn(hit.uri)
 
 /** Something that can be saved as a file: a torrent, a direct file, or an HLS playlist. */
 fun canSave(hit: Hit) = !hit.external && !(hit.direct && isDash(hit))
