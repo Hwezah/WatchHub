@@ -401,7 +401,11 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                     }
                 }
                 if (!aiShown) heading?.let { Text(it, Modifier.padding(top = 24.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) }
-                else Row(Modifier.padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Centred on an upright phone, as the hint above it.
+                else Row(
+                    Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (isPortraitPhone()) Arrangement.Center else Arrangement.Start,
+                ) {
                     Lc(L.drawable.lucide_ic_sparkles, tint = Ink.accent, size = 20.dp)
                     Text("  AI Suggestions", style = Type.title.copy(fontWeight = FontWeight.Bold))
                     if (aiBusy) Spinner(Modifier.padding(start = 10.dp), size = 18.dp)
@@ -409,7 +413,14 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
             }
         }
         if (aiShown) {
-            aiNote?.let { note -> item(span = { GridItemSpan(maxLineSpan) }) { Text(note, Modifier.padding(bottom = 8.dp), style = Type.meta.copy(color = Ink.muted)) } }
+            aiNote?.let { note ->
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        note, Modifier.fillMaxWidth().padding(bottom = 8.dp), style = Type.meta.copy(color = Ink.muted),
+                        textAlign = if (isPortraitPhone()) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                    )
+                }
+            }
             items(aiTitles.orEmpty(), key = { "ai-" + it.imdb }) { t ->
                 PosterCard(t, {
                     recents = Searches.remember(query)
