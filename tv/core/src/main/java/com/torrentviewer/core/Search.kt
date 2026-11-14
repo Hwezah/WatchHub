@@ -447,22 +447,40 @@ suspend fun searchStreams(title: String, imdb: String? = null, year: String? = n
     linkHit(title)?.let { return listOf(it).also { one -> onHits?.invoke(one) } }
     if (imdb != null) return fromAddons(type, imdb, lang, onHits) { rank(it, title) }
     // Typed text: a film, or a series' episode (addons list a series' streams per episode) — S01E01 unless one is named.
-    val (name, season, episode) = episodeAsked(title) ?: Triple(title, 1, 1)
-    val found = Meta.resolve(listOfNotNull(name, year).joinToString(" ")) ?: return emptyList()
+    val asked = episodeAsked(title)
+    val name = asked?.first ?: title
+    val (season, episode) = asked?.let { it.second to it.third } ?: (1 to 1)
+    // The same forgiving search the Titles view uses (typos, "the", numbers, a year); a named episode wants a series.
+    val ranked = Meta.searchEverywhere(listOfNotNull(name, year).joinToString(" "), withAddons = false)
+    val found = (if (asked != null) ranked.firstOrNull { it.isSeries } else ranked.firstOrNull())
+        ?: Meta.resolve(listOfNotNull(name, year).joinToString(" "))
+        ?: return emptyList()
     return if (found.isSeries) fromAddons(found.type, "${found.imdb}:$season:$episode", lang, onHits) { rankEpisode(it, found.title, season) }
     else fromAddons("movie", found.imdb, lang, onHits) { rank(it, name) }
 }
 
-private val EPISODE_ASKED = Regex("""\s*\b(?:s(\d{1,2})\s*e(\d{1,4})|(\d{1,2})x(\d{1,4}))\b\s*""", RegexOption.IGNORE_CASE)
+/*
+ * An episode named in typed text, however it's written: "s1e1", "S01 E01", "s01.e01", "s1ep1", "s1 ep 1", "1x01",
+ * "season 1 episode 1", "season 2 ep 3"; a season alone ("s2", "season 2") is its first episode; an episode alone
+ * ("ep 3", "episode 3", "e3") is in season 1. Each needs a word edge, so "Se7en" or "1917" name none.
+ */
+private val SEASON_EPISODE = Regex("""(?<![\p{L}\p{N}])(?:s|season)\s*[.\-_]?\s*(\d{1,2})\s*[.\-_,:]?\s*(?:e|ep|episode|x)\s*[.\-_]?\s*(\d{1,4})(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+private val CROSS = Regex("""(?<![\p{L}\p{N}])(\d{1,2})\s*x\s*(\d{1,4})(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+// Alone, a bare "s"/"e" must touch its number: "Ocean's 8" isn't season 8.
+private val SEASON_ONLY = Regex("""(?<![\p{L}\p{N}])(?:s|season\s*[.\-_]?\s*)(\d{1,2})(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+private val EPISODE_ONLY = Regex("""(?<![\p{L}\p{N}])(?:e|(?:ep|episode)\s*[.\-_]?\s*)(\d{1,4})(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
 
-/** "dope thief s01e03" (or "1x03") → the name, season 1, episode 3; null when no episode is named. */
+/** "dope thief s01e03" → the name, season 1, episode 3; null when no episode or season is named. */
 fun episodeAsked(query: String): Triple<String, Int, Int>? {
-    val m = EPISODE_ASKED.find(query) ?: return null
-    val g = m.groupValues
-    val season = (g[1].ifEmpty { g[3] }).toIntOrNull() ?: return null
-    val episode = (g[2].ifEmpty { g[4] }).toIntOrNull() ?: return null
-    val name = query.removeRange(m.range).replace(Regex("\\s+"), " ").trim()
-    return if (name.length < 2) null else Triple(name, season, episode)
+    fun rest(m: MatchResult) = query.removeRange(m.range).replace(Regex("""\s+"""), " ").trim().trimEnd('-', '–', ':', ',').trim()
+    val hit = SEASON_EPISODE.find(query)?.let { m -> Triple(m, m.groupValues[1].toInt(), m.groupValues[2].toInt()) }
+        ?: CROSS.find(query)?.let { m -> Triple(m, m.groupValues[1].toInt(), m.groupValues[2].toInt()) }
+        ?: SEASON_ONLY.find(query)?.let { m -> Triple(m, m.groupValues[1].toInt(), 1) }
+        ?: EPISODE_ONLY.find(query)?.let { m -> Triple(m, 1, m.groupValues[1].toInt()) }
+        ?: return null
+    val name = rest(hit.first)
+    if (name.length < 2 || hit.second < 1 || hit.third < 1) return null
+    return Triple(name, hit.second, hit.third)
 }
 
 private val episodeMemo = java.util.concurrent.ConcurrentHashMap<String, List<Hit>>()

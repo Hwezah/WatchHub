@@ -30,9 +30,21 @@ class QualityTest {
 
     @Test fun episodeInTypedSearch() {
         assertEquals(Triple("dope thief", 1, 3), episodeAsked("dope thief s01e03"))
+        assertEquals(Triple("House of the Dragon", 1, 1), episodeAsked("House of the Dragon S1e1"))
+        assertEquals(Triple("House of the Dragon", 2, 4), episodeAsked("House of the Dragon S02 E04"))
+        assertEquals(Triple("the office", 3, 7), episodeAsked("the office s3ep7"))
+        assertEquals(Triple("the office", 3, 7), episodeAsked("the office s3 ep 7"))
         assertEquals(Triple("Dope Thief", 2, 10), episodeAsked("Dope Thief 2x10"))
-        assertEquals(Triple("The Office", 3, 1), episodeAsked("The Office S3E1 720p".replace(" 720p", "")))
+        assertEquals(Triple("severance", 1, 2), episodeAsked("severance season 1 episode 2"))
+        assertEquals(Triple("severance", 2, 1), episodeAsked("severance season 2"))
+        assertEquals(Triple("severance", 2, 1), episodeAsked("severance s2"))
+        assertEquals(Triple("severance", 1, 5), episodeAsked("severance ep 5"))
+        assertEquals(Triple("severance", 1, 5), episodeAsked("severance - s01.e05"))
         assertEquals(null, episodeAsked("dope thief"))
         assertEquals(null, episodeAsked("1917"))
+        assertEquals(null, episodeAsked("Se7en"))
+        assertEquals(null, episodeAsked("Kingsman"))
+        assertEquals(null, episodeAsked("Ocean's 8"))
+        assertEquals(null, episodeAsked("s1e1"))
     }
 }
