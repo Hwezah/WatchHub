@@ -232,7 +232,7 @@ fun describePick(hit: Hit): String {
     ).joinToString(" · ")
 }
 
-/** Fewer seeds than this and a torrent rarely finishes: left out of the sources lists by default. */
+/** Fewer seeds than this and a torrent rarely finishes: hidden from the lists (a tap shows them) and never picked, by default. */
 const val MIN_SEEDS = 10
 
 /**
@@ -240,6 +240,12 @@ const val MIN_SEEDS = 10
  * ([cached]: lower-case ids), where it plays from TorBox's servers whatever the swarm.
  */
 fun fewSeeds(hit: Hit, cached: Set<String> = emptySet()) = !hit.direct && !hit.external && hit.seeders < MIN_SEEDS && hit.id.lowercase() !in cached
+
+/** Fewer seeds than this and a torrent is ruled out altogether: never listed, never picked, whatever the settings. */
+const val DEAD_SEEDS = 5
+
+/** A torrent under [DEAD_SEEDS] (and not cached on TorBox): gone from every list and pick. Those from 5 to 9 are only [fewSeeds]. */
+fun deadTorrent(hit: Hit, cached: Set<String> = emptySet()) = !hit.direct && !hit.external && hit.seeders < DEAD_SEEDS && hit.id.lowercase() !in cached
 
 /** What Settings → Streaming offers to leave out: a heading, then each choice's key and label. */
 val LEAVE_OUT = listOf(
@@ -258,13 +264,18 @@ fun leaveOutKeys(hit: Hit): List<String> {
     return listOf("q:${hit.quality ?: "Auto"}", "c:${t.codec}", "f:$format")
 }
 
-/** Whether [hit] may show at all: none of its keys is among those left out. */
-fun allowed(hit: Hit, leaveOut: Collection<String>) = leaveOut.isEmpty() || leaveOutKeys(hit).none { it in leaveOut }
+/** Whether [hit] may show at all: not a [deadTorrent], and none of its keys among those left out. */
+fun allowed(hit: Hit, leaveOut: Collection<String>, cached: Set<String> = emptySet()) =
+    !deadTorrent(hit, cached) && (leaveOut.isEmpty() || leaveOutKeys(hit).none { it in leaveOut })
+
+/** TorBox's cached torrents, lower-case: they download whatever the swarm, so no seed rule rules them out. */
+fun torboxCached(): Set<String> = com.torrentviewer.core.TorBox.cached.value.mapTo(HashSet()) { it.lowercase() }
 
 /** The sources the viewer allows: every list and every download pick goes through this. */
 fun allowedHits(hits: List<Hit>): List<Hit> {
     val out = com.torrentviewer.core.SettingsStore.value.value.leaveOut
-    return if (out.isEmpty()) hits else hits.filter { allowed(it, out) }
+    val cached = torboxCached()
+    return hits.filter { allowed(it, out, cached) }
 }
 
 /** The viewer's download preferences from Settings, with TorBox's cached torrents: what every pick goes by. */
@@ -272,6 +283,6 @@ fun downloadPrefs(): DownloadPrefs = com.torrentviewer.core.SettingsStore.value.
     DownloadPrefs(
         it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource, it.dlDirect,
         skipFewSeeds = it.hideFewSeeds,
-        cached = com.torrentviewer.core.TorBox.cached.value.mapTo(HashSet()) { c -> c.lowercase() },
+        cached = torboxCached(),
     )
 }

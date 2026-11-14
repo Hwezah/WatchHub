@@ -275,8 +275,8 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
     // Worked out when something it depends on changes, not on every redraw: hundreds of releases, several regexes each.
     val (releases, hiddenFew) = remember<Pair<List<Hit>?, Int>>(hits, streamFilter, order, hideFew, showFew, cachedIds, leaveOut) {
         val list = hits ?: return@remember null to 0
-        val matching = list.filter { allowed(it, leaveOut) && notJunk(it) && streamFilter.accepts(traitsOf(it)) }
         val cached = cachedIds.mapTo(HashSet()) { it.lowercase() }
+        val matching = list.filter { allowed(it, leaveOut, cached) && notJunk(it) && streamFilter.accepts(traitsOf(it)) }
         val q = if (hideFew && !showFew) matching.filterNot { fewSeeds(it, cached) } else matching
         when (order) {
             HitOrder.BEST -> q
@@ -883,7 +883,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
         Spacer(Modifier.height(22.dp))
         ToggleSection(
-            "Hide torrents under $MIN_SEEDS seeds", "Left out of the sources lists: with so few seeds they rarely finish. A tap under the list still shows them.",
+            "Hide torrents under $MIN_SEEDS seeds", "Torrents with $DEAD_SEEDS to ${MIN_SEEDS - 1} seeds are left out of the sources lists and never picked for a download: they rarely finish. A tap under the list still shows them. Under $DEAD_SEEDS seeds they never show.",
             settings.hideFewSeeds,
         ) { set(settings.copy(hideFewSeeds = it)) }
         ToggleSection("Extra trackers", "Attach public trackers to bare magnet links so they resolve faster.", settings.addTrackers) {

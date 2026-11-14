@@ -197,7 +197,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     val leaveOut = settingsNow.leaveOut
     val hideFew = settingsNow.hideFewSeeds
     val cachedLower = remember(cachedIds) { cachedIds.mapTo(HashSet()) { c -> c.lowercase() } }
-    val kept = remember(hits, leaveOut) { hits?.filter { allowed(it, leaveOut) } }
+    val kept = remember(hits, leaveOut, cachedLower) { hits?.filter { allowed(it, leaveOut, cachedLower) } }
     val atQuality = remember(kept, quality) { kept.orEmpty().filter { quality == null || it.quality == quality } }
     val shown = remember(atQuality, hideFew, showFew, cachedLower) { if (hideFew && !showFew) atQuality.filterNot { fewSeeds(it, cachedLower) } else atQuality }
     val hiddenFew = atQuality.size - shown.size

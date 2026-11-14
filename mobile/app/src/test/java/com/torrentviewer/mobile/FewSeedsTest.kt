@@ -21,4 +21,14 @@ class FewSeedsTest {
         val link = Hit("l", "Link 720p", "https://host.example/file.mkv", 0, 0, 0, "720p", "tv", Scope.EPISODE, null)
         assertFalse(fewSeeds(link))
     }
+
+    /** Under 5 seeds a torrent is gone everywhere; 5 to 9 is only hidden; TorBox's cached ones and links never are. */
+    @Test fun underFiveIsRuledOut() {
+        assertTrue(deadTorrent(torrent(4)))
+        assertFalse(deadTorrent(torrent(5)))
+        assertTrue(fewSeeds(torrent(5)))
+        assertFalse(allowed(torrent(2), emptyList()))
+        assertTrue(allowed(torrent(7), emptyList()))
+        assertTrue(allowed(torrent(1, "ABC"), emptyList(), setOf("abc")))
+    }
 }
