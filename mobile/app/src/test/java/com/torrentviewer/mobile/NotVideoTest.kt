@@ -21,7 +21,7 @@ class NotVideoTest {
     }
 
     @Test fun tooSmallOrMissing() {
-        val tiny = java.io.File.createTempFile("ep", ".mkv").apply { writeBytes(byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte())); deleteOnExit() }
+        val tiny = java.io.File.createTempFile("episode", ".mkv").apply { writeBytes(byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte())); deleteOnExit() }
         assertTrue(notVideo(tiny))
         assertTrue(notVideo(java.io.File("/no/such/file.mkv")))
     }

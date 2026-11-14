@@ -93,7 +93,8 @@ class PreferredPickTest {
         val thin = hit("E01.720p.x265.mkv", "720p", 400 * mb, seeders = 12)
         val busy = hit("E01.720p.x264.mkv", "720p", 575 * mb, seeders = 41)
         assertEquals(thin, preferredPick(listOf(thin, busy), defaults))
-        assertEquals(busy, preferredPick(listOf(thin, busy.copy(size = 420 * mb)), defaults))
+        val busyLight = busy.copy(size = 420 * mb)
+        assertEquals(busyLight, preferredPick(listOf(thin, busyLight), defaults))
         assertEquals(busy, batchPick(listOf(thin.copy(seeders = 8), busy), BatchFilter(quality = "720p")))
     }
 
