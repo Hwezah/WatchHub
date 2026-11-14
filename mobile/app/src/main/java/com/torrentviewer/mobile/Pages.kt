@@ -219,9 +219,9 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
         aiBusy = false
         if (torrents || Kids.on || !aiReady || !com.torrentviewer.core.looksLikeDescription(q) || com.torrentviewer.core.episodeAsked(q) != null) return@LaunchedEffect
         // Longer than the title search's pause: a description is still being typed, and each ask costs the viewer.
-        delay(1200)
+        delay(900)
         aiBusy = true
-        runCatching { com.torrentviewer.core.AiSearch.suggest(q) }
+        runCatching { com.torrentviewer.core.AiSearch.suggest(q) { partial -> aiTitles = partial } }
             .onSuccess { aiTitles = it; if (it.isEmpty()) aiNote = "The AI's guesses aren't in the catalogue — try more detail" }
             .onFailure { e -> if (e !is kotlinx.coroutines.CancellationException) aiNote = e.message ?: "AI search failed" }
         aiBusy = false
@@ -1143,7 +1143,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                                 testing = true
                                 testScope.launch {
                                     runCatching { com.torrentviewer.core.AiSearch.test(p) }
-                                        .onSuccess { m -> watch.notes.tryEmit("${p.label} key works · $m answered") }
+                                        .onSuccess { m -> watch.notes.tryEmit("${p.label} key works · $m") }
                                         .onFailure { e -> watch.notes.tryEmit(e.message ?: "${p.label} didn't answer") }
                                     testing = false
                                 }

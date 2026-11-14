@@ -3,6 +3,7 @@ package com.torrentviewer.core
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -34,6 +35,12 @@ enum class AiProvider(val id: String, val label: String, val defaultModel: Strin
     }
 }
 
+/**
+ * How a Gemini model is told not to think first: newer generations take a level ("minimal"), older ones a budget
+ * of zero, and some neither. Tried in this order; what a model accepted is remembered.
+ */
+enum class AiThinking { MINIMAL, ZERO, DEFAULT }
+
 /** One HTTP request to a provider, ready to send. [headers] carry the key: never log them. */
 data class AiRequest(val url: String, val headers: Map<String, String>, val body: String)
 
@@ -50,9 +57,9 @@ fun aiPrompt(description: String): String =
 /**
  * The request for [provider]: Claude's Messages API, Gemini's generateContent, or the OpenAI chat format (ChatGPT,
  * DeepSeek and OpenRouter all speak it). Every key goes in a header, never the URL, so no log line can show it.
- * [quick] asks Gemini to answer without thinking first.
+ * [thinking] is how Gemini is asked to skip its thinking step ([AiThinking]).
  */
-fun aiRequest(provider: AiProvider, model: String, key: String, prompt: String, quick: Boolean = true): AiRequest {
+fun aiRequest(provider: AiProvider, model: String, key: String, prompt: String, thinking: AiThinking = AiThinking.MINIMAL): AiRequest {
     val m = model.trim().ifEmpty { provider.defaultModel }
     return when (provider) {
         AiProvider.CLAUDE -> AiRequest(
@@ -77,10 +84,15 @@ fun aiRequest(provider: AiProvider, model: String, key: String, prompt: String, 
             mapOf("x-goog-api-key" to key),
             JSONObject()
                 .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
-                // [quick]: no "thinking" before the answer — naming a film from a description doesn't need it, and it is
-                // most of the wait. A model that refuses the setting is asked again without it (AiSearch.complete).
+                // No "thinking" before the answer — naming a film from a description doesn't need it, and it is most of
+                // the wait. Gemini's generations spell the setting differently ([AiThinking]); one that refuses a
+                // spelling answers 400 and is asked the next way (AiSearch.complete).
                 .put("generationConfig", JSONObject().put("responseMimeType", "application/json").apply {
-                    if (quick) put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+                    when (thinking) {
+                        AiThinking.MINIMAL -> put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
+                        AiThinking.ZERO -> put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+                        AiThinking.DEFAULT -> Unit
+                    }
                 })
                 .toString(),
         )
@@ -246,13 +258,13 @@ object AiSearch {
      * to show when the provider fails.
      */
     /** One request and its answer's text; a connection cut before the answer is asked once more, then said in plain words. */
-    private suspend fun askOnce(p: AiProvider, m: String, key: String, prompt: String, quick: Boolean): String {
-        val req = aiRequest(p, m, key, prompt, quick)
+    private suspend fun askOnce(p: AiProvider, m: String, key: String, prompt: String, thinking: AiThinking): String {
+        val req = aiRequest(p, m, key, prompt, thinking)
         // A connection cut before the answer (the app left the screen, the network switched) is asked once more;
         // a second cut is said in plain words. The service's own errors (HttpException) go straight up.
         repeat(2) { attempt ->
             try {
-                return aiReplyText(p, Net.postJson(req.url, req.body, timeoutMs = 90_000, quiet = true, headers = req.headers))
+                return aiReplyText(p, Net.postJson(req.url, req.body, timeoutMs = 30_000, quiet = true, headers = req.headers))
             } catch (e: HttpException) {
                 throw e
             } catch (e: java.io.IOException) {
@@ -273,11 +285,20 @@ object AiSearch {
     private suspend fun complete(p: AiProvider, key: String, prompt: String): Pair<String, String> {
         val typed = SettingsStore.value.value.aiModel
         val model = typed.ifBlank { Kv.global(foundKey(p)).orEmpty() }
-        suspend fun ask(m: String): String = try {
-            askOnce(p, m, key, prompt, quick = true)
-        } catch (e: HttpException) {
-            // A model that won't answer without thinking says so with a 400: asked again its own way.
-            if (e.code == 400 && p == AiProvider.GEMINI) askOnce(p, m, key, prompt, quick = false) else throw e
+        suspend fun ask(m: String): String {
+            if (p != AiProvider.GEMINI) return askOnce(p, m, key, prompt, AiThinking.DEFAULT)
+            // From the way this model last accepted, so a refused spelling costs a round trip once, not every search.
+            val name = m.ifBlank { p.defaultModel }
+            val known = Kv.global("ai-thinking:$name")?.let { saved -> AiThinking.entries.firstOrNull { it.name == saved } }
+            val ways = AiThinking.entries.dropWhile { known != null && it != known }
+            for ((i, way) in ways.withIndex()) {
+                try {
+                    return askOnce(p, m, key, prompt, way).also { if (way != known) Kv.setGlobal("ai-thinking:$name", way.name) }
+                } catch (e: HttpException) {
+                    if (e.code != 400 || i == ways.lastIndex) throw e
+                }
+            }
+            error("unreachable")
         }
         return try {
             ask(model) to model.ifBlank { p.defaultModel }
@@ -293,28 +314,36 @@ object AiSearch {
         }
     }
 
-    /** Settings' Test Key: a one-word question, so the viewer knows the key and model answer. The model that did. */
+    /** Settings' Test Key: a one-word question, so the viewer knows the key and model answer. Which model, and how fast. */
     suspend fun test(p: AiProvider): String {
         val key = Secrets.get(keyName(p)) ?: throw IllegalStateException("Save your ${p.label} key first")
-        return complete(p, key, "Reply with the single word OK.").second
+        val start = System.currentTimeMillis()
+        val model = complete(p, key, "Reply with the single word OK.").second
+        return "$model answered in ${"%.1f".format((System.currentTimeMillis() - start) / 1000.0)} s"
     }
 
-    suspend fun suggest(description: String): List<Title> {
+    suspend fun suggest(description: String, onPartial: (List<Title>) -> Unit = {}): List<Title> {
         val p = provider() ?: throw IllegalStateException("Choose an AI in Settings → AI Search")
         val key = Secrets.get(keyName(p)) ?: throw IllegalStateException("Add your ${p.label} key in Settings → AI Search")
         val reply = complete(p, key, aiPrompt(description)).first
         val guesses = aiGuesses(reply)
-        return coroutineScope {
-            guesses.map { g ->
-                async {
+        // Each guess is looked up on its own and shown as soon as it's found ([onPartial]), in the AI's order.
+        val found = arrayOfNulls<Title>(guesses.size)
+        fun now() = synchronized(found) { found.filterNotNull().distinctBy { it.imdb } }
+        coroutineScope {
+            guesses.forEachIndexed { i, g ->
+                launch {
                     val kinds = when (g.series) {
                         true -> listOf("tv")
                         false -> listOf("movie")
                         null -> listOf("movie", "tv")
                     }
-                    kinds.firstNotNullOfOrNull { k -> bestMatch(Meta.search(g.title, k), g.title, g.year?.toString()) }
+                    val title = kinds.firstNotNullOfOrNull { k -> bestMatch(Meta.search(g.title, k), g.title, g.year?.toString()) } ?: return@launch
+                    synchronized(found) { found[i] = title }
+                    onPartial(now())
                 }
-            }.awaitAll().filterNotNull().distinctBy { it.imdb }
+            }
         }
+        return now()
     }
 }

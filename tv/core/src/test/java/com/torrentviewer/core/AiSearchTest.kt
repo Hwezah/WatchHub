@@ -67,4 +67,12 @@ class AiSearchTest {
         assertEquals("deepseek-chat", aiBestModel(AiProvider.DEEPSEEK, """{"data":[{"id":"deepseek-reasoner"},{"id":"deepseek-chat"}]}"""))
         assertEquals(null, aiBestModel(AiProvider.GEMINI, "not json"))
     }
+
+    /** Gemini is asked not to think first, spelled each generation's way. */
+    @Test fun geminiThinking() {
+        fun config(t: AiThinking) = JSONObject(aiRequest(AiProvider.GEMINI, "", "k", "hi", t).body).getJSONObject("generationConfig")
+        assertEquals("minimal", config(AiThinking.MINIMAL).getJSONObject("thinkingConfig").getString("thinkingLevel"))
+        assertEquals(0, config(AiThinking.ZERO).getJSONObject("thinkingConfig").getInt("thinkingBudget"))
+        assertFalse(config(AiThinking.DEFAULT).has("thinkingConfig"))
+    }
 }
