@@ -118,6 +118,7 @@ object CsStreams {
 
     /** Every installed provider's links for [title] ([ep] for an episode), best quality first. */
     suspend fun find(title: Title, ep: Episode?, onHits: OnHits = {}): List<Hit> {
+        CsPlugins.hideScreen()
         val series = ep != null
         val providers = CsPlugins.providers().filter { serves(it, series) }
         if (providers.isEmpty()) return emptyList()

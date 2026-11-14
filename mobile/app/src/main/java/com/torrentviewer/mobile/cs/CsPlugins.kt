@@ -79,9 +79,21 @@ object CsPlugins {
         }
     }
 
-    /** The activity plugins show toasts and dialogs over. */
+    /**
+     * The running screen, kept here and lent to plugins only while their own settings open ([openSettings]).
+     * During searches they see none: StreamPlay otherwise pops a Cloudflare "verify you are human" page over the
+     * app for one of its sources, unasked. Without a screen it skips that source; toasts still show.
+     */
+    private var host: java.lang.ref.WeakReference<Activity>? = null
+
     fun attach(activity: Activity?) {
-        CommonActivity.activity = activity
+        host = activity?.let { java.lang.ref.WeakReference(it) }
+        if (activity == null) CommonActivity.activity = null
+    }
+
+    /** A search is starting: plugins lose the screen again, whatever settings lent it to them. */
+    fun hideScreen() {
+        CommonActivity.activity = null
     }
 
     /** Every provider the loaded plugins registered. */
@@ -98,8 +110,9 @@ object CsPlugins {
     /** Opens it over the app, as CloudStream does: the plugin builds its own dialog on the activity. A failure comes back as a message. */
     fun openSettings(p: PluginData): String? {
         val open = settingsOf(p) ?: return "${p.internalName} has no settings"
-        val host = CommonActivity.activity ?: return "Open the app first"
-        return runCatching { open(host) }.exceptionOrNull()?.let { e ->
+        val screen = host?.get() ?: return "Open the app first"
+        CommonActivity.activity = screen
+        return runCatching { open(screen) }.exceptionOrNull()?.let { e ->
             Log.e(TAG, "settings of ${p.internalName}", e)
             "${p.internalName}'s settings didn't open: ${e::class.java.simpleName}"
         }
