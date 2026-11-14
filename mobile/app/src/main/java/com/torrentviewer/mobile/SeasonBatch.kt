@@ -65,29 +65,40 @@ data class SeasonScan(
  * for the season so reopening the sheet doesn't ask again.
  */
 object SeasonBatch {
-    private const val AT_ONCE = 3
+    /**
+     * Episodes asked about at once. Each fans out to every plugin's sites; three at a time made those sites slow down or
+     * refuse, and episodes came back with far fewer links than the same episode opened on its own.
+     */
+    private const val AT_ONCE = 1
 
     private val _scan = MutableStateFlow<SeasonScan?>(null)
     val scan: StateFlow<SeasonScan?> = _scan
     private var job: Job? = null
 
     /** How long one episode may be asked about: past this, what has come in is what it gets. */
-    private const val EPISODE_MS = 40_000L
+    private const val EPISODE_MS = 120_000L
+
+    /**
+     * However good the first answers look, an episode's search runs at least this long: the fast sources (Torrentio)
+     * answer in seconds, the plugins with the smaller files later, and a pick made before they're in isn't the smallest.
+     */
+    private const val EPISODE_MIN_MS = 45_000L
 
     /**
      * An episode's sources, as the title page finds them — but not waited on to the end ([gather]). Waiting on
      * every plugin (up to minutes each, per episode) made a season take many minutes for links nobody needed.
      */
     suspend fun sources(title: Title, ep: Episode): List<Hit> =
-        gather(EPISODE_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } }
+        gather(EPISODE_MS, EPISODE_MIN_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } }
 
     /**
      * What [search] finds, for a download pick: it stops once what's in already holds a pick as preferred
-     * ([goodEnough]), or after [limitMs] with what has come in. The search is its own job, not the caller's child:
+     * ([goodEnough]) and [minMs] has passed, or after [limitMs], with what has come in. The search is its own job, not the caller's child:
      * a plugin stuck in a slow request is cancelled and left behind, not waited for — waiting on it is what made
      * a time limit here mean nothing.
      */
-    suspend fun gather(limitMs: Long, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
+    suspend fun gather(limitMs: Long, minMs: Long = 0, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
+        val started = System.currentTimeMillis()
         val prefs = downloadPrefs()
         val latest = java.util.concurrent.atomic.AtomicReference<List<Hit>>(emptyList())
         val enough = kotlinx.coroutines.CompletableDeferred<Unit>()
@@ -104,7 +115,10 @@ object SeasonBatch {
                     enough.onAwait { null }
                 }
             }
-            allowedHits(all ?: latest.get())
+            // Good enough early: still given the rest of [minMs], for the slower sources' (often smaller) files.
+            val left = minMs - (System.currentTimeMillis() - started)
+            val more = if (all == null && left > 0) withTimeoutOrNull(left) { job.await() } else null
+            allowedHits(all ?: more ?: latest.get())
         } finally {
             job.cancel()
         }

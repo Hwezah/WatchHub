@@ -288,7 +288,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         if (loaded == null) watch.notes.tryEmit("Finding the best ${prefs.quality.ifEmpty { "source" }} for $what…")
         // Not this page's job: leaving the page mustn't drop a download that was asked for.
         com.torrentviewer.core.AppScope.launch {
-            val all = loaded ?: SeasonBatch.gather(QUICK_PICK_MS) { onHits ->
+            val all = loaded ?: SeasonBatch.gather(QUICK_PICK_MS, QUICK_MIN_MS) { onHits ->
                 com.torrentviewer.mobile.cs.CsStreams.withPlugins(title, ep, onHits) { fromAddons ->
                     if (ep != null) searchEpisode(title, ep.season, ep.episode, fromAddons)
                     else searchStreams(title.title, title.imdb, title.year?.take(4), onHits = fromAddons, type = title.type)
@@ -1014,7 +1014,10 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
 
 
 /** One-tap Download waits this long at most for every source to answer, then takes the best of what has. */
-private const val QUICK_PICK_MS = 25_000L
+private const val QUICK_PICK_MS = 60_000L
+
+/** One-tap Download waits at least this long, so the plugins' (often smaller) files are in before it picks. */
+private const val QUICK_MIN_MS = 30_000L
 
 /** The sources' reload pill: the plain (never chosen) pill look and one arrow, turning while links are still arriving. */
 @Composable
