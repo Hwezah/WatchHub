@@ -731,12 +731,9 @@ fun Solo(modifier: Modifier = Modifier, button: @Composable (Modifier) -> Unit) 
     }
 }
 
-/** The reload mark: one circular arrow, turning while [busy] (links still coming in), still otherwise. */
+/** The reload mark: one circular arrow; while [busy] (links still coming in), the app's green spinner in its place. */
 @Composable
 fun ReloadArrow(busy: Boolean, tint: Color, size: Dp, modifier: Modifier = Modifier) {
-    val turn = if (busy) {
-        val spin = androidx.compose.animation.core.rememberInfiniteTransition(label = "reload")
-        spin.animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(tween(900, easing = androidx.compose.animation.core.LinearEasing)), label = "turn").value
-    } else 0f
-    Lc(com.composables.icons.lucide.R.drawable.lucide_ic_rotate_cw, modifier.graphicsLayer { rotationZ = turn }, tint = tint, size = size)
+    if (busy) Spinner(modifier, size = size)
+    else Lc(com.composables.icons.lucide.R.drawable.lucide_ic_rotate_cw, modifier, tint = tint, size = size)
 }

@@ -115,6 +115,8 @@ object Ink {
     /** Netflix's red, lit for a TV across the room; an app may set its own before it composes (the phone's is deeper). */
     var accent by mutableStateOf(Color(0xFFE50914))
     val imdb = Color(0xFFF5C518)
+    /** The phone's spinners are the downloads' green (an app may switch it on before it composes); the TV's stay red. */
+    var greenSpinner by mutableStateOf(false)
     /** Every download button's colour: a dark green, deep enough to read on either page. */
     val download get() = if (isDark) Color(0xFF1E9E52) else Color(0xFF13703A)
     val focus = Color.White
@@ -360,7 +362,7 @@ private val grainBrush: androidx.compose.ui.graphics.ShaderBrush by lazy {
 }
 
 @Composable
-fun Spinner(modifier: Modifier = Modifier, size: Dp = 56.dp, color: Color = Ink.accent) {
+fun Spinner(modifier: Modifier = Modifier, size: Dp = 56.dp, color: Color = if (Ink.greenSpinner) Ink.download else Ink.accent) {
     androidx.compose.material3.CircularProgressIndicator(modifier.size(size), color = color, strokeWidth = 4.dp, trackColor = Color.White.copy(alpha = 0.12f))
 }
 
