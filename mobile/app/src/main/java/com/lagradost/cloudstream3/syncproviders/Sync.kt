@@ -1,6 +1,7 @@
 package com.lagradost.cloudstream3.syncproviders
 
 import com.lagradost.cloudstream3.syncproviders.providers.AniListApi
+import com.lagradost.cloudstream3.syncproviders.providers.SimklApi
 import com.lagradost.cloudstream3.utils.UiText
 
 /*
@@ -42,5 +43,8 @@ class SyncRepo(val api: SyncAPI) {
 class AccountManager {
     companion object {
         val aniListApi = AniListApi()
+
+        /** CineStream asks for it by this name (`getSimklApi()`). */
+        val simklApi = SimklApi()
     }
 }
