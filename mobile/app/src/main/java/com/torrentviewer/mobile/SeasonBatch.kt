@@ -116,7 +116,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     // No filter chosen: each episode gets what Settings → Preferred download would pick for it — the preferred
     // resolution, else the next one up, then codec, format… as preferences, so every episode with anything gets
     // something. A chip tapped below is a hard choice instead: only releases with it.
-    val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource) }
+    val prefs = com.torrentviewer.core.SettingsStore.value.value.let { DownloadPrefs(it.dlQuality, it.dlCodec, it.dlFormat, it.dlSubs, it.dlSource, it.dlDirect) }
     var showPlan by remember { mutableStateOf(false) }
     /** Fresh links being fetched before they go to another app. */
     var sending by remember { mutableStateOf(false) }
@@ -149,7 +149,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             val plan = scan.episodes.mapNotNull { ep ->
                 scan.found[ep.id]?.let { hits ->
                     val from = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
-                    ep to if (filter == BatchFilter()) preferredPick(from, prefs) else batchPick(from, filter)
+                    ep to if (filter == BatchFilter()) preferredPick(from, prefs) else batchPick(from, filter, prefs.direct)
                 }
             }
             val picks = plan.mapNotNull { (ep, hit) -> hit?.let { ep to it } }

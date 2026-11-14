@@ -989,6 +989,13 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         PrefRow("Format", listOf("" to "Any", "MKV" to "MKV", "MP4" to "MP4"), settings.dlFormat) { set(settings.copy(dlFormat = it)) }
         PrefRow("Subtitles", listOf("" to "Any", "subs" to "With subs"), if (settings.dlSubs) "subs" else "") { set(settings.copy(dlSubs = it == "subs")) }
         PrefRow("Source", listOf("" to "Any", "Torrent" to "Torrent", "Link" to "Direct link"), settings.dlSource) { set(settings.copy(dlSource = it)) }
+        Spacer(Modifier.height(8.dp))
+        ToggleSection(
+            "Prefer Direct Links",
+            "A direct link downloads at once, with no seeds to wait on: it's taken before a torrent of the same resolution — " +
+                "unless it's over 1.5× the size of the lightest torrent (or its size isn't known while the torrent's is).",
+            settings.dlDirect,
+        ) { set(settings.copy(dlDirect = it)) }
         }
 
         if (page == "Secure DNS") Panel {

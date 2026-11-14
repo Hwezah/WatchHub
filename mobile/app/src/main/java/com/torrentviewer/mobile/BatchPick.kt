@@ -83,14 +83,37 @@ fun batchCandidates(hits: List<Hit>, quality: String): List<Hit> = batchCandidat
  * HLS playlist (which some download apps handle badly), then — when no codec was picked — HEVC, then
  * the smallest known size (an unknown size after every known one), then the bigger swarm.
  */
-fun batchPick(hits: List<Hit>, filter: BatchFilter): Hit? = batchCandidates(hits, filter).sortedWith(
+/** A direct link may be up to this many times the lightest torrent at its resolution and still be preferred. */
+const val HEAVY_RATIO = 1.5
+
+/**
+ * The direct links in [hits] worth preferring to a torrent: they download at once, with no swarm to wait on, but
+ * some are re-encodes several times the size. One is preferred when its size is known and at most [HEAVY_RATIO]
+ * times the lightest live torrent of the same resolution, or when there's no such torrent to compare with.
+ */
+fun preferableLinks(hits: List<Hit>): Set<Hit> {
+    val lightest = hits.filter { !it.direct && !it.external && alive(it) && it.size > 0 }
+        .groupBy { it.quality }.mapValues { (_, list) -> list.minOf { it.size } }
+    return hits.filter { h ->
+        h.direct && run {
+            val t = lightest[h.quality]
+            t == null || (h.size > 0 && h.size <= t * HEAVY_RATIO)
+        }
+    }.toSet()
+}
+
+fun batchPick(hits: List<Hit>, filter: BatchFilter, preferDirect: Boolean = false): Hit? = batchCandidates(hits, filter).let { list ->
+    val links = if (preferDirect) preferableLinks(list) else emptySet()
+    list.sortedWith(
     compareByDescending<Hit> { alive(it) }
+        .thenByDescending { it in links }
         .thenByDescending { !(it.direct && isPlaylist(it)) }
         .thenByDescending { filter.codec == null && isHevc(it) }
         .thenBy { if (it.size > 0) 0 else 1 }
         .thenBy { it.size }
         .thenByDescending { it.seeders },
-).firstOrNull()
+    ).firstOrNull()
+}
 
 fun batchPick(hits: List<Hit>, quality: String): Hit? = batchPick(hits, BatchFilter(quality = quality))
 
@@ -114,7 +137,11 @@ fun filterOptions(all: List<Hit>, filter: BatchFilter, only: (Hit) -> Boolean = 
 fun <K> batchPlan(byEpisode: Map<K, List<Hit>>, filter: BatchFilter): Map<K, Hit?> = byEpisode.mapValues { (_, hits) -> batchPick(hits, filter) }
 
 /** One-tap Download's preferences (Settings → Preferred download). Empty strings, and false, are "any". */
-data class DownloadPrefs(val quality: String = "720p", val codec: String = "x265", val format: String = "MKV", val subs: Boolean = false, val source: String = "") {
+data class DownloadPrefs(
+    val quality: String = "720p", val codec: String = "x265", val format: String = "MKV", val subs: Boolean = false, val source: String = "",
+    /** Direct links before torrents, unless much heavier ([preferableLinks]). */
+    val direct: Boolean = false,
+) {
     /** As a batch filter, for the batch sheet to open with — every preference a hard choice there. */
     fun asFilter() = BatchFilter(quality.ifEmpty { null }, codec.ifEmpty { null }, format.ifEmpty { null }, subs, source.ifEmpty { null })
 }
@@ -132,7 +159,8 @@ fun resolutionDistance(quality: String?, wanted: String): Int {
 
 /**
  * One-tap Download: never fails to pick while anything can be saved. Ranked, in order: the preferred
- * resolution, else the next one up; can download at all; a single file before an HLS playlist; codec, format, subtitles and
+ * resolution, else the next one up; can download at all; a direct link not much heavier than the torrents (when
+ * [DownloadPrefs.direct]); a single file before an HLS playlist; codec, format, subtitles and
  * source as preferred; the lightest known size (unknown after every known one); the bigger swarm.
  */
 fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
@@ -140,9 +168,11 @@ fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     if (candidates.isEmpty()) return null
     val traits = candidates.associateWith(::traitsOf)
     fun t(h: Hit) = traits.getValue(h)
+    val links = if (prefs.direct) preferableLinks(candidates) else emptySet()
     return candidates.sortedWith(
         compareBy<Hit> { resolutionDistance(it.quality, prefs.quality) }
             .thenByDescending { alive(it) }
+            .thenByDescending { it in links }
             .thenByDescending { !(it.direct && isPlaylist(it)) }
             .thenByDescending { prefs.codec.isNotEmpty() && t(it).codec == prefs.codec }
             .thenByDescending { prefs.format.isNotEmpty() && t(it).format == prefs.format }

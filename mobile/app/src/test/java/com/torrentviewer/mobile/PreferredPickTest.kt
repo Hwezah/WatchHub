@@ -59,4 +59,22 @@ class PreferredPickTest {
         assertEquals(360, resolutionDistance("1080p", "720p"))
         assertEquals(0, resolutionDistance("4K", ""))
     }
+
+    /** Dope Thief S01E01: Torrentio's 720p x265 MKV (423 MB) against PenguPlay's 720p H.264 HLS links. */
+    @Test fun directLinksFirstUnlessHeavy() {
+        val torrent = hit("Dope.Thief.S01E01.720p.x265.mkv", "720p", 423 * mb)
+        val light = link("PenguPlay 720p HLS H.264 589 MB", "720p", 589 * mb, "https://cdn.x/a.m3u8")
+        val heavy = link("PenguPlay 720p HLS H.264 2.02 GB", "720p", 2068 * mb, "https://cdn.x/b.m3u8")
+        val unknown = link("Vidy 720p", "720p", 0, "https://cdn.x/c.m3u8")
+        val prefs = defaults.copy(direct = true)
+        assertEquals(light, preferredPick(listOf(torrent, light, heavy, unknown), prefs))
+        // Over 1.5× the torrent, or of unknown size: the torrent.
+        assertEquals(torrent, preferredPick(listOf(torrent, heavy, unknown), prefs))
+        // Off: as before, the preferred codec and format.
+        assertEquals(torrent, preferredPick(listOf(torrent, light), defaults))
+        // With no torrent to compare against, any link will do.
+        assertEquals(setOf(heavy, unknown), preferableLinks(listOf(heavy, unknown)))
+        // The season sheet's chips: the link within the filter wins too.
+        assertEquals(light, batchPick(listOf(torrent, light), BatchFilter(quality = "720p"), preferDirect = true))
+    }
 }
