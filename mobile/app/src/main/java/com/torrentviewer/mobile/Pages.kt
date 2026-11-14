@@ -1065,7 +1065,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     "Battery saving can slow or stop downloads with the screen off. Let WatchHub run in the background to keep them going.",
                     Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
                 )
-                Solo { m -> Chip("Allow background downloads", false, onClick = { Downloads.askUnrestricted(context) }, m) }
+                Solo { m -> Chip("Allow Background Downloads", false, onClick = { Downloads.askUnrestricted(context) }, m, tall = true) }
             }
             if (Downloads.hasCard) {
                 Text(

@@ -236,7 +236,10 @@ fun Button(
 
 /** A pill of choices — seasons, qualities, genres, sorts. */
 @Composable
-fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, @DrawableRes icon: Int? = null, @DrawableRes trailing: Int? = null, compact: Boolean = false, trailingTint: Color? = null) {
+fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, @DrawableRes icon: Int? = null, @DrawableRes trailing: Int? = null, compact: Boolean = false, trailingTint: Color? = null,
+    /** A pill standing alone as a button ([Solo]: "Ask Every Source Again"), with room above and below its words. */
+    tall: Boolean = false,
+) {
     Tap(onClick, modifier, CircleShape) { pressed ->
         val bg = when {
             on -> Ink.accent
@@ -245,7 +248,7 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
         }
         val fg = if (on) Color.White else Ink.muted
         Row(
-            Modifier.background(bg).height(if (compact) 32.dp else 36.dp).padding(horizontal = if (compact) 11.dp else 16.dp),
+            Modifier.background(bg).height(if (tall) 46.dp else if (compact) 32.dp else 36.dp).padding(horizontal = if (tall) 20.dp else if (compact) 11.dp else 16.dp),
             horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
         ) {
             if (icon != null) {

@@ -321,7 +321,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 "Hold to send to another app, or copy the links.",
                 Modifier.fillMaxWidth().padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            if (scan.done) Solo(Modifier.padding(top = 10.dp)) { m -> Chip("Ask every source again", false, onClick = { SeasonBatch.begin(title, season, again = true) }, m, compact = true) }
+            if (scan.done) Solo(Modifier.padding(top = 14.dp, bottom = 6.dp)) { m -> Chip("Ask Every Source Again", false, onClick = { SeasonBatch.begin(title, season, again = true) }, m, tall = true) }
         }
     }
     if (choosing) DownloaderSheet(ExternalDownloaders.sendProbe(), many = true, onPick = { chosen = it }, onDismiss = { choosing = false })
