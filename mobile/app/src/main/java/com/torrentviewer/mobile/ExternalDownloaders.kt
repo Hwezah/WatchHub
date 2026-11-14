@@ -49,7 +49,8 @@ object ExternalDownloaders {
     fun apps(context: Context, intent: Intent): List<Pair<String, String>> {
         val pm = context.packageManager
         val found = runCatching { pm.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY) }.getOrDefault(emptyList())
-            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+            // The app's own name ("1DM+"), not the screen's ("1DM+ Browser").
+            .map { it.activityInfo.packageName to pm.getApplicationLabel(it.activityInfo.applicationInfo).toString() }
             .filter { it.first != context.packageName }
             .distinctBy { it.first }
         val known = com.torrentviewer.core.KNOWN_DOWNLOADERS
@@ -71,8 +72,13 @@ object ExternalDownloaders {
         fun picker() = runCatching { context.startActivity(Intent.createChooser(intent, pickerTitle).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             .fold({ Handed.Opened }, { Handed.Failed })
         fun app(pkg: String): Handed {
-            val direct = Intent(intent).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (direct.resolveActivity(context.packageManager) == null) return picker()
+            // One screen of that app, named outright: an app with several that take links (1DM+'s downloader and its
+            // browser) otherwise brings up Android's "Open with … Just once / Always" for them. Its downloader, not a browser.
+            val screens = runCatching { context.packageManager.queryIntentActivities(Intent(intent).setPackage(pkg), PackageManager.MATCH_DEFAULT_ONLY) }
+                .getOrDefault(emptyList())
+            val screen = screens.firstOrNull { !it.activityInfo.name.contains("browser", true) && !it.loadLabel(context.packageManager).toString().contains("browser", true) }
+                ?: screens.firstOrNull() ?: return picker()
+            val direct = Intent(intent).setComponent(android.content.ComponentName(pkg, screen.activityInfo.name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             return runCatching { context.startActivity(direct) }.fold({ Handed.Opened }, { picker() })
         }
         return when (to) {
