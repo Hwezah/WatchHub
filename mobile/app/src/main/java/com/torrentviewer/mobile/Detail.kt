@@ -106,7 +106,7 @@ import kotlinx.coroutines.launch
 import com.composables.icons.lucide.R as L
 
 /** The exact strings quality() returns, best first. */
-private val QUALITY_ORDER = listOf("4K", "1080p", "720p", "CAM")
+private val QUALITY_ORDER = listOf("4K", "1440p", "1080p", "720p", "480p", "360p", "CAM")
 
 /** Episodes listed before "Show all". */
 private const val FIRST_EPISODES = 10

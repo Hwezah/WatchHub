@@ -234,7 +234,7 @@ object CsStreams {
             id = (if (torrent) magnetHash(url) else null) ?: url,
             name = name.ifBlank { p.name },
             uri = url,
-            seeders = 0, leechers = 0, size = 0,
+            seeders = 0, leechers = 0, size = com.torrentviewer.core.sizeInName(name),
             quality = q?.let(::qualityLabel) ?: quality(name),
             kind = if (series) "tv" else "movie",
             scope = Scope.EPISODE,

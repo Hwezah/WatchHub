@@ -9,8 +9,11 @@ import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-/** The choices, as CloudStream offers them: off (the phone's own lookups), Cloudflare, Google. */
-val SECURE_DNS = listOf("" to "Off", "cloudflare" to "Cloudflare", "google" to "Google")
+/**
+ * The choices: Auto (the default — the phone's own lookup, and Cloudflare's when that fails or is blocked),
+ * Cloudflare or Google always, or Off (the phone's own only).
+ */
+val SECURE_DNS = listOf("" to "Auto", "cloudflare" to "Cloudflare", "google" to "Google", "off" to "Off")
 
 /** A DoH provider's JSON endpoint, by its IP address so asking it needs no lookup of its own. Null: off. */
 fun dohEndpoint(provider: String): String? = when (provider) {
@@ -49,15 +52,28 @@ object SecureDns : Dns {
     fun clear() = cache.clear()
 
     override fun lookup(hostname: String): List<InetAddress> {
-        val endpoint = dohEndpoint(SettingsStore.value.value.secureDns)
-        if (endpoint == null || isIpLiteral(hostname)) return Dns.SYSTEM.lookup(hostname)
+        val choice = SettingsStore.value.value.secureDns
+        if (choice == "off" || isIpLiteral(hostname)) return Dns.SYSTEM.lookup(hostname)
+        // Auto: the phone's own lookup first; a name it can't find (a provider blocking streaming sites, as
+        // with api.themoviedb.org for StreamPlay) is asked of Cloudflare, then Google.
+        val endpoint = dohEndpoint(choice) ?: run {
+            val system = runCatching { Dns.SYSTEM.lookup(hostname) }
+            system.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+            return viaHttps(dohEndpoint("cloudflare")!!, hostname) ?: viaHttps(dohEndpoint("google")!!, hostname) ?: throw system.exceptionOrNull() as? java.net.UnknownHostException
+                ?: java.net.UnknownHostException(hostname)
+        }
+        return viaHttps(endpoint, hostname) ?: Dns.SYSTEM.lookup(hostname)
+    }
+
+    /** [hostname]'s addresses from [endpoint], kept for their TTL; null when it gave none. */
+    private fun viaHttps(endpoint: String, hostname: String): List<InetAddress>? {
         val key = "$endpoint|$hostname"
         cache[key]?.takeIf { it.first > System.currentTimeMillis() }?.let { return it.second }
         val found = runCatching { ask(endpoint, hostname, 1) + ask(endpoint, hostname, 28) }.getOrDefault(emptyList())
-        if (found.isEmpty()) return Dns.SYSTEM.lookup(hostname)
+        if (found.isEmpty()) return null
         val ttl = found.minOf { it.second }.coerceIn(60, 3600)
         val addresses = found.mapNotNull { (ip, _) -> runCatching { InetAddress.getByName(ip) }.getOrNull() }.distinct()
-        if (addresses.isEmpty()) return Dns.SYSTEM.lookup(hostname)
+        if (addresses.isEmpty()) return null
         cache[key] = System.currentTimeMillis() + ttl * 1000L to addresses
         return addresses
     }

@@ -993,9 +993,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
 
         if (page == "Secure DNS") Panel {
         Text(
-            "Many internet providers block streaming sites by their names, so plugins find few links or none. With " +
-                "Secure DNS, plugins look sites up over HTTPS at Cloudflare or Google instead — as CloudStream's own " +
-                "setting does. Only the plugins' traffic uses it. If a lookup fails, the phone's own is used.",
+            "Many internet providers block streaming sites by their names, so plugins find few links or none. Auto (the " +
+                "default) uses your phone's lookup and, for any site it can't find, asks Cloudflare or Google over HTTPS instead — " +
+                "as CloudStream's own setting does. Cloudflare or Google uses that one for every site; Off never does. Only the plugins' traffic is affected.",
             Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
         )
         PrefRow("Provider", com.torrentviewer.mobile.cs.SECURE_DNS, settings.secureDns) {

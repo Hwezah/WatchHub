@@ -246,12 +246,47 @@ fun isDirectLink(uri: String) = Regex("^https?://", RegexOption.IGNORE_CASE).con
 
 private val HASH = Regex("^[0-9a-fA-F]{40}$")
 
+// Compiled once: run on every release name. Word edges are letters and digits only, so "4KHDHub" (a site's
+// name) isn't 4K and "1080p" in "h264.1080p" is still found.
+private val Q4K = Regex("""(?<![a-z0-9])(2160p|4k|uhd)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q1440 = Regex("""(?<![a-z0-9])(1440p|2k)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q1080 = Regex("""(?<![a-z0-9])1080[pi](?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q720 = Regex("""(?<![a-z0-9])720p(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q480 = Regex("""(?<![a-z0-9])(480p|540p|576p)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val Q360 = Regex("""(?<![a-z0-9])(360p|240p)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+private val QCAM = Regex("""(?<![a-z0-9])(cam|camrip|hdcam|hdts|telesync|telecine|hdtc)(?![a-z0-9])""", RegexOption.IGNORE_CASE)
+
+/**
+ * A release's resolution from its name: the best one it states (a name listing "2160p" and "1080p" is the 4K),
+ * and CAM for a cinema recording whatever its pixels. Null when it says none.
+ */
 fun quality(name: String): String? = when {
-    Regex("""2160p|\buhd\b|\b4k\b""", RegexOption.IGNORE_CASE).containsMatchIn(name) -> "4K"
-    Regex("1080p", RegexOption.IGNORE_CASE).containsMatchIn(name) -> "1080p"
-    Regex("720p", RegexOption.IGNORE_CASE).containsMatchIn(name) -> "720p"
-    Regex("""\bcam\b|\bhdts\b|\btelesync\b""", RegexOption.IGNORE_CASE).containsMatchIn(name) -> "CAM"
+    QCAM.containsMatchIn(name) -> "CAM"
+    Q4K.containsMatchIn(name) -> "4K"
+    Q1440.containsMatchIn(name) -> "1440p"
+    Q1080.containsMatchIn(name) -> "1080p"
+    Q720.containsMatchIn(name) -> "720p"
+    Q480.containsMatchIn(name) -> "480p"
+    Q360.containsMatchIn(name) -> "360p"
     else -> null
+}
+
+private val SIZE_IN_NAME = Regex("""(?<![a-z0-9.])(\d{1,4}(?:\.\d{1,3})?)\s?(TB|GB|MB)(?![a-z])""", RegexOption.IGNORE_CASE)
+
+/**
+ * A size written in a link's name ("[964.83MB]", "💾 8.46 GB"): plugins give no size of their own, and without
+ * one their links can't be sorted by weight or chosen as the lightest. 0 when none is written, or it isn't
+ * plausible for a video (under 1 MB). Mbps figures ("6Mbps") aren't sizes.
+ */
+fun sizeInName(name: String): Long {
+    val m = SIZE_IN_NAME.find(name) ?: return 0
+    val n = m.groupValues[1].toDoubleOrNull() ?: return 0
+    val bytes = when (m.groupValues[2].uppercase()) {
+        "TB" -> n * (1L shl 40)
+        "GB" -> n * (1L shl 30)
+        else -> n * (1L shl 20)
+    }.toLong()
+    return if (bytes >= 1L shl 20) bytes else 0
 }
 
 enum class Health(val label: String) { FAST("Fast"), GOOD("Good"), WEAK("Weak"), DEAD("No seeds") }
