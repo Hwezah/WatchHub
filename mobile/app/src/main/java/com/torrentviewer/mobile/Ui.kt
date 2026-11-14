@@ -182,6 +182,8 @@ fun Button(
     fill: Color? = null,
     /** The words in the very middle, the icon beside them: as much space after them as the icon takes before. */
     balanced: Boolean = false,
+    /** Held instead of tapped: a second choice, such as "Send to 1DM" offering the phone's other apps. */
+    onLongClick: (() -> Unit)? = null,
 ) {
     val filled = on == true
     val disc by animateFloatAsState(if (filled) 1f else 0f, if (filled) spring(dampingRatio = 0.55f, stiffness = 420f) else tween(180), label = "disc")
@@ -192,7 +194,7 @@ fun Button(
         seen = on
         pop.animateTo(1f, keyframes { durationMillis = 360; 0.72f at 100; 1.15f at 230; 1f at 360 })
     }
-    Tap(onClick, modifier, RoundedCornerShape(8.dp)) { pressed ->
+    Tap(onClick, modifier, RoundedCornerShape(8.dp), onLongClick = onLongClick) { pressed ->
         val bg by animateColorAsState(
             when {
                 fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill

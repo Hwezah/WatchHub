@@ -259,7 +259,11 @@ fun DownloadChoice(hit: Hit, heading: String, onInternal: () -> Unit, say: (Stri
     DownloadChoice(
         listOfNotNull(hit.quality, com.torrentviewer.core.bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null }).joinToString("  ·  ").ifEmpty { hit.name },
         onInternal = onInternal,
-        onExternal = { if (openInDownloader(context, hit, heading)) onDismiss() else say("No app on this phone can take that link.") },
+        onExternal = { to ->
+            val handed = openInDownloader(context, hit, heading, to)
+            ExternalDownloaders.note(handed, many = false)?.let(say)
+            if (handed != Handed.Failed) onDismiss()
+        },
         onDismiss = onDismiss,
     )
 }
@@ -273,13 +277,24 @@ fun DownloadChoice(hit: Hit, heading: String, onInternal: () -> Unit, say: (Stri
 fun DownloadChoice(
     detail: String,
     onInternal: () -> Unit,
-    onExternal: () -> Unit,
+    /** Tapped: [Downloader.Default]; held: whatever was picked in the "Download With" sheet. */
+    onExternal: (Downloader) -> Unit,
     onDismiss: () -> Unit,
     internalNote: String = "Saved in the Downloads tab. Resumes after a pause, keeps to Wi-Fi if you set it, and gets a fresh link if this one expires.",
-    externalNote: String = "1DM, ADM or another downloader on your phone — Android shows the ones you have. Start it soon: links like these can expire.",
+    externalNote: String = "1DM, ADM or another downloader on your phone. Start it soon: links like these can expire.",
+    /** What kind of hand-off this is, to find the apps that take it: one link, or a season's as text. */
+    probe: Intent = ExternalDownloaders.viewProbe(),
     /** A line in green under the choices: where the picked resolution comes from, and where to change it. */
     disclaimer: String? = null,
 ) {
+    val context = LocalContext.current
+    val default = remember(probe.action) { ExternalDownloaders.default(context, probe)?.second }
+    // Held, the external choice gives way to the "Download With" sheet; let go of that without a pick, it is back.
+    var choosing by remember { mutableStateOf(false) }
+    if (choosing) {
+        DownloaderSheet(probe, many = probe.action == Intent.ACTION_SEND, onPick = { onExternal(it) }, onDismiss = { choosing = false })
+        return
+    }
     androidx.compose.ui.window.Dialog(onDismiss, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         // Low on the screen, resting just a notch above the tab bar (about 70 dp over the system's own bar);
         // a tap on the dimmed page around it closes it.
@@ -300,7 +315,11 @@ fun DownloadChoice(
                 onInternal()
             }
             Spacer(Modifier.height(10.dp))
-            ChoiceTile(L.drawable.lucide_ic_external_link, "Choose External Downloader", externalNote, onClick = onExternal)
+            // A tap goes to the default app; held, the "Download With" sheet offers the others.
+            ChoiceTile(
+                L.drawable.lucide_ic_external_link, default?.let { "Send to $it" } ?: "Choose External Downloader",
+                "$externalNote\nHold to pick another app or copy the link${if (probe.action == Intent.ACTION_SEND) "s" else ""}.", onLongClick = { choosing = true },
+            ) { onExternal(Downloader.Default) }
             disclaimer?.let { Text(it, Modifier.padding(top = 12.dp), style = Type.meta.copy(color = Ink.download, fontWeight = FontWeight.Medium)) }
             Text(
                 "Cancel", Modifier.align(Alignment.End).padding(top = 14.dp).clip(RoundedCornerShape(8.dp))
@@ -313,8 +332,8 @@ fun DownloadChoice(
 }
 
 @Composable
-private fun ChoiceTile(icon: Int, title: String, excerpt: String, tint: androidx.compose.ui.graphics.Color = Ink.text, onClick: () -> Unit) {
-    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(14.dp)) { pressed ->
+private fun ChoiceTile(icon: Int, title: String, excerpt: String, tint: androidx.compose.ui.graphics.Color = Ink.text, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(14.dp), onLongClick = onLongClick) { pressed ->
         Row(
             Modifier.fillMaxWidth().background(Ink.text.copy(alpha = if (pressed) 0.12f else 0.06f)).padding(CARD - 2.dp),
             verticalAlignment = Alignment.Top,
@@ -329,10 +348,11 @@ private fun ChoiceTile(icon: Int, title: String, excerpt: String, tint: androidx
 }
 
 /**
- * Hands the link to whichever downloader the viewer picks, through Android's chooser: the file's link (a
- * torrent's magnet) as a VIEW, with its name and — for apps that read them — its headers and Referer.
+ * Hands the link to a downloader ([to]: by default the app picked last, else 1DM / ADM, else Android's
+ * picker): the file's link (a torrent's magnet) as a VIEW, with its name and — for apps that read them — its
+ * headers and Referer.
  */
-fun openInDownloader(context: Context, hit: Hit, title: String): Boolean {
+fun openInDownloader(context: Context, hit: Hit, title: String, to: Downloader = Downloader.Default): Handed {
     val link = downloadLink(hit)
     val referer = hit.headers.entries.firstOrNull { it.key.equals("referer", true) }?.value
     val view = Intent(Intent.ACTION_VIEW).apply {
@@ -343,7 +363,7 @@ fun openInDownloader(context: Context, hit: Hit, title: String): Boolean {
         if (hit.headers.isNotEmpty()) putExtra("headers", hit.headers.flatMap { listOf(it.key, it.value) }.toTypedArray())
         referer?.let { putExtra("referer", it) }
     }
-    return runCatching { context.startActivity(Intent.createChooser(view, "Download with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+    return ExternalDownloaders.hand(context, view, to, "Download with", link)
 }
 
 /** A link a downloader can take: the file's own, or a torrent's magnet. */
@@ -353,11 +373,12 @@ fun downloadLink(hit: Hit) = if (hit.direct) hit.uri else magnetOf(hit) ?: hit.u
  * A season's links for another downloader, all at once: shared as text, one link a line, which 1DM, ADM and
  * most others read as a batch. Headers can't go along, so a link that needs them may be refused there.
  */
-fun sendLinks(context: Context, hits: List<Hit>, title: String): Boolean {
+fun sendLinks(context: Context, hits: List<Hit>, title: String, to: Downloader = Downloader.Default): Handed {
+    val text = hits.joinToString("\n", transform = ::downloadLink)
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_SUBJECT, title)
-        putExtra(Intent.EXTRA_TEXT, hits.joinToString("\n", transform = ::downloadLink))
+        putExtra(Intent.EXTRA_TEXT, text)
     }
-    return runCatching { context.startActivity(Intent.createChooser(send, "Send links to").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+    return ExternalDownloaders.hand(context, send, to, "Send links to", text)
 }

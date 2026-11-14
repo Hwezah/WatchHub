@@ -160,7 +160,7 @@ object SeasonBatch {
  * built-in subtitles, source — each offering only what was found, and what each episode would get.
  */
 @Composable
-fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -> Unit, external: Boolean = false) {
+fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -> Unit, external: Boolean = false, sendTo: Downloader = Downloader.Default) {
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(title.imdb, season) { SeasonBatch.begin(title, season) }
     val scanned by SeasonBatch.scan.collectAsState()
@@ -174,6 +174,20 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     /** Fresh links being fetched before they go to another app. */
     var sending by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    /** The Send button held: the "Download With" sheet over this one. */
+    var choosing by remember { mutableStateOf(false) }
+    /** The app picked in that sheet, waiting to be sent to. */
+    var chosen by remember { mutableStateOf<Downloader?>(null) }
+    /** The app a plain tap on Send goes to, by name, for its label: the one picked on the way in, else the default. */
+    val sendName = remember(sendTo, choosing) {
+        val probe = ExternalDownloaders.sendProbe()
+        val apps = ExternalDownloaders.apps(context, probe)
+        when (sendTo) {
+            is Downloader.App -> apps.firstOrNull { it.first == sendTo.pkg }?.second
+            Downloader.Default -> ExternalDownloaders.default(context, probe)?.second
+            else -> null
+        }
+    }
 
     BottomSheet("Download season $season", onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = CARD).padding(bottom = 12.dp)) {
@@ -258,35 +272,41 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             }
 
             val many = "${picks.size} episode${if (picks.size == 1) "" else "s"}"
+            /** Another app's downloader: every pick's link at once, in episode order — each asked for again first,
+             *  since the ones found while the season was checked may have expired already. */
+            fun send(to: Downloader) {
+                if (sending || picks.isEmpty()) return
+                sending = true
+                scope.launch {
+                    val gate = Semaphore(3)
+                    val fresh = kotlinx.coroutines.coroutineScope {
+                        picks.map { (ep, hit) ->
+                            async {
+                                gate.withPermit {
+                                    refreshPick(SeasonBatch.sources(title, ep), "", hit.addon.ifEmpty { null }, hit.name, hit.quality) ?: hit
+                                }
+                            }
+                        }.map { it.await() }
+                    }
+                    sending = false
+                    val handed = sendLinks(context, fresh, "${title.title} · season $season", to)
+                    ExternalDownloaders.note(handed, many = true)?.let(say)
+                    if (handed != Handed.Failed) onDismiss()
+                }
+            }
+            // Picked in the "Download With" sheet (drawn over this one, below): sent from here, where the picks are.
+            LaunchedEffect(chosen) { chosen?.let { chosen = null; send(it) } }
             Button(
                 when {
                     picks.isEmpty() -> "Nothing matches"
                     sending -> "Getting fresh links…"
-                    external -> "Send $many to a downloader"
+                    external -> "Send $many to ${sendName ?: "a downloader"}"
                     else -> "Download $many"
                 },
                 {
                     if (picks.isEmpty()) return@Button
                     if (external) {
-                        if (sending) return@Button
-                        sending = true
-                        // Another app's downloader: every pick's link at once, in episode order — each asked for
-                        // again first, since the ones found while the season was checked may have expired already.
-                        scope.launch {
-                            val gate = Semaphore(3)
-                            val fresh = kotlinx.coroutines.coroutineScope {
-                                picks.map { (ep, hit) ->
-                                    async {
-                                        gate.withPermit {
-                                            refreshPick(SeasonBatch.sources(title, ep), "", hit.addon.ifEmpty { null }, hit.name, hit.quality) ?: hit
-                                        }
-                                    }
-                                }.map { it.await() }
-                            }
-                            sending = false
-                            if (sendLinks(context, fresh, "${title.title} · season $season")) onDismiss()
-                            else say("No app on this phone can take those links.")
-                        }
+                        send(sendTo)
                         return@Button
                     }
                     SeasonBatch.download(title, picks)
@@ -295,10 +315,16 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 },
                 Modifier.padding(top = 16.dp).fillMaxWidth(), icon = if (external) L.drawable.lucide_ic_external_link else L.drawable.lucide_ic_download,
                 fill = Ink.download.takeIf { picks.isNotEmpty() },
+                onLongClick = { if (external && picks.isNotEmpty() && !sending) choosing = true },
+            )
+            if (external && picks.isNotEmpty()) Text(
+                "Hold to send to another app, or copy the links.",
+                Modifier.fillMaxWidth().padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
             if (scan.done) Solo(Modifier.padding(top = 10.dp)) { m -> Chip("Ask every source again", false, onClick = { SeasonBatch.begin(title, season, again = true) }, m, compact = true) }
         }
     }
+    if (choosing) DownloaderSheet(ExternalDownloaders.sendProbe(), many = true, onPick = { chosen = it }, onDismiss = { choosing = false })
 }
 
 private fun codecLabel(c: String) = when (c) {

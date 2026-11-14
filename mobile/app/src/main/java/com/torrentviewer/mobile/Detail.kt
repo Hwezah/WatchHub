@@ -225,6 +225,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var askSeason by remember(title.imdb) { mutableStateOf<Int?>(null) }
     /** The batch sheet hands its picks to another app's downloader instead of this one's. */
     var batchExternal by remember(title.imdb) { mutableStateOf(false) }
+    /** Where the batch sheet's links go: a tap's default, or the app held-and-picked on the way in. */
+    var batchTo by remember(title.imdb) { mutableStateOf<Downloader>(Downloader.Default) }
     /** A source's ⋯ open: the source, and the episode it is for. */
     var actions by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
     val list = rememberLazyListState()
@@ -281,7 +283,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
      * already on screen when they're this one's, else a fresh search — decided as soon as a pick as preferred
      * is in ([SeasonBatch.gather]), or after [QUICK_PICK_MS] with what has come.
      */
-    fun quickDownload(ep: Episode?, external: Boolean = false) {
+    fun quickDownload(ep: Episode?, external: Boolean = false, to: Downloader = Downloader.Default) {
         val prefs = downloadPrefs()
         val what = ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title
         val loaded = hits?.takeIf { !busy && episode?.id == ep?.id }
@@ -297,7 +299,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             val pick = preferredPick(allowedHits(all), prefs)
             if (pick == null) watch.notes.tryEmit("Nothing that can be saved was found for $what.")
             else if (external) {
-                if (!openInDownloader(context, pick, what)) watch.notes.tryEmit("No app on this phone can take that link.")
+                ExternalDownloaders.note(openInDownloader(context, pick, what, to), many = false)?.let { watch.notes.tryEmit(it) }
             } else {
                 Downloads.add(downloadJob(pick, title, ep))
                 watch.notes.tryEmit("Downloading $what · ${describePick(pick)}")
@@ -632,7 +634,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     // The trailer plays here, in a card over the page, rather than in YouTube.
     trailerId?.let { id -> TrailerSheet(id, title.title) { trailerId = null } }
 
-    batchFor?.let { s -> BatchSheet(title, s, say = { watch.notes.tryEmit(it) }, onDismiss = { batchFor = null }, external = batchExternal) }
+    batchFor?.let { s -> BatchSheet(title, s, say = { watch.notes.tryEmit(it) }, onDismiss = { batchFor = null }, external = batchExternal, sendTo = batchTo) }
 
     // What one-tap downloads go by, for the choice's line: "720p · x265 · MKV".
     fun preferred(): String = com.torrentviewer.core.SettingsStore.value.value.let { st ->
@@ -648,7 +650,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         DownloadChoice(
             "${episodeTag(ep.season, ep.episode)} · picks your preferred ${preferred()}, or the nearest found",
             onInternal = { quickDownload(ep) },
-            onExternal = { askEpisode = null; quickDownload(ep, external = true) },
+            onExternal = { to -> askEpisode = null; quickDownload(ep, external = true, to = to) },
             onDismiss = { askEpisode = null },
             disclaimer = resolutionNote(),
         )
@@ -657,10 +659,11 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         DownloadChoice(
             "Season $s · every episode gets your preferred ${preferred()}, or the nearest found",
             onInternal = { batchExternal = false; batchFor = s },
-            onExternal = { askSeason = null; batchExternal = true; batchFor = s },
+            onExternal = { to -> askSeason = null; batchExternal = true; batchTo = to; batchFor = s },
             onDismiss = { askSeason = null },
             internalNote = "Pick resolution, codec, format, subtitles and source, see what each episode gets, then everything goes to the Downloads tab.",
             externalNote = "The same filters, then every episode's link goes to 1DM, ADM or another downloader in one go.",
+            probe = ExternalDownloaders.sendProbe(),
             disclaimer = resolutionNote(),
         )
     }
