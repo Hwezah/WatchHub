@@ -201,7 +201,7 @@ fun FranchiseRail(order: WatchOrder, imdb: String, onAll: () -> Unit, onOpen: (T
 /** Every franchise, with a box to find one. */
 @Composable
 fun WatchOrdersScreen(onOpen: (WatchOrder) -> Unit, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    BackHandler(LocalShown.current, onBack)
     val seen = seenFilms()
     var query by rememberSaveable { mutableStateOf("") }
     val orders by WatchOrders.tagged.collectAsState()
@@ -234,7 +234,7 @@ fun WatchOrdersScreen(onOpen: (WatchOrder) -> Unit, onBack: () -> Unit) {
 /** One franchise: art for the film up next, how far along, and the films down a timeline. */
 @Composable
 fun WatchOrderScreen(order: WatchOrder, onOpen: (Title) -> Unit, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    BackHandler(LocalShown.current, onBack)
     val seen = seenFilms()
     var byStory by rememberSaveable { mutableStateOf(false) }
     val ids = if (byStory && order.story.isNotEmpty()) order.story else order.films

@@ -449,7 +449,7 @@ fun <T> Sheet(
 /** The frame every sheet shares: scrim, rounded top, a grab handle and a heading. */
 @Composable
 fun BottomSheet(title: String, onDismiss: () -> Unit, trailing: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) {
-    BackHandler(onBack = onDismiss)
+    BackHandler(LocalShown.current, onDismiss)
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.8f).dp

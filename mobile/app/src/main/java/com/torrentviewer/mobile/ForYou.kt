@@ -123,7 +123,7 @@ private const val YOUR_GENRES = "your genres"
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun TopScreen(startKind: String, onOpen: (Title) -> Unit, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    BackHandler(LocalShown.current, onBack)
     val settings by SettingsStore.value.collectAsState()
     var kind by rememberSaveable { mutableStateOf(startKind) }
     var genre by rememberSaveable { mutableStateOf(YOUR_GENRES.takeIf { settings.genres.isNotEmpty() }) }

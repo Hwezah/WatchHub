@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 /** Instead of a title's page, on a kids profile, for what is rated above it. */
 @Composable
 fun TooOldForKids(title: Title, certificate: String, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    BackHandler(LocalShown.current, onBack)
     Box(Modifier.fillMaxSize()) {
         RoundIcon(L.drawable.lucide_ic_arrow_left, onBack, Modifier.statusBarsPadding().padding(start = 14.dp, top = 16.dp))
         Column(Modifier.align(Alignment.Center).padding(horizontal = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -118,7 +118,7 @@ fun SimilarRail(cards: List<TmdbCard>, onOpen: (Title) -> Unit, modifier: Modifi
 /** One person: their photo, a little about them, and what they're in, best known first. */
 @Composable
 fun PersonScreen(id: Int, name: String, onOpen: (Title) -> Unit, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    BackHandler(LocalShown.current, onBack)
     val person by produceState<TmdbPerson?>(null, id) { value = Tmdb.person(id) }
     val open = rememberCardOpener(onOpen)
     var more by rememberSaveable(id) { mutableStateOf(false) }

@@ -223,14 +223,16 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     }
     var switching by remember { mutableStateOf(false) }
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
-    val pages = remember { mutableStateListOf<Page>() }
+    // Each tab its own stack of pages: going to another tab and back finds the title you had open still there.
+    val stacks = remember { androidx.compose.runtime.mutableStateMapOf<Tab, androidx.compose.runtime.snapshots.SnapshotStateList<Page>>() }
+    val pages = stacks.getOrPut(tab) { mutableStateListOf() }
     val holder = rememberSaveableStateHolder()
     val home = remember { HomeState() }
 
     fun pop() {
         val i = pages.lastIndex
         if (i < 0) return
-        holder.removeState(keyOf(i, pages[i]))
+        holder.removeState(tab.name + "/" + keyOf(i, pages[i]))
         pages.removeAt(i)
     }
 
@@ -362,17 +364,15 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     val visited = remember { mutableStateListOf(tab) }
     if (tab !in visited) visited.add(tab)
     val body: @Composable () -> Unit = {
-        val top = pages.lastOrNull()
+        // Every tab visited, and every page opened on it, stays composed — hidden, not thrown away — so going back
+        // (a page, or a tab) finds things as they were left: rows loaded, scroll, season chosen, what was typed.
         Box(Modifier.fillMaxSize()) {
             visited.forEach { t ->
                 key(t) {
-                    val shown = t == tab && top == null
-                    val alpha by androidx.compose.animation.core.animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 220 else 120), label = "tab")
-                    Box(
-                        Modifier.fillMaxSize().zIndex(if (shown) 1f else 0f).graphicsLayer { this.alpha = alpha }
-                            .then(if (shown) Modifier else Modifier.blockTouches()),
-                    ) {
-                        CompositionLocalProvider(LocalShown provides shown) {
+                    val stack = stacks.getOrPut(t) { mutableStateListOf() }
+                    val active = t == tab
+                    Layer(shown = active && stack.isEmpty(), z = if (active) 1f else 0f) {
+                        CompositionLocalProvider(LocalShown provides (active && stack.isEmpty())) {
                             holder.SaveableStateProvider(t.name) {
                                 when (t) {
                                     Tab.HOME -> HomeScreen(home, watch, me, onOpen = openTitle, onShelf = { pages.add(Page.Catalog(it)) }, onTop = { pages.add(Page.Top(it)) }, onOrders = { pages.add(Page.WatchOrders) }, onOrder = openOrder, onProfile = { switching = true })
@@ -384,26 +384,34 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                             }
                         }
                     }
-                }
-            }
-            if (top != null) Box(Modifier.fillMaxSize().zIndex(2f).background(Ink.bg)) {
-                holder.SaveableStateProvider(keyOf(pages.lastIndex, top)) {
-                    when (top) {
-                        is Page.Detail -> DetailScreen(top.title, watch, onOrder = openOrder, onOpen = openTitle, onPerson = { pages.add(Page.Person(it.id, it.name)) }, onBack = ::pop)
-                        is Page.Person -> PersonScreen(top.id, top.name, onOpen = openTitle, onBack = ::pop)
-                        is Page.Top -> TopScreen(top.kind, onOpen = openTitle, onBack = ::pop)
-                        is Page.Catalog -> CatalogScreen(top.shelf, onOpen = openTitle, onBack = ::pop)
-                        Page.Downloads -> DownloadsScreen(watch, onBack = ::pop)
-                        Page.WatchOrders -> WatchOrdersScreen(onOpen = openOrder, onBack = ::pop)
-                        is Page.WatchOrder -> WatchOrderScreen(top.order, onOpen = openTitle, onBack = ::pop)
+                    stack.forEachIndexed { i, page ->
+                        val k = t.name + "/" + keyOf(i, page)
+                        key(k) {
+                            val top = active && i == stack.lastIndex
+                            Layer(shown = top, z = if (active) 2f + i else 0f, opaque = true) {
+                                CompositionLocalProvider(LocalShown provides top) {
+                                    holder.SaveableStateProvider(k) {
+                                        when (page) {
+                                            is Page.Detail -> DetailScreen(page.title, watch, onOrder = openOrder, onOpen = openTitle, onPerson = { pages.add(Page.Person(it.id, it.name)) }, onBack = ::pop)
+                                            is Page.Person -> PersonScreen(page.id, page.name, onOpen = openTitle, onBack = ::pop)
+                                            is Page.Top -> TopScreen(page.kind, onOpen = openTitle, onBack = ::pop)
+                                            is Page.Catalog -> CatalogScreen(page.shelf, onOpen = openTitle, onBack = ::pop)
+                                            Page.Downloads -> DownloadsScreen(watch, onBack = ::pop)
+                                            Page.WatchOrders -> WatchOrdersScreen(onOpen = openOrder, onBack = ::pop)
+                                            is Page.WatchOrder -> WatchOrderScreen(page.order, onOpen = openTitle, onBack = ::pop)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+    // Another tab: its own stack, as it was left. The tab you're on, tapped again: back to its start.
     val choose: (Tab) -> Unit = { t ->
-        clearPages()
-        tab = t
+        if (t == tab) clearPages() else tab = t
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -665,4 +673,15 @@ private fun Modifier.blockTouches() = pointerInput(Unit) {
     awaitPointerEventScope {
         while (true) awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.forEach { it.consume() }
     }
+}
+
+/** One screen in the stack: drawn and touchable only when [shown], kept composed (and its state with it) when not. */
+@Composable
+private fun Layer(shown: Boolean, z: Float, opaque: Boolean = false, content: @Composable () -> Unit) {
+    val alpha by androidx.compose.animation.core.animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 220 else 120), label = "layer")
+    Box(
+        Modifier.fillMaxSize().zIndex(z).graphicsLayer { this.alpha = alpha }
+            .then(if (opaque) Modifier.background(Ink.bg) else Modifier)
+            .then(if (shown) Modifier else Modifier.blockTouches()),
+    ) { content() }
 }
