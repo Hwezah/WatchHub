@@ -188,7 +188,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var quality by remember(title.imdb) { mutableStateOf<String?>(null) }
     /** Which request the visible sources belong to; answers arrive out of order. */
     var ticket by remember { mutableIntStateOf(0) }
-    // Torrents under 5 seeds are left out (Settings → Streaming), unless asked for on this page.
+    // Torrents under MIN_SEEDS (10) seeds are left out (Settings → Streaming), unless asked for on this page.
     val settingsNow by com.torrentviewer.core.SettingsStore.value.collectAsState()
     val cachedIds by TorBox.cached.collectAsState()
     var showFew by remember(title.imdb) { mutableStateOf(false) }

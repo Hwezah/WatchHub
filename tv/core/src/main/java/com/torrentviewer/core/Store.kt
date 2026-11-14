@@ -181,7 +181,7 @@ data class Settings(
     val dlDirect: Boolean = true,
     /** The phone's plugins: names looked up over HTTPS ("cloudflare", "google"), past a provider's DNS blocks; "" is the system's. */
     val secureDns: String = "",
-    /** The phone's sources lists: torrents with fewer than 5 seeds left out (they rarely finish), unless shown by hand. */
+    /** The phone's sources lists: torrents with fewer than 10 seeds left out (they rarely finish), unless shown by hand. */
     val hideFewSeeds: Boolean = true,
     /**
      * The phone's releases left out everywhere, never listed or picked for a download: "q:4K", "q:Auto" (no

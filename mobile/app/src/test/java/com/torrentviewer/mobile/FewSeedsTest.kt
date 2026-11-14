@@ -10,10 +10,10 @@ import org.junit.Test
 class FewSeedsTest {
     private fun torrent(seeders: Int, id: String = "abc") = Hit(id, "Show.S01E01.720p", "magnet:?xt=urn:btih:$id", seeders, 0, 0, "720p", "tv", Scope.EPISODE, null)
 
-    @Test fun underFiveSeedsIsLeftOut() {
+    @Test fun underTenSeedsIsLeftOut() {
         assertTrue(fewSeeds(torrent(0)))
-        assertTrue(fewSeeds(torrent(4)))
-        assertFalse(fewSeeds(torrent(5)))
+        assertTrue(fewSeeds(torrent(9)))
+        assertFalse(fewSeeds(torrent(10)))
     }
 
     @Test fun cachedOnTorBoxOrADirectLinkIsKept() {

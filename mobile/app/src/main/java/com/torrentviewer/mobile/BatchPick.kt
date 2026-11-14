@@ -202,7 +202,7 @@ fun describePick(hit: Hit): String {
 }
 
 /** Fewer seeds than this and a torrent rarely finishes: left out of the sources lists by default. */
-const val MIN_SEEDS = 5
+const val MIN_SEEDS = 10
 
 /**
  * A torrent with too few seeds to bother with: not a direct link or another app's, and not cached on TorBox
