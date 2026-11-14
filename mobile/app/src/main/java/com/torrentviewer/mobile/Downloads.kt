@@ -344,7 +344,10 @@ object Downloads {
     fun init(context: Context) {
         if (::app.isInitialized) return
         app = context.applicationContext
-        _finished.value = readFinished().filter { it.file.exists() }
+        // Pages saved as videos by older builds (all a few hundred KB): deleted, and gone from the list.
+        val (kept, junk) = readFinished().filter { it.file.exists() }.partition { it.file.length() >= MIN_VIDEO_BYTES }
+        junk.forEach { runCatching { it.file.delete() } }
+        if (junk.isNotEmpty()) writeFinished(kept) else _finished.value = kept
         val queue = readQueue()
         _live.value = queue.map { LiveDownload(it, if (it.paused) DlState.PAUSED else DlState.RESOLVING) }
         queue.filter { !(it.link && it.paused) }.forEach(::begin)
@@ -495,6 +498,12 @@ object Downloads {
                         }
                     }
                     @Suppress("UNREACHABLE_CODE") error("unreachable")
+                }
+                // A web page saved as the episode (the host's error or "click to download" page): not a download.
+                // Thrown away, and the link counts as dead, so a fresh one is looked for.
+                if (notVideo(result.file)) {
+                    work.deleteRecursively()
+                    throw LinkExpiredException("The link sent a web page, not the video")
                 }
                 val dest = destOf(job, job.label, safe(job.label) + "." + result.ext)
                 dest.parentFile?.mkdirs()

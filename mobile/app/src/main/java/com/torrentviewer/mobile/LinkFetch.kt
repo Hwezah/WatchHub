@@ -25,6 +25,26 @@ open class LinkDownloadException(message: String) : IOException(message)
 /** The link is dead — expired, refused, or its server gone — but a fresh one for the same video may work. */
 class LinkExpiredException(message: String) : LinkDownloadException(message)
 
+/** No video is this small: under it, a "download" is an error or "click here" page the host sent instead. */
+const val MIN_VIDEO_BYTES = 2L * 1024 * 1024
+
+/**
+ * Whether [file] can't be the video it was meant to be: smaller than [MIN_VIDEO_BYTES], or text — a web page
+ * ("<!DOCTYPE html…", "<html") or a JSON error — rather than a video container.
+ */
+fun notVideo(file: java.io.File): Boolean {
+    if (!file.exists() || file.length() < MIN_VIDEO_BYTES) return true
+    val head = runCatching { file.inputStream().use { input -> ByteArray(64).let { b -> b.copyOf(input.read(b).coerceAtLeast(0)) } } }.getOrNull() ?: return false
+    return looksLikeText(head)
+}
+
+/** The first bytes of a file, read as a page or JSON: "<", "{" or "[" after any spaces. */
+fun looksLikeText(head: ByteArray): Boolean {
+    val start = head.indexOfFirst { it != ' '.code.toByte() && it != '\n'.code.toByte() && it != '\r'.code.toByte() && it != '\t'.code.toByte() }
+    if (start < 0) return true
+    return head[start] == '<'.code.toByte() || head[start] == '{'.code.toByte() || head[start] == '['.code.toByte()
+}
+
 /** What a server says to a link whose token ran out or that it no longer serves. */
 private val EXPIRED = setOf(400, 401, 403, 404, 410)
 
