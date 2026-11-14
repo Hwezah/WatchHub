@@ -167,3 +167,15 @@ const val MIN_SEEDS = 5
  * ([cached]: lower-case ids), where it plays from TorBox's servers whatever the swarm.
  */
 fun fewSeeds(hit: Hit, cached: Set<String> = emptySet()) = !hit.direct && !hit.external && hit.seeders < MIN_SEEDS && hit.id.lowercase() !in cached
+
+/** The resolutions Settings offers to leave out, best first. */
+val QUALITY_CHOICES = listOf("4K", "1440p", "1080p", "720p", "480p", "360p", "CAM")
+
+/** Whether [hit] may show at all under Settings → Streaming's left-out resolutions; one of unknown resolution always may. */
+fun allowedQuality(hit: Hit, hidden: Collection<String>) = hit.quality == null || hit.quality !in hidden
+
+/** The sources the viewer allows: every list and every download pick goes through this. */
+fun allowedHits(hits: List<Hit>): List<Hit> {
+    val hidden = com.torrentviewer.core.SettingsStore.value.value.hiddenQualities
+    return if (hidden.isEmpty()) hits else hits.filter { allowedQuality(it, hidden) }
+}

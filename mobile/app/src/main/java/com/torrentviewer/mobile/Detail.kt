@@ -192,7 +192,9 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     val settingsNow by com.torrentviewer.core.SettingsStore.value.collectAsState()
     val cachedIds by TorBox.cached.collectAsState()
     var showFew by remember(title.imdb) { mutableStateOf(false) }
-    val atQuality = hits.orEmpty().filter { quality == null || it.quality == quality }
+    // Settings → Streaming's left-out resolutions: gone from the list, its pills and every download pick.
+    val kept = hits?.filter { allowedQuality(it, settingsNow.hiddenQualities) }
+    val atQuality = kept.orEmpty().filter { quality == null || it.quality == quality }
     val shown = if (settingsNow.hideFewSeeds && !showFew) atQuality.filterNot { fewSeeds(it, cachedIds.mapTo(HashSet()) { c -> c.lowercase() }) } else atQuality
     val hiddenFew = atQuality.size - shown.size
     var sheet by remember { mutableStateOf(false) }
@@ -287,7 +289,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 }
                 kotlinx.coroutines.withTimeoutOrNull(QUICK_PICK_MS) { runCatching { search { latest = it } }.getOrDefault(latest) } ?: latest
             }
-            val pick = preferredPick(all, prefs)
+            val pick = preferredPick(allowedHits(all), prefs)
             if (pick == null) watch.notes.tryEmit("Nothing that can be saved was found for $what.")
             else if (external) {
                 if (!openInDownloader(context, pick, what)) watch.notes.tryEmit("No app on this phone can take that link.")
@@ -570,7 +572,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     )
                 }
             } else {
-                sources(title, episode, hits, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> watch.stream(hit, title) }
+                sources(title, episode, kept, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> watch.stream(hit, title) }
             }
         }
         // Over the art, a round back button; once the page scrolls under it, a solid bar with the name.
@@ -591,7 +593,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         val ep = episode
         BottomSheet(ep?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: "Sources", onDismiss = { sheet = false }) {
             LazyColumn {
-                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
+                sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
                     sheet = false
                     watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
                 }
@@ -603,7 +605,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         val ep = episode
         BottomSheet(ep?.let { "Download ${episodeTag(it.season, it.episode)}: pick a release" } ?: "Download: pick a release", onDismiss = { downloadSheet = false }) {
             LazyColumn {
-                sources(title, ep, hits, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit ->
+                sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit ->
                     downloadSheet = false
                     keep(hit, ep)
                 }) { hit ->

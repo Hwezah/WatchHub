@@ -72,7 +72,7 @@ object SeasonBatch {
 
     /** An episode's sources, as the title page finds them. */
     suspend fun sources(title: Title, ep: Episode): List<Hit> = runCatching {
-        CsStreams.withPlugins(title, ep, {}) { onHits -> searchEpisode(title, ep.season, ep.episode, onHits) }
+        allowedHits(CsStreams.withPlugins(title, ep, {}) { onHits -> searchEpisode(title, ep.season, ep.episode, onHits) })
     }.getOrDefault(emptyList())
 
     /** Starts gathering the season's sources, unless that's already under way or done for this season. */

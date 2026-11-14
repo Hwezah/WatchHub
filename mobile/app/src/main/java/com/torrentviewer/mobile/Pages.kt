@@ -263,7 +263,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
         )
     }
     val releases = hits?.let { list ->
-        val q = list.filter { notJunk(it) && streamFilter.accepts(traitsOf(it)) }
+        val q = allowedHits(list).filter { notJunk(it) && streamFilter.accepts(traitsOf(it)) }
         when (order) {
             HitOrder.BEST -> q
             HitOrder.BIGGEST -> q.sortedByDescending { it.size }
@@ -795,6 +795,18 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
+        // Resolutions left out everywhere: tapped ones (red) never show, and a download never picks them.
+        Text("Leave out resolutions", style = Type.title.copy(fontWeight = FontWeight.Bold))
+        Text(
+            "Tapped ones never show in sources lists or Search, and downloads never pick them. Releases of unknown resolution always show.",
+            Modifier.padding(top = 4.dp, bottom = 10.dp), style = Type.meta.copy(color = Ink.faint),
+        )
+        FlowRow(Modifier.padding(bottom = 22.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            QUALITY_CHOICES.forEach { q ->
+                val out = q in settings.hiddenQualities
+                Chip(q, out, onClick = { set(settings.copy(hiddenQualities = if (out) settings.hiddenQualities - q else settings.hiddenQualities + q)) }, icon = if (out) L.drawable.lucide_ic_x else null)
+            }
+        }
         ToggleSection(
             "Hide torrents under $MIN_SEEDS seeds", "Left out of the sources lists: with so few seeds they rarely finish. A tap under the list still shows them.",
             settings.hideFewSeeds,
