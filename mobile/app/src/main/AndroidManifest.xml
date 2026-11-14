@@ -12,8 +12,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The one-time "let downloads run in the background" prompt (battery optimisation off). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- No REQUEST_INSTALL_PACKAGES: an update downloads through Android's download manager, whose
-         notification installs it. Play Protect flagged a sideloaded app that installs APKs itself. -->
+    <!-- Updates download inside the app (progress on the update card) and are handed to Android's installer,
+         which asks to confirm. The download manager's notification, used before, opened nothing when tapped. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="false"
