@@ -1598,48 +1598,31 @@ private fun PausedCard(visible: Boolean, title: Title?, episode: Episode?, label
 }
 
 /**
- * Before the first frame: quiet and centred. The title's art far back and dim, its logo in the middle, one thin line
- * under it that fills as the start of the film arrives, and a single line saying what is happening.
+ * Before the first frame: black, the back arrow, and three dots gliding in the middle — nothing else (the owner's
+ * choice). The parameters stay for the callers; what they told is in the engine log.
  */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun Loading(title: Title?, episode: Episode?, file: TorrentFile?, starting: Boolean, progress: Progress?, via: String?, asking: Boolean, onBack: () -> Unit) {
-    val percent = if (starting) 100 else progress?.buffer ?: 0
-    val fill by animateFloatAsState(percent / 100f, Motion.spatial(), label = "fill")
-    // While nothing is measurable (finding peers, opening the stream) the line breathes rather than sitting empty.
-    val breathe by androidx.compose.animation.core.rememberInfiniteTransition(label = "breathe").animateFloat(
-        0.35f, 0.9f, androidx.compose.animation.core.infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "alpha",
+    val glide = androidx.compose.animation.core.rememberInfiniteTransition(label = "dots")
+    // One wave running through the three: each rises and brightens a beat after the one before.
+    val phase by glide.animateFloat(
+        0f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(1100, easing = androidx.compose.animation.core.LinearEasing)), label = "phase",
     )
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        (episode?.thumbnail ?: title?.art)?.let { art ->
-            Artwork(art, title?.title.orEmpty(), Modifier.fillMaxSize().then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(24.dp) else Modifier), fallback = title?.art)
-        }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.82f)))
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 12.dp, vertical = 8.dp)) {
             RoundIcon(L.drawable.lucide_ic_arrow_left, onBack)
-            Column(Modifier.align(Alignment.Center).padding(horizontal = 32.dp).widthIn(max = 420.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                if (title != null) TitleMark(title, Modifier.widthIn(max = 300.dp), maxHeight = 72.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
-                else Text(
-                    searchableName(file?.name.orEmpty()).ifBlank { file?.name.orEmpty() },
-                    style = Type.display.copy(textAlign = TextAlign.Center), maxLines = 2, overflow = TextOverflow.Ellipsis,
-                )
-                (episode?.let { "${episodeLabel(title, it.season, it.episode)}  ${it.name}" } ?: file?.let { fileEpisodeLabel(title, it.name) })
-                    ?.let { Text(it, Modifier.padding(top = 10.dp), style = Type.label.copy(color = Ink.muted, textAlign = TextAlign.Center), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                // The one line: the accent filling a faint track, rounded, the width of a short title.
-                Box(Modifier.padding(top = 26.dp).width(200.dp).height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f))) {
-                    if (percent > 0) Box(Modifier.fillMaxHeight().fillMaxWidth(fill.coerceIn(0f, 1f)).clip(CircleShape).background(Ink.accent))
-                    else Box(Modifier.fillMaxSize().background(Ink.accent.copy(alpha = breathe * 0.5f)))
-                }
-                Text(
-                    when {
-                        starting -> if (via != null) "Starting  ·  $via" else "Starting"
-                        asking -> "Checking TorBox"
-                        progress == null -> "Finding peers"
-                        progress.peers == 0 -> "Finding peers"
-                        else -> "Buffering  ·  ${speed(progress.speed)}  ·  ${progress.peers} peers"
-                    },
-                    Modifier.padding(top = 12.dp),
-                    style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp, textAlign = TextAlign.Center),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+        }
+        Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(3) { i ->
+                // 0..1..0 over the dot's share of the cycle, a third of it later than the dot before.
+                val t = ((phase - i / 3f) % 1f + 1f) % 1f
+                val lift = kotlin.math.sin((t * 2 * Math.PI).toFloat()).coerceAtLeast(0f)
+                Box(
+                    Modifier.size(9.dp)
+                        .graphicsLayer { translationY = -lift * 9.dp.toPx() }
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.35f + 0.65f * lift)),
                 )
             }
         }
