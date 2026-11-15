@@ -28,12 +28,11 @@ data class Stats(
 )
 
 /**
- * How the picture fills the screen. The app's own, so a player engine needn't bring libVLC's along (the phone
- * plays with mpv and Media3 and ships without libVLC); [VlcView] maps it to libVLC's.
+ * How the picture fills the screen: the app's own, so Media3 needn't name libVLC's; [VlcView] maps it to libVLC's.
  */
 enum class Scale { BEST_FIT, FIT_SCREEN, FILL, RATIO_16_9, RATIO_4_3, ORIGINAL }
 
-/** What the player screen drives: Media3 ([ExoView]), libVLC ([VlcView]) or, on the phone, mpv. */
+/** What the player screen drives: Media3 ([ExoView]) or libVLC ([VlcView]). */
 abstract class Video(context: Context) : FrameLayout(context) {
     var onLoaded: (durationMs: Long) -> Unit = {}
     var onTime: (ms: Long) -> Unit = {}

@@ -937,13 +937,6 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
 
         if (page == "Playback") Panel {
-        Section("Player", "mpv plays nearly anything — HEVC, AV1, DTS, TrueHD, styled anime subtitles — with the phone's hardware where it can. Media3 is Android's own, and hands mpv what it can't play.") {
-            SpreadRow {
-                Chip("mpv", settings.phoneEngine == "mpv", onClick = { set(settings.copy(phoneEngine = "mpv")) })
-                Chip("Media3", settings.phoneEngine == "media3", onClick = { set(settings.copy(phoneEngine = "media3")) })
-            }
-        }
-
         Section("Skip intro", "Where an episode's intro is known, jump past it by itself instead of showing the Skip intro button. Once per episode — seek back to watch it.") {
             SpreadRow {
                 Chip("Automatically", settings.autoSkipIntro, onClick = { set(settings.copy(autoSkipIntro = true)) })
@@ -958,7 +951,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
-        Section("Subtitle style", "Size, colour and a box behind the words. Shown from the next line. Styled (anime) subtitles keep their own look in mpv.") {
+        Section("Subtitle style", "Size, colour and a box behind the words. Media3 shows a change on the next line; VLC (when a file needs it) from the next video.") {
             val style = settings.subtitles
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SUB_SIZES.keys.forEach { s -> Chip(s.replaceFirstChar(Char::uppercase), style.size == s, onClick = { set(settings.copy(subtitles = style.copy(size = s))) }) }

@@ -157,6 +157,7 @@ import com.torrentviewer.core.Tracks
 import com.torrentviewer.core.Type
 import com.torrentviewer.core.Video
 import com.torrentviewer.core.Scale
+import com.torrentviewer.core.VlcView
 import com.torrentviewer.core.Watch
 import com.torrentviewer.core.bytes
 import com.torrentviewer.core.clock
@@ -329,15 +330,8 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     }
 
     val view = remember { mutableStateOf<Video?>(null) }
-    /**
-     * mpv (Settings → Playback's default), or Media3 when that is picked — unless Media3 has already given up on this
-     * file, now or any time before. A phone older than Android 8 has only Media3.
-     */
-    var mpv by remember {
-        mutableStateOf(MpvView.available && (SettingsStore.value.value.phoneEngine == "mpv" || file?.let { NeedsVlc.has(it.name, it.size) } == true))
-    }
-    /** mpv already failed this file: Media3's own failure is then the end, not a hand-back to mpv. */
-    var mpvGaveUp by remember { mutableStateOf(false) }
+    /** Media3, the phone's player — VLC only for a file Media3 has given up on, now or any time before. */
+    var vlc by remember { mutableStateOf(file?.let { NeedsVlc.has(it.name, it.size) } == true) }
     var paused by remember { mutableStateOf(false) }
     var at by remember { mutableDoubleStateOf(startAt) }
     var duration by remember { mutableDoubleStateOf(0.0) }
@@ -591,7 +585,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     }
 
     // The stream arrives: hand it to the player, with the torrent's own subtitle files.
-    // From where it is, not startAt: a switch to mpv picks up mid-film.
+    // From where it is, not startAt: a fallback to VLC picks up mid-film.
     LaunchedEffect(ready, view.value) {
         val r = ready ?: return@LaunchedEffect
         val v = view.value ?: return@LaunchedEffect
@@ -755,7 +749,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     // A TorBox stream that hasn't moved goes to WatchHub's own engine: a video this phone can't
     // decode left the player silent, with no error to fall back on, and the film never started. Counted
     // again from a switch of engine: Media3's failed attempt used some of the next engine's time.
-    LaunchedEffect(watch.via, mpv) {
+    LaunchedEffect(watch.via, vlc) {
         if (watch.via == null) return@LaunchedEffect
         val from = at
         kotlinx.coroutines.delay(TORBOX_STALL_MS)
@@ -865,44 +859,28 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     /* ------------------------------------------------------------ layout */
 
     Box(Modifier.fillMaxSize().background(Color.Black).then(gestures)) {
-        key(mpv) {
+        key(vlc) {
             AndroidView(
                 factory = { ctx ->
-                    (if (mpv) MpvView(ctx) else ExoView(ctx)).also { v ->
+                    (if (vlc) VlcView(ctx) else ExoView(ctx)).also { v ->
                         // A fallback keeps the viewer's speed and picture.
                         v.setRate(rate)
                         v.subtitleStyle = SettingsStore.value.value.subtitles
                         v.setSubtitleDelay(subDelay)
                         v.setScale(SCALES[scale].first)
-                        // mpv couldn't open it: Media3 tries, once, before the film gives up — and what mpv said is kept
-                        // in the engine log (Settings → Last crash report's neighbour, engine.log) to find out why.
-                        if (mpv) v.onUnsupported = { message ->
-                            Log.w("Player", message)
-                            watch.engine.note("player: $message — trying Media3")
-                            if (mpvGaveUp) v.onFailed(message)
-                            else {
-                                mpvGaveUp = true
-                                watch.notes.tryEmit("Switching to Media3 — $message")
-                                tracks = null
-                                subtitle = null
-                                audio = null
-                                langDone.fill(false)
-                                mpv = false
-                            }
-                        }
-                        if (!mpv && MpvView.available && !mpvGaveUp) v.onUnsupported = { message ->
-                            Log.w("Player", "Media3 gave up ($message), switching to mpv")
-                            watch.engine.note("player: Media3 gave up ($message), switching to mpv")
+                        if (!vlc) v.onUnsupported = { message ->
+                            Log.w("Player", "Media3 gave up ($message), falling back to VLC")
+                            watch.engine.note("player: Media3 gave up ($message), falling back to VLC")
                             // A note, not the HUD: the loading screen is usually still up and hides the HUD.
-                            watch.notes.tryEmit("Switching to mpv — Media3 can't play this video")
-                            // Next time this file opens straight in mpv.
+                            watch.notes.tryEmit("Switching to VLC — Media3 can't play this video")
+                            // Next time this file opens straight in VLC.
                             file?.let { NeedsVlc.add(it.name, it.size) }
                             // Track ids are the backend's own.
                             tracks = null
                             subtitle = null
                             audio = null
                             langDone.fill(false)
-                            mpv = true
+                            vlc = true
                         }
                         var recoveries = 0
                         v.onLoaded = { ms ->
@@ -1168,12 +1146,12 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                 delay = subDelay,
                 onDelay = { ms ->
                     subDelay = ms
-                    // Media3 can only hold subtitles back; earlier is mpv's, picked up where the film is.
-                    if (view.value?.setSubtitleDelay(ms) == false && MpvView.available) {
-                        say("Switching to mpv to bring subtitles earlier", L.drawable.lucide_ic_captions)
+                    // Media3 can only hold subtitles back; earlier is VLC's, picked up where the film is.
+                    if (view.value?.setSubtitleDelay(ms) == false) {
+                        say("Switching to VLC to bring subtitles earlier", L.drawable.lucide_ic_captions)
                         tracks = null
                         langDone.fill(false)
-                        mpv = true
+                        vlc = true
                     }
                 },
                 audio = audio ?: tracks?.defaultAudio,
