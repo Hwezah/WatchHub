@@ -240,7 +240,7 @@ private fun TrailerControls(web: WebView?) {
     ) {
         if (visible && length > 0f) {
             Box(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.45f), CircleShape).padding(14.dp)) {
-                Lc(if (paused) L.drawable.lucide_ic_play else L.drawable.lucide_ic_pause, tint = Color.White, size = 28.dp)
+                Lc(if (paused) L.drawable.lucide_ic_play else R.drawable.ic_pause_bars, tint = Color.White, size = 28.dp)
             }
             Row(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 12.dp),

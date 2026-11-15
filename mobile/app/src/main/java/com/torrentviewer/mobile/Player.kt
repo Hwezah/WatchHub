@@ -994,7 +994,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                     BrightnessRail(brightness, ::setBrightness, Modifier.align(Alignment.CenterStart))
                     Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(44.dp)) {
                         RoundIcon(L.drawable.lucide_ic_rotate_ccw, { skip(-SKIP); show() }, size = 52.dp)
-                        RoundIcon(if (paused) L.drawable.lucide_ic_play else L.drawable.lucide_ic_pause, ::togglePause, size = 72.dp)
+                        RoundIcon(if (paused) L.drawable.lucide_ic_play else R.drawable.ic_pause_bars, ::togglePause, size = 72.dp)
                         RoundIcon(L.drawable.lucide_ic_rotate_cw, { skip(SKIP); show() }, size = 52.dp)
                     }
                     Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
@@ -1690,7 +1690,7 @@ private fun CastingCard(
                 episode?.let { Text("${episodeLabel(title, it.season, it.episode)}  ${it.name}", Modifier.padding(top = 8.dp), style = Type.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 Row(Modifier.padding(top = 22.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(36.dp)) {
                     RoundIcon(L.drawable.lucide_ic_rotate_ccw, { onSeek(at - SKIP) }, size = 50.dp)
-                    RoundIcon(if (paused) L.drawable.lucide_ic_play else L.drawable.lucide_ic_pause, onToggle, size = 66.dp)
+                    RoundIcon(if (paused) L.drawable.lucide_ic_play else R.drawable.ic_pause_bars, onToggle, size = 66.dp)
                     RoundIcon(L.drawable.lucide_ic_rotate_cw, { onSeek(at + SKIP) }, size = 50.dp)
                 }
             }

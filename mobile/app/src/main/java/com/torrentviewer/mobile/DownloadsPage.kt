@@ -108,7 +108,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
             Label("Downloading")
             // All of them at once: pause, carry on, or stop and delete (asked first).
             SpreadRow(Modifier.padding(bottom = 12.dp)) {
-                Chip("Pause All", false, onClick = { live.forEach { if (it.state != DlState.PAUSED && it.state != DlState.FAILED) Downloads.pause(it.job.uri) } }, icon = L.drawable.lucide_ic_pause, compact = true)
+                Chip("Pause All", false, onClick = { live.forEach { if (it.state != DlState.PAUSED && it.state != DlState.FAILED) Downloads.pause(it.job.uri) } }, icon = R.drawable.ic_pause_bars, compact = true)
                 Chip("Resume All", false, onClick = {
                     live.forEach { if (it.state == DlState.PAUSED) Downloads.resume(it.job.uri) else if (it.state == DlState.FAILED) Downloads.retry(it.job.uri) }
                 }, icon = L.drawable.lucide_ic_play, compact = true)
@@ -272,7 +272,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 // Looking for a fresh link: a small spinner where the button was.
                 row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(10.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
                 row.state == DlState.WIFI -> Unit
-                else -> Tap(onPause, shape = CircleShape) { Lc(L.drawable.lucide_ic_pause, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
+                else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
             }
             // Its tap area reaches into the card's padding, so the ✕ sits as far from the right edge as the poster from the left.
             Tap(onCancel, Modifier.offset(x = 10.dp), CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 24.dp) }
