@@ -170,6 +170,99 @@ s.textContent='html,body{background:#000!important;margin:0!important;overflow:h
 """.trimIndent()
 
 /**
+ * Everything YouTube draws over the picture — title, channel, its logo, share, settings, suggested videos, its own
+ * bar — made invisible and untouchable, whatever it is called this month: every element that isn't the <video> or
+ * one of its ancestors. Class names change with each redesign of the embed; the page's shape doesn't. Kept up as
+ * the player adds things later. The app draws its own play/pause and scrubber instead ([TrailerControls]).
+ */
+private const val CLEAN_SCRIPT = """
+(function(){if(window.__whClean)return;window.__whClean=1;
+function clean(){var v=document.querySelector('video');if(!v)return;v.controls=false;var n=v;
+while(n&&n!==document.documentElement){var p=n.parentElement;if(!p)break;
+for(var i=0;i<p.children.length;i++){var c=p.children[i];if(c!==n&&c.tagName!=='SCRIPT'&&c.tagName!=='STYLE'&&c.tagName!=='HEAD'){
+c.style.setProperty('opacity','0','important');c.style.setProperty('pointer-events','none','important');}}n=p;}}
+clean();new MutationObserver(clean).observe(document.documentElement,{childList:true,subtree:true});setInterval(clean,700);})();
+"""
+
+/** Where the video is, for the app's own bar: "[seconds, length, paused]", or null before there is a video. */
+private const val STATE_SCRIPT = "(function(){var v=document.querySelector('video');return v?JSON.stringify([v.currentTime||0,v.duration||0,v.paused]):null;})()"
+
+/**
+ * Play or pause. A video YouTube hasn't started yet (autoplay refused) has nothing to play: its own start
+ * button is pressed for it — hidden, but still there.
+ */
+private const val TOGGLE_SCRIPT = """
+(function(){var v=document.querySelector('video');if(!v)return;
+if(v.readyState===0||!v.currentSrc){var b=document.querySelector('.ytp-large-play-button,.ytp-cued-thumbnail-overlay,[aria-label*="Play"],[aria-label*="play"]');if(b){b.click();return;}}
+if(v.paused)v.play();else v.pause();})();
+"""
+
+private fun clock(seconds: Float): String = seconds.toInt().let { "%d:%02d".format(it / 60, it % 60) }
+
+/**
+ * The app's own controls over the trailer, in place of YouTube's: a tap on the picture shows them and plays or
+ * pauses; a thin bar to scrub, with the time. Gone again a few seconds into playing.
+ */
+@Composable
+private fun TrailerControls(web: WebView?) {
+    var at by remember { mutableStateOf(0f) }
+    var length by remember { mutableStateOf(0f) }
+    var paused by remember { mutableStateOf(false) }
+    /** While a finger is on the bar: where it is, so the thumb doesn't jump back to the video's own time. */
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    var shownAt by remember { mutableStateOf(0L) }
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(web) {
+        while (true) {
+            web?.evaluateJavascript(STATE_SCRIPT) { raw ->
+                // evaluateJavascript hands a JSON string of the script's result: a quoted "[..]" here.
+                runCatching { org.json.JSONArray(org.json.JSONTokener(raw).nextValue() as String) }.getOrNull()?.let {
+                    at = it.optDouble(0).toFloat()
+                    length = it.optDouble(1).toFloat().takeIf { d -> d.isFinite() } ?: 0f
+                    paused = it.optBoolean(2)
+                }
+            }
+            visible = paused || dragging != null || System.currentTimeMillis() - shownAt < 3000
+            kotlinx.coroutines.delay(300)
+        }
+    }
+    Box(
+        Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) {
+            // Hidden: the first tap only shows them. Shown: it plays or pauses.
+            if (visible) web?.evaluateJavascript(TOGGLE_SCRIPT, null)
+            shownAt = System.currentTimeMillis()
+            visible = true
+        },
+    ) {
+        if (visible && length > 0f) {
+            Box(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.45f), CircleShape).padding(14.dp)) {
+                Lc(if (paused) L.drawable.lucide_ic_play else L.drawable.lucide_ic_pause, tint = Color.White, size = 28.dp)
+            }
+            Row(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(clock(dragging ?: at), style = Type.meta.copy(color = Color.White))
+                androidx.compose.material3.Slider(
+                    value = (dragging ?: at).coerceIn(0f, length),
+                    onValueChange = { dragging = it; shownAt = System.currentTimeMillis() },
+                    onValueChangeFinished = {
+                        dragging?.let { to -> web?.evaluateJavascript("(function(){var v=document.querySelector('video');if(v)v.currentTime=$to;})()", null); at = to }
+                        dragging = null
+                    },
+                    valueRange = 0f..length,
+                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = Ink.accent, activeTrackColor = Ink.accent, inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                    ),
+                )
+                Text(clock(length), style = Type.meta.copy(color = Color.White))
+            }
+        }
+    }
+}
+
+/**
  * YouTube's embed page, opened directly — not inside an iframe of a made-up youtube.com page, which YouTube
  * now refuses ("Error 152/153"): it wants every embed to name the app it plays in, so the request carries
  * this app's identity (https://<package>) as Referer and origin, as YouTube's rules for apps ask.
@@ -201,11 +294,13 @@ private fun YouTubeView(id: String, zoom: Float) {
                     // As soon as the page starts drawing, YouTube's extra buttons are hidden; again when it has finished.
                     override fun onPageCommitVisible(view: WebView, url: String?) {
                         view.evaluateJavascript(zoomScript(current.value), null)
+                        view.evaluateJavascript(CLEAN_SCRIPT, null)
                         loaded = true
                     }
 
                     override fun onPageFinished(view: WebView, url: String?) {
                         view.evaluateJavascript(zoomScript(current.value), null)
+                        view.evaluateJavascript(CLEAN_SCRIPT, null)
                         loaded = true
                     }
                 }
@@ -217,6 +312,8 @@ private fun YouTubeView(id: String, zoom: Float) {
         },
         modifier = Modifier.fillMaxSize(),
     )
+    // Over the page: the taps are the app's, never YouTube's (its links out, its menus).
+    if (loaded) TrailerControls(web)
     if (!loaded) Column(horizontalAlignment = Alignment.CenterHorizontally) {
         com.torrentviewer.core.Spinner(size = 36.dp)
         if (slow) Text(
