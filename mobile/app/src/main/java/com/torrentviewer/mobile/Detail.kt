@@ -423,6 +423,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                 Modifier.fillMaxWidth(),
                                 icon = L.drawable.lucide_ic_play,
                                 primary = true,
+                                glass = true,
                             )
                             Button("Start over", {
                                 val i = last.lastFileIndex ?: 0
@@ -441,6 +442,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             modifier = Modifier.fillMaxWidth(),
                             icon = L.drawable.lucide_ic_play,
                             primary = true,
+                            glass = true,
                         )
                         upNext != null -> Button(
                             label = if (busy && episode?.id == upNext.id && shown.isEmpty()) "Finding sources…"
@@ -453,6 +455,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             modifier = Modifier.fillMaxWidth(),
                             icon = L.drawable.lucide_ic_play,
                             primary = true,
+                            glass = true,
                         )
                     }
                     title.plot?.let { plot ->
