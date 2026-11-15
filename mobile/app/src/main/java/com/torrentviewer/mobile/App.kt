@@ -146,6 +146,69 @@ private fun keyOf(index: Int, page: Page) = when (page) {
     is Page.Top -> "top:$index"
 }
 
+/**
+ * Where the viewer is — the tab, and each tab's open pages — kept outside the screen: by the process, so a new
+ * activity (Android rebuilt it, the app was left with Back) opens on the same page; and on disk, so an app Android
+ * closed in the background comes back there too. Home's rows and scroll, while the process lives.
+ */
+private object Nav {
+    var tab by mutableStateOf(Tab.HOME)
+    val stacks = androidx.compose.runtime.mutableStateMapOf<Tab, androidx.compose.runtime.snapshots.SnapshotStateList<Page>>()
+    val home = HomeState()
+    /** The disk's copy has been read into [stacks] (once a process). */
+    var restored = false
+}
+
+private const val NAV_KEY = "phone:nav"
+
+/**
+ * A page as a line on disk: what reopens it. A title by its id (its page loads the rest); a person, a chart. A shelf
+ * or a watch order isn't kept: it would need its whole list, and the page under it is a fine place to land.
+ */
+private fun pageJson(page: Page): org.json.JSONObject? = when (page) {
+    is Page.Detail -> org.json.JSONObject().put("t", "detail").put("imdb", page.title.imdb).put("kind", page.title.kind).put("type", page.title.type)
+        .put("title", page.title.title).put("year", page.title.year).put("poster", page.title.poster).put("backdrop", page.title.backdrop)
+    is Page.Person -> org.json.JSONObject().put("t", "person").put("id", page.id).put("name", page.name)
+    is Page.Top -> org.json.JSONObject().put("t", "top").put("kind", page.kind)
+    Page.Downloads -> org.json.JSONObject().put("t", "downloads")
+    Page.WatchOrders -> org.json.JSONObject().put("t", "orders")
+    is Page.Catalog, is Page.WatchOrder -> null
+}
+
+private fun pageOf(o: org.json.JSONObject): Page? = runCatching {
+    fun str(k: String) = o.optString(k).takeIf { it.isNotEmpty() && !o.isNull(k) }
+    when (o.optString("t")) {
+        "detail" -> Page.Detail(
+            Title(
+                o.getString("imdb"), o.getString("kind"), o.optString("title"), year = str("year"), poster = str("poster"), backdrop = str("backdrop"),
+                type = str("type") ?: if (o.getString("kind") == "movie") "movie" else "series",
+            ),
+        )
+        "person" -> Page.Person(o.getInt("id"), o.optString("name"))
+        "top" -> Page.Top(o.getString("kind"))
+        "downloads" -> Page.Downloads
+        "orders" -> Page.WatchOrders
+        else -> null
+    }
+}.getOrNull()
+
+private fun saveNav() = runCatching {
+    val tabs = org.json.JSONObject()
+    Nav.stacks.forEach { (t, pages) -> tabs.put(t.name, org.json.JSONArray(pages.mapNotNull(::pageJson))) }
+    Kv.setGlobal(NAV_KEY, org.json.JSONObject().put("tab", Nav.tab.name).put("pages", tabs).toString())
+}
+
+private fun loadNav() = runCatching {
+    val o = org.json.JSONObject(Kv.global(NAV_KEY) ?: return@runCatching)
+    Nav.tab = runCatching { Tab.valueOf(o.getString("tab")) }.getOrDefault(Tab.HOME)
+    val tabs = o.optJSONObject("pages") ?: return@runCatching
+    tabs.keys().forEach { name ->
+        val t = runCatching { Tab.valueOf(name) }.getOrNull() ?: return@forEach
+        val a = tabs.getJSONArray(name)
+        Nav.stacks[t] = mutableStateListOf<Page>().apply { (0 until a.length()).mapNotNull { pageOf(a.getJSONObject(it)) }.forEach(::add) }
+    }
+}
+
 /** The profile opened last on this phone, so a phone with one owner never asks. */
 private const val LAST_PROFILE = "phone:lastProfile"
 
@@ -224,12 +287,21 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         who?.let(Kids::use)
     }
     var switching by remember { mutableStateOf(false) }
-    var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
-    // Each tab its own stack of pages: going to another tab and back finds the title you had open still there.
-    val stacks = remember { androidx.compose.runtime.mutableStateMapOf<Tab, androidx.compose.runtime.snapshots.SnapshotStateList<Page>>() }
+    // Each tab its own stack of pages: going to another tab and back finds the title you had open still there; leaving
+    // the app and coming back does too ([Nav]).
+    if (!Nav.restored) {
+        Nav.restored = true
+        if (Nav.stacks.isEmpty()) loadNav()
+    }
+    var tab by Nav::tab
+    val stacks = Nav.stacks
     val pages = stacks.getOrPut(tab) { mutableStateListOf() }
     val holder = rememberSaveableStateHolder()
-    val home = remember { HomeState() }
+    val home = Nav.home
+    // Written down whenever the tab or a page changes.
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.snapshotFlow { Nav.tab to Nav.stacks.mapValues { it.value.toList() } }.collect { saveNav() }
+    }
 
     fun pop() {
         val i = pages.lastIndex
