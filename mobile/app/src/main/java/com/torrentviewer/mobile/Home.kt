@@ -481,11 +481,11 @@ private fun HeroButtons(t: Title, inList: Boolean, onOpen: (Title) -> Unit, modi
     val spread = isPortraitPhone()
     Row(if (spread) modifier.fillMaxWidth() else modifier, horizontalArrangement = Arrangement.spacedBy(if (spread) 14.dp else 10.dp)) {
         val each = if (spread) Modifier.weight(1f) else Modifier.widthIn(min = 132.dp)
-        Button("Watch", { onOpen(t) }, each, icon = L.drawable.lucide_ic_play, primary = true, balanced = true, glass = true)
+        Button("Watch", { onOpen(t) }, each, icon = L.drawable.lucide_ic_play, primary = true, glass = true)
         // Wide enough for "In My List", and the details screen's toggle: a green disc springs in behind the tick.
         Button(
             if (inList) "In My List" else "My List", { SavedStore.toggle(t) }, each,
-            icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList, balanced = true, glass = true,
+            icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList, glass = true,
         )
     }
 }
