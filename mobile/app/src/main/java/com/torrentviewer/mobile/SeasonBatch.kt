@@ -267,7 +267,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             fun send(to: Downloader) {
                 if (sending || picks.isEmpty()) return
                 if (System.currentTimeMillis() - scan.at < SEND_AS_FOUND_MS) {
-                    val handed = sendLinks(context, picks.map { it.second }, "${title.title} · season $season", to)
+                    val handed = sendLinks(context, picks.map { it.second }, "${title.title} · season $season", to, picks.map { "${title.title} · ${com.torrentviewer.core.episodeTag(it.first.season, it.first.episode)}" })
                     ExternalDownloaders.note(handed, many = true)?.let(say)
                     if (handed != Handed.Failed) onDismiss()
                     return
@@ -285,7 +285,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                         }.map { it.await() }
                     }
                     sending = false
-                    val handed = sendLinks(context, fresh, "${title.title} · season $season", to)
+                    val handed = sendLinks(context, fresh, "${title.title} · season $season", to, picks.map { "${title.title} · ${com.torrentviewer.core.episodeTag(it.first.season, it.first.episode)}" })
                     ExternalDownloaders.note(handed, many = true)?.let(say)
                     if (handed != Handed.Failed) onDismiss()
                 }

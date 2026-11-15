@@ -371,12 +371,15 @@ fun downloadLink(hit: Hit) = if (hit.direct) hit.uri else magnetOf(hit) ?: hit.u
  * A season's links for another downloader, all at once: shared as text, one link a line, which 1DM, ADM and
  * most others read as a batch. Headers can't go along, so a link that needs them may be refused there.
  */
-fun sendLinks(context: Context, hits: List<Hit>, title: String, to: Downloader = Downloader.Default): Handed {
+fun sendLinks(context: Context, hits: List<Hit>, title: String, to: Downloader = Downloader.Default, names: List<String> = emptyList()): Handed {
     val text = hits.joinToString("\n", transform = ::downloadLink)
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_SUBJECT, title)
         putExtra(Intent.EXTRA_TEXT, text)
+        // Each link's name, in the same order ("The Penguin · S01E01"), for a downloader that reads it (Grabber does):
+        // a playlist's address (index_287.m3u8) says nothing of what it is.
+        if (names.size == hits.size) putExtra("titles", names.toTypedArray())
     }
     return ExternalDownloaders.hand(context, send, to, "Send links to", text)
 }
