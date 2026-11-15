@@ -1236,17 +1236,20 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
 
         Section("Button Colour", "Play, Watch and the app's other main buttons and highlights: ${settings.accent}.") {
-            SpreadRow {
-                com.torrentviewer.core.ACCENT_SHADES.forEach { (name, argb) ->
+            // Two rows of six: twelve in one would crowd an upright phone.
+            com.torrentviewer.core.ACCENT_SHADES.chunked(6).forEachIndexed { row, shades ->
+            SpreadRow(if (row > 0) Modifier.padding(top = 10.dp) else Modifier) {
+                shades.forEach { (name, argb) ->
                     val on = settings.accent == name
                     Tap({ set(settings.copy(accent = name)) }, shape = CircleShape) {
                         Box(
                             Modifier.size(38.dp).border(2.dp, if (on) Ink.text else Color.Transparent, CircleShape).padding(4.dp)
                                 .background(Color(argb), CircleShape),
                             contentAlignment = Alignment.Center,
-                        ) { if (on) Lc(L.drawable.lucide_ic_check, tint = Color.White, size = 16.dp) }
+                        ) { if (on) Lc(L.drawable.lucide_ic_check, tint = if (com.torrentviewer.core.readsDark(argb)) Color(0xFF141414) else Color.White, size = 16.dp) }
                     }
                 }
+            }
             }
         }
 

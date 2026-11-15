@@ -213,7 +213,7 @@ fun Button(
             },
             Motion.effects(), label = "bg",
         )
-        val fg = if (glass && !primary) Color.Black else if (primary || fill != null) Color.White else tint
+        val fg = if (glass && !primary) Color.Black else if (primary && fill == null) Ink.onAccent else if (fill != null) Color.White else tint
         Row(
             // The primary one — Play, Watch — a flat grainy red, a shade deeper while pressed; the rest a flat tint.
             (when {
@@ -262,7 +262,7 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
             pressed -> Ink.text.copy(alpha = 0.18f)
             else -> Ink.text.copy(alpha = 0.08f)
         }
-        val fg = if (on) Color.White else Ink.muted
+        val fg = if (on) Ink.onAccent else Ink.muted
         Row(
             Modifier.background(bg).height(if (tall) 46.dp else if (compact) 32.dp else 36.dp).padding(horizontal = if (tall) 20.dp else if (compact) 11.dp else 16.dp),
             horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,

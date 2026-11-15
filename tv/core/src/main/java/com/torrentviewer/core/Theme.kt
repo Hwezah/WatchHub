@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.ui.draw.drawWithContent
@@ -114,6 +115,8 @@ object Ink {
     val danger get() = p.danger
     /** Netflix's red, lit for a TV across the room; an app may set its own before it composes (the phone's is deeper). */
     var accent by mutableStateOf(Color(0xFFE50914))
+    /** Words and icons on [accent]: white, or near-black on a light shade (White, Sand). */
+    val onAccent get() = if (readsDark(accent.toArgb().toLong() and 0xFFFFFFFFL)) Color(0xFF141414) else Color.White
     val imdb = Color(0xFFF5C518)
     /** The phone's spinners are the downloads' green (an app may switch it on before it composes); the TV's stay red. */
     var greenSpinner by mutableStateOf(false)
@@ -124,17 +127,33 @@ object Ink {
 
 /**
  * The shades the phone's main buttons (Play, Watch…) and highlights may take, chosen in Settings → Appearance, by
- * key: deep enough that white words read on each. The first is the default red.
+ * name: mostly muted, deep enough for white words; the light ones (Sand, White) take dark words ([Ink.onAccent]).
+ * The first is the default red.
  */
 val ACCENT_SHADES: List<Pair<String, Long>> = listOf(
     "Red" to 0xFFB81D24,
     "Deep Orange" to 0xFFD84315,
     "Amber" to 0xFFC77700,
     "Teal" to 0xFF00897B,
-    "Blue" to 0xFF1E63D6,
-    "Purple" to 0xFF7B3FE4,
-    "Pink" to 0xFFD81B60,
+    "Rust" to 0xFF9A4A2E,
+    "Dusty Rose" to 0xFF9A6B72,
+    "Olive" to 0xFF6B6E3A,
+    "Sage" to 0xFF6E8B74,
+    "Slate" to 0xFF4A5D6E,
+    "Grey" to 0xFF5F6368,
+    "Sand" to 0xFFC8B89A,
+    "White" to 0xFFECECEC,
 )
+
+/**
+ * Whether words on [argb] should be dark rather than white: a light shade (White, Sand) would swallow white words.
+ * By the colour's relative luminance, as WCAG counts it.
+ */
+fun readsDark(argb: Long): Boolean {
+    fun lin(c: Long): Double = (c / 255.0).let { if (it <= 0.03928) it / 12.92 else Math.pow((it + 0.055) / 1.055, 2.4) }
+    val l = 0.2126 * lin(argb shr 16 and 0xFF) + 0.7152 * lin(argb shr 8 and 0xFF) + 0.0722 * lin(argb and 0xFF)
+    return l > 0.4
+}
 
 /** [ACCENT_SHADES]' colour for [name], the red for anything unknown (a setting from a later build). */
 fun accentShade(name: String): Long = ACCENT_SHADES.firstOrNull { it.first == name }?.second ?: ACCENT_SHADES.first().second
