@@ -240,10 +240,11 @@ fun Button(
                         scaleY = pop.value
                     }, tint = lerp(fg, Color.White, disc.coerceIn(0f, 1f)), size = if (on != null) 16.dp else 18.dp)
                 }
-                Spacer(Modifier.width(8.dp))
+                // The hero's pair keep their icon close to the word.
+                Spacer(Modifier.width(if (glass) 2.dp else 8.dp))
             }
             Text(label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (balanced && icon != null) Spacer(Modifier.width(32.dp))
+            if (balanced && icon != null) Spacer(Modifier.width(if (glass) 26.dp else 32.dp))
         }
     }
 }
