@@ -235,19 +235,21 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(CARD - 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Artwork(row.job.poster, row.job.label, Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
-            // Beside the poster: the words and buttons, and under them the progress line, from the poster to the ✕'s end.
+            // Beside the poster: the words and buttons.
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(
-                    when (row.state) {
-                        DlState.RESOLVING -> if (row.job.link) row.error ?: "Starting…" else "Finding peers…"
+                // A link being renewed says nothing (the owner's choice): the spinner beside it is enough.
+                val status = when (row.state) {
+                        DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) } else "Finding peers…"
                         DlState.DOWNLOADING -> listOfNotNull("$pct%", speed(row.speed), "${row.peers} peers".takeIf { !row.job.link }).joinToString("  ·  ")
                         DlState.PAUSED -> "Paused  ·  $pct%"
                         DlState.WIFI -> "Waiting for Wi-Fi  ·  $pct%"
                         DlState.FAILED -> row.error ?: "Failed"
-                    },
+                    }
+                if (status != null) Text(
+                    status,
                     Modifier.padding(top = 2.dp),
                     style = Type.meta.copy(fontSize = 12.sp, color = if (row.state == DlState.FAILED) Ink.danger else Ink.muted),
                     maxLines = 2,
@@ -275,10 +277,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             // Its tap area reaches into the card's padding, so the ✕ sits as far from the right edge as the poster from the left.
             Tap(onCancel, Modifier.offset(x = 10.dp), CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 24.dp) }
             }
-            // A thin green line filling as the bytes arrive.
-            ProgressLine(row.ratio, Modifier.padding(top = 6.dp).clip(CircleShape), height = 2.dp, color = Ink.download)
             }
         }
+        // A thin green line filling as the bytes arrive, the card's full width under the poster and words.
+        ProgressLine(row.ratio, Modifier.padding(top = 10.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
         // Fastest / In order live in Settings → Downloads now, for every download, not on each card.
