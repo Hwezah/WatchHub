@@ -17,7 +17,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -36,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -243,22 +247,50 @@ private fun TrailerControls(web: WebView?) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(clock(dragging ?: at), style = Type.meta.copy(color = Color.White))
-                androidx.compose.material3.Slider(
-                    value = (dragging ?: at).coerceIn(0f, length),
-                    onValueChange = { dragging = it; shownAt = System.currentTimeMillis() },
-                    onValueChangeFinished = {
+                ThinBar(
+                    (dragging ?: at).coerceIn(0f, length), length,
+                    onDrag = { dragging = it; shownAt = System.currentTimeMillis() },
+                    onDone = {
                         dragging?.let { to -> web?.evaluateJavascript("(function(){var v=document.querySelector('video');if(v)v.currentTime=$to;})()", null); at = to }
                         dragging = null
                     },
-                    valueRange = 0f..length,
-                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-                    colors = androidx.compose.material3.SliderDefaults.colors(
-                        thumbColor = Ink.accent, activeTrackColor = Ink.accent, inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-                    ),
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                 )
                 Text(clock(length), style = Type.meta.copy(color = Color.White))
             }
         }
+    }
+}
+
+/**
+ * The trailer's scrubber: a thin line, red as far as it has played, with a short upright line where it is.
+ * Tapped or dragged anywhere along its (taller, unseen) touch strip, it seeks there.
+ */
+@Composable
+private fun ThinBar(value: Float, length: Float, onDrag: (Float) -> Unit, onDone: () -> Unit, modifier: Modifier) {
+    val latest = androidx.compose.runtime.rememberUpdatedState(length)
+    fun at(x: Float, width: Int) = (x / width.coerceAtLeast(1)).coerceIn(0f, 1f) * latest.value
+    androidx.compose.foundation.Canvas(
+        modifier.height(28.dp)
+            .pointerInput(Unit) {
+                detectTapGestures { onDrag(at(it.x, size.width)); onDone() }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { onDrag(at(it.x, size.width)) },
+                    onDragEnd = onDone,
+                    onDragCancel = onDone,
+                ) { change, _ -> onDrag(at(change.position.x, size.width)) }
+            },
+    ) {
+        val y = size.height / 2
+        val line = 3.dp.toPx()
+        val x = if (length > 0f) size.width * (value / length).coerceIn(0f, 1f) else 0f
+        drawLine(Color.White.copy(alpha = 0.3f), androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), line)
+        drawLine(Ink.accent, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(x, y), line)
+        // The seeker: an upright line across the bar.
+        val half = 8.dp.toPx()
+        drawLine(Color.White, androidx.compose.ui.geometry.Offset(x, y - half), androidx.compose.ui.geometry.Offset(x, y + half), 2.dp.toPx(), androidx.compose.ui.graphics.StrokeCap.Round)
     }
 }
 
