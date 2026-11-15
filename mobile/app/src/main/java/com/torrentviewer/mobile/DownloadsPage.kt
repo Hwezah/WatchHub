@@ -235,7 +235,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(CARD - 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Artwork(row.job.poster, row.job.label, Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
-            // Beside the poster: the words and buttons.
+            // Beside the poster: the words and buttons, and under them the progress line.
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
@@ -277,10 +277,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             // Its tap area reaches into the card's padding, so the ✕ sits as far from the right edge as the poster from the left.
             Tap(onCancel, Modifier.offset(x = 10.dp), CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 24.dp) }
             }
+            // A thin green line filling as the bytes arrive: right under the words, from the poster's edge to the ✕'s end.
+            ProgressLine(row.ratio, Modifier.padding(top = 6.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
             }
         }
-        // A thin green line filling as the bytes arrive, the card's full width under the poster and words.
-        ProgressLine(row.ratio, Modifier.padding(top = 10.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
         // Fastest / In order live in Settings → Downloads now, for every download, not on each card.
