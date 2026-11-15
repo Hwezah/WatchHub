@@ -336,6 +336,8 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     var mpv by remember {
         mutableStateOf(MpvView.available && (SettingsStore.value.value.phoneEngine == "mpv" || file?.let { NeedsVlc.has(it.name, it.size) } == true))
     }
+    /** mpv already failed this file: Media3's own failure is then the end, not a hand-back to mpv. */
+    var mpvGaveUp by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
     var at by remember { mutableDoubleStateOf(startAt) }
     var duration by remember { mutableDoubleStateOf(0.0) }
@@ -872,7 +874,23 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                         v.subtitleStyle = SettingsStore.value.value.subtitles
                         v.setSubtitleDelay(subDelay)
                         v.setScale(SCALES[scale].first)
-                        if (!mpv && MpvView.available) v.onUnsupported = { message ->
+                        // mpv couldn't open it: Media3 tries, once, before the film gives up — and what mpv said is kept
+                        // in the engine log (Settings → Last crash report's neighbour, engine.log) to find out why.
+                        if (mpv) v.onUnsupported = { message ->
+                            Log.w("Player", message)
+                            watch.engine.note("player: $message — trying Media3")
+                            if (mpvGaveUp) v.onFailed(message)
+                            else {
+                                mpvGaveUp = true
+                                watch.notes.tryEmit("Switching to Media3 — $message")
+                                tracks = null
+                                subtitle = null
+                                audio = null
+                                langDone.fill(false)
+                                mpv = false
+                            }
+                        }
+                        if (!mpv && MpvView.available && !mpvGaveUp) v.onUnsupported = { message ->
                             Log.w("Player", "Media3 gave up ($message), switching to mpv")
                             watch.engine.note("player: Media3 gave up ($message), switching to mpv")
                             // A note, not the HUD: the loading screen is usually still up and hides the HUD.

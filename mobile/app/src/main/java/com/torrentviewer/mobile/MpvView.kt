@@ -48,6 +48,8 @@ class MpvView(context: Context) : Video(context), MPVLib.EventObserver, SurfaceH
     private var loaded = false
     /** mpv said an error just before a file ended: the reason to give if it never loaded. */
     @Volatile private var lastError: String? = null
+    /** The first error since [open]: the cause. Later ones (a fallback that also failed) only follow from it. */
+    @Volatile private var firstError: String? = null
     /** The file played through to its end (rather than failing): the reason for [onEnded]. */
     @Volatile private var eof = false
     /** [open] asked for a file and mpv hasn't started it yet: an end now is the previous file's. */
@@ -96,6 +98,10 @@ class MpvView(context: Context) : Video(context), MPVLib.EventObserver, SurfaceH
         m.setOptionString("demuxer-max-bytes", "${96 * 1024 * 1024}")
         m.setOptionString("demuxer-max-back-bytes", "${32 * 1024 * 1024}")
         m.setOptionString("network-timeout", "30")
+        // Links go straight to FFmpeg: no youtube-dl (there's none on a phone, and trying it hid the real error).
+        m.setOptionString("ytdl", "no")
+        // HTTPS checked against the phone's own trusted certificates: FFmpeg has no store of its own here.
+        caBundle(context)?.let { m.setOptionString("tls-ca-file", it.path) }
         // Subtitles: a font of the phone's own (libass has none), drawn inside the picture's frame at any scale.
         fontsDir(context)?.let { m.setOptionString("sub-fonts-dir", it.path); m.setOptionString("osd-fonts-dir", it.path) }
         m.setOptionString("sub-font", "Roboto")
@@ -110,6 +116,7 @@ class MpvView(context: Context) : Video(context), MPVLib.EventObserver, SurfaceH
                 if (level <= MPVLib.MpvLogLevel.MPV_LOG_LEVEL_ERROR) {
                     val line = "$prefix: ${text.trim()}"
                     lastError = line
+                    if (firstError == null && !prefix.startsWith("ytdl")) firstError = line
                     Log.w(TAG, line)
                 }
             }
@@ -127,6 +134,31 @@ class MpvView(context: Context) : Video(context), MPVLib.EventObserver, SurfaceH
         ).forEach { (name, format) -> m.observeProperty(name, format) }
         return m
     }
+
+    /**
+     * The phone's trusted root certificates as one PEM file, for FFmpeg's TLS (it can't read Android's store): built
+     * from /system/etc/security/cacerts (and the updatable copy Android 14 keeps), again when the phone's set changes.
+     */
+    private fun caBundle(context: Context): File? = runCatching {
+        val dirs = listOf(File("/apex/com.android.conscrypt/cacerts"), File("/system/etc/security/cacerts")).filter { it.isDirectory }
+        val certs = dirs.firstOrNull()?.listFiles()?.sortedBy { it.name }.orEmpty()
+        if (certs.isEmpty()) return@runCatching null
+        val out = File(context.filesDir, "mpv/cacerts.pem")
+        val stamp = "${certs.size}:${certs.sumOf { it.lastModified() }}"
+        val mark = File(context.filesDir, "mpv/cacerts.stamp")
+        if (!out.exists() || mark.takeIf { it.exists() }?.readText() != stamp) {
+            out.parentFile?.mkdirs()
+            out.bufferedWriter().use { w ->
+                certs.forEach { f ->
+                    // Each file is a PEM block followed by a readable dump; only the block is kept.
+                    val text = runCatching { f.readText() }.getOrNull() ?: return@forEach
+                    Regex("-----BEGIN CERTIFICATE-----[\\s\\S]+?-----END CERTIFICATE-----").find(text)?.let { w.write(it.value); w.write("\n") }
+                }
+            }
+            mark.writeText(stamp)
+        }
+        out
+    }.getOrNull()
 
     /**
      * A folder holding one font of the phone's, for libass: given the whole of /system/fonts it would read every
@@ -183,6 +215,7 @@ class MpvView(context: Context) : Video(context), MPVLib.EventObserver, SurfaceH
         loaded = false
         eof = false
         lastError = null
+        firstError = null
         // The file being replaced ends first, and its end isn't this one's failure.
         startPending = true
         applyHeaders(m)
@@ -190,7 +223,7 @@ class MpvView(context: Context) : Video(context), MPVLib.EventObserver, SurfaceH
         m.setOptionString("cache-secs", "${maxOf(10, cacheMs / 1000 * 5)}")
         m.setOptionString("start", if (startAt > 0) "${startAt / 1000.0}" else "none")
         // The type when the link doesn't say it (an HLS playlist without .m3u8).
-        m.setOptionString("demuxer-lavf-format", if (mime?.contains("mpegurl", true) == true) "hls" else "")
+        if (mime?.contains("mpegurl", true) == true) m.setOptionString("demuxer-lavf-format", "hls")
         m.command(arrayOf("loadfile", url, "replace"))
         m.setPropertyBoolean("pause", false)
         takeAudioFocus()
@@ -335,7 +368,8 @@ class MpvView(context: Context) : Video(context), MPVLib.EventObserver, SurfaceH
             MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> main.post { onBuffering(false) }
             // Ended without ever loading: it couldn't be opened. Said once, with mpv's own reason when it gave one.
             MPVLib.MpvEvent.MPV_EVENT_END_FILE -> if (!startPending && !loaded && !eof) main.post {
-                if (!loaded) onFailed(lastError?.let { "The video wouldn't open ($it)" } ?: "The video wouldn't open")
+                // Unsupported rather than failed: the player screen then tries Media3 before giving up.
+                if (!loaded) onUnsupported((firstError ?: lastError)?.let { "mpv couldn't open it ($it)" } ?: "mpv couldn't open it")
             }
         }
     }
