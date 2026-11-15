@@ -599,7 +599,7 @@ private fun NavRail(tab: Tab, who: Profile, onTab: (Tab) -> Unit, onProfile: () 
         Modifier.width(76.dp).fillMaxHeight().background(Ink.bg).grain().statusBarsPadding().padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Tap(onProfile, shape = RoundedCornerShape(8.dp)) { Avatar(who, 34.dp) }
+        // No avatar here either (the owner's choice): profiles are switched from Settings.
         Spacer(Modifier.weight(1f))
         tabs().forEach { t ->
             val on = t == tab

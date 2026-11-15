@@ -333,21 +333,11 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
             }
         }
 
-        // The wordmark and who is watching: a shade over the hero; once the rows scroll under it, the
-        // page itself, eased in. A clean edge: a fade under it washed out the tops of the cards.
+        // The status bar's icons: white over the hero's art, the page's own once the rows scroll under them.
         val scrolled by remember { derivedStateOf { state.list.firstVisibleItemIndex > 0 || state.list.firstVisibleItemScrollOffset > 120 } }
         StatusIconsOverArt(!scrolled)
-        // Gone altogether once the page scrolls (the owner's choice): it fades and slides up with the hero, so nothing
-        // floats over the rows; back at the top it returns.
-        val shown by animateFloatAsState(if (scrolled) 0f else 1f, tween(220), label = "header")
-        if (shown > 0f) Box(Modifier.fillMaxWidth().graphicsLayer { alpha = shown; translationY = -(1f - shown) * 40.dp.toPx() }) {
-            // No shade over the hero: the art runs clean to the top.
-            // Clear of the screen's edges: the wordmark and the avatar sit a little in from the sides and down from the top.
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = EDGE + 10.dp, end = EDGE + 10.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("WatchHub", Modifier.weight(1f), style = Type.title.copy(color = Ink.accent, fontWeight = FontWeight.Black, letterSpacing = 2.sp))
-                if (!isWide()) Tap(onProfile, shape = RoundedCornerShape(6.dp)) { Avatar(who, 30.dp) }
-            }
-        }
+        // No wordmark or avatar over the hero (the owner's choice): the art runs clean to the top. Profiles are
+        // switched from Settings.
         if (!online) {
             Text(
                 "You're offline — showing what was saved",
