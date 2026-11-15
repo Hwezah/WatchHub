@@ -104,6 +104,7 @@ import com.torrentviewer.core.Artwork
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.accentGlow
 import com.torrentviewer.core.glow
+import com.torrentviewer.core.grain
 import com.torrentviewer.core.Lc
 import com.torrentviewer.core.Motion
 import com.torrentviewer.core.Note
@@ -184,6 +185,11 @@ fun Button(
     balanced: Boolean = false,
     /** Held instead of tapped: a second choice, such as "Send to 1DM" offering the phone's other apps. */
     onLongClick: (() -> Unit)? = null,
+    /**
+     * [primary] as frosted glass, for a button over artwork (the hero's Watch): one flat red, a little see-through,
+     * with the app's grain and a faint light rim — no gradient glow.
+     */
+    glass: Boolean = false,
 ) {
     val filled = on == true
     val disc by animateFloatAsState(if (filled) 1f else 0f, if (filled) spring(dampingRatio = 0.55f, stiffness = 420f) else tween(180), label = "disc")
@@ -207,7 +213,12 @@ fun Button(
         val fg = if (primary || fill != null) Color.White else tint
         Row(
             // The primary one — Play, Watch — a grainy red glow, a shade deeper while pressed; the rest a flat tint.
-            (if (primary && fill == null) Modifier.glow(accentGlow(), 0.85f, 1.1f).background(Color.Black.copy(alpha = if (pressed) 0.18f else 0f)) else Modifier.background(bg))
+            (when {
+                glass -> Modifier.background(Ink.accent.copy(alpha = if (pressed) 0.66f else 0.8f)).grain()
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                primary && fill == null -> Modifier.glow(accentGlow(), 0.85f, 1.1f).background(Color.Black.copy(alpha = if (pressed) 0.18f else 0f))
+                else -> Modifier.background(bg)
+            })
                 .height(if (compact) 34.dp else 46.dp).padding(horizontal = if (compact) 14.dp else 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
