@@ -74,7 +74,7 @@ class MpvView(context: Context) : Video(context), MPVLib.EventObserver, SurfaceH
     }
 
     private fun create(context: Context): MPVLib {
-        val m = MPVLib.create(context)
+        val m = MPVLib.create(context) ?: error("libmpv returned no instance")
         val dir = File(context.filesDir, "mpv").apply { mkdirs() }
         m.setOptionString("config", "no")
         m.setOptionString("config-dir", dir.path)
