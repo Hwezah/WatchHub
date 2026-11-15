@@ -1235,6 +1235,21 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
+        Section("Button Colour", "Play, Watch and the app's other main buttons and highlights: ${settings.accent}.") {
+            SpreadRow {
+                com.torrentviewer.core.ACCENT_SHADES.forEach { (name, argb) ->
+                    val on = settings.accent == name
+                    Tap({ set(settings.copy(accent = name)) }, shape = CircleShape) {
+                        Box(
+                            Modifier.size(38.dp).border(2.dp, if (on) Ink.text else Color.Transparent, CircleShape).padding(4.dp)
+                                .background(Color(argb), CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) { if (on) Lc(L.drawable.lucide_ic_check, tint = Color.White, size = 16.dp) }
+                    }
+                }
+            }
+        }
+
         Section("Navigation", "The tabs along the bottom edge, or a pill floating over the page.") {
             SpreadRow {
                 listOf("bar" to "Bar", "pill" to "Pill").forEach { (style, label) ->

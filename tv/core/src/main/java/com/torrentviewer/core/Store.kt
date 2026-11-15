@@ -160,6 +160,8 @@ data class Settings(
     val autoSkipIntro: Boolean = false,
     /** The phone's tab bar: "bar" along the bottom edge, or "pill" floating over the page. The TV ignores it. */
     val navStyle: String = "bar",
+    /** The phone's main buttons' colour, a name from [ACCENT_SHADES]. The TV keeps its red. */
+    val accent: String = "Red",
     /**
      * The phone's Home: the app's own rows (Cinemeta genres, IMDb charts, TMDB suggestions, watch orders) or,
      * off, only the viewer's own — Continue Watching, My List and their addons' catalogues.
@@ -254,6 +256,7 @@ object SettingsStore {
         themeMode = o.optString("themeMode").takeIf { it == "light" || it == "dark" } ?: "system",
         autoSkipIntro = o.optBoolean("autoSkipIntro", false),
         navStyle = o.optString("navStyle").takeIf { it == "pill" } ?: "bar",
+        accent = o.optString("accent").takeIf { n -> ACCENT_SHADES.any { it.first == n } } ?: "Red",
         builtInHome = o.optBoolean("builtInHome", true),
         hiddenShelves = o.strings("hiddenShelves"),
         dlQuality = if (o.has("dlQuality")) o.optString("dlQuality") else "720p",
@@ -277,7 +280,7 @@ object SettingsStore {
             .put("cacheMb", next.cacheCapMb).put("vlcPlayer", next.vlcPlayer)
             .put("subLang", next.subLang).put("audioLang", next.audioLang)
             .put("subSize", next.subtitles.size).put("subColor", if (next.subtitles.yellow) "yellow" else "white").put("subBackground", next.subtitles.box)
-            .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro).put("navStyle", next.navStyle)
+            .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro).put("navStyle", next.navStyle).put("accent", next.accent)
             .put("builtInHome", next.builtInHome).put("hiddenShelves", JSONArray(next.hiddenShelves))
             .put("dlQuality", next.dlQuality).put("dlCodec", next.dlCodec).put("dlFormat", next.dlFormat).put("dlSubs", next.dlSubs).put("dlSource", next.dlSource).put("dlDirect", next.dlDirect).put("aiProvider", next.aiProvider).put("aiModel", next.aiModel)
             .put("secureDns", next.secureDns).put("hideFewSeeds", next.hideFewSeeds).put("leaveOut", JSONArray(next.leaveOut))

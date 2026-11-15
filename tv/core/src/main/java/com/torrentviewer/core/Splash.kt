@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private const val NAME = "WATCHHUB"
-private val RED = Color(0xFFE50914)
 
 // Everything in ms from the start, on one clock.
 private const val RISE_MS = 700f
@@ -78,7 +77,7 @@ fun Splash(skip: Boolean) {
                         val exit = EXIT.transform(((clock.value - EXIT_AT_MS - i * EXIT_STAGGER_MS) / EXIT_MS).coerceIn(0f, 1f))
                         translationY = size.height * (1f - rise - exit)
                     },
-                    style = Type.title.copy(color = RED, fontWeight = FontWeight.Black, fontSize = 44.sp, lineHeight = 50.sp),
+                    style = Type.title.copy(color = Ink.accent, fontWeight = FontWeight.Black, fontSize = 44.sp, lineHeight = 50.sp),
                 )
             }
         }

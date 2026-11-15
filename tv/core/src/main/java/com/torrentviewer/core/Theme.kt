@@ -122,6 +122,23 @@ object Ink {
     val focus = Color.White
 }
 
+/**
+ * The shades the phone's main buttons (Play, Watch…) and highlights may take, chosen in Settings → Appearance, by
+ * key: deep enough that white words read on each. The first is the default red.
+ */
+val ACCENT_SHADES: List<Pair<String, Long>> = listOf(
+    "Red" to 0xFFB81D24,
+    "Deep Orange" to 0xFFD84315,
+    "Amber" to 0xFFC77700,
+    "Teal" to 0xFF00897B,
+    "Blue" to 0xFF1E63D6,
+    "Purple" to 0xFF7B3FE4,
+    "Pink" to 0xFFD81B60,
+)
+
+/** [ACCENT_SHADES]' colour for [name], the red for anything unknown (a setting from a later build). */
+fun accentShade(name: String): Long = ACCENT_SHADES.firstOrNull { it.first == name }?.second ?: ACCENT_SHADES.first().second
+
 @OptIn(ExperimentalTextApi::class)
 private fun flex(weight: Int) = Font(
     R.font.google_sans_flex,

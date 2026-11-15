@@ -199,6 +199,8 @@ fun App(watch: Watch, incoming: MutableState<Uri?>) {
     androidx.compose.runtime.SideEffect { Room.tight = tight }
     val settings by SettingsStore.value.collectAsState()
     val dark = darkFor(settings.themeMode, isSystemInDarkTheme())
+    // The shade picked in Settings → Appearance, live: everything reading Ink.accent redraws with it.
+    androidx.compose.runtime.SideEffect { Ink.accent = androidx.compose.ui.graphics.Color(com.torrentviewer.core.accentShade(settings.accent)) }
     val activity = LocalActivity.current as? ComponentActivity
     // Live, for the setting and the system's own switch; the player keeps its dark while it is up.
     LaunchedEffect(dark) { if (watch.phase != Phase.PLAYING) activity?.applyTheme(dark) }
