@@ -648,6 +648,7 @@ object Downloads {
      */
     fun retry(uri: String) {
         val job = _live.value.find { it.job.uri == uri }?.job ?: return
+        if (job.paused) return
         if (!job.link || job.imdb == null) return resume(uri)
         failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
         update(uri) { it.copy(state = DlState.RESOLVING, error = "Finding a fresh ${job.quality ?: ""} link…".replace("  ", " "), speed = 0) }
@@ -673,7 +674,10 @@ object Downloads {
 
     private fun replaceLink(old: DownloadJob, hit: Hit, failed: Boolean = true) {
         if (failed) failedLinks.merge(old.label, setOf(old.uri)) { a, b -> a + b }
+        // Paused (or cancelled) while the fresh link was being found: kept as asked — the new link is recorded, not started.
+        val now = _live.value.find { it.job.uri == old.uri } ?: return
         val next = old.copy(
+            paused = now.job.paused,
             uri = hit.uri,
             link = hit.direct,
             headers = if (hit.direct) hit.headers else emptyMap(),
@@ -696,10 +700,12 @@ object Downloads {
             if (old.playlist != next.playlist || !from.renameTo(to)) from.deleteRecursively()
         }
         synchronized(lock) {
-            _live.value = _live.value.map { if (it.job.uri == old.uri) LiveDownload(next, DlState.RESOLVING, error = "Got a fresh link") else it }
+            _live.value = _live.value.map {
+                if (it.job.uri == old.uri) LiveDownload(next, if (next.paused) DlState.PAUSED else DlState.RESOLVING, error = if (next.paused) null else "Got a fresh link") else it
+            }
             writeQueue(jobs())
         }
-        begin(next)
+        if (!next.paused) begin(next)
     }
 
     /* -------------------------------------------------------------- engine */

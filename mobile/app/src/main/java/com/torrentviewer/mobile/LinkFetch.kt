@@ -65,6 +65,9 @@ object LinkFetch {
     private const val PARALLEL = 4
     private const val TRIES = 4
 
+    /** Playlist segments fetched at once, at most: each is held whole in memory (a few MB) until written. */
+    private const val HLS_MAX = 12
+
     /** What [download] made: the file in [work], and the extension it should be kept under. */
     data class Result(val file: File, val ext: String)
 
@@ -75,8 +78,8 @@ object LinkFetch {
 
     suspend fun download(url: String, headers: Map<String, String>, quality: String?, playlist: Boolean, work: File, connections: Int = 1, progress: Progress): Result {
         work.mkdirs()
-        return if (playlist) // Whole segments are held in memory while they're fetched and decrypted: six at once keeps that to a few tens of MB.
-        hls(url, headers, quality, work, connections.coerceIn(PARALLEL, 6), progress)
+        return if (playlist) // Whole segments are held in memory while they're fetched and decrypted: [HLS_MAX] at once keeps that to a few tens of MB.
+        hls(url, headers, quality, work, connections.coerceIn(PARALLEL, HLS_MAX), progress)
         else multi(url, headers, work, connections, progress) ?: try {
             single(url, headers, work, progress)
         } catch (_: RestartException) {
@@ -375,7 +378,8 @@ object LinkFetch {
         repeat(5) {
             val conn = (URL(target).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 20_000
-                readTimeout = 60_000
+                // A part that stalls this long is dropped and asked for again from where it got to, not waited on.
+                readTimeout = 30_000
                 instanceFollowRedirects = false
                 if (headers.keys.none { it.equals("user-agent", true) }) setRequestProperty("User-Agent", UA)
                 headers.forEach { (k, v) -> setRequestProperty(k, v) }
