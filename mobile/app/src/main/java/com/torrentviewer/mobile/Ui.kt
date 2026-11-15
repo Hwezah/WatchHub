@@ -215,11 +215,12 @@ fun Button(
         )
         val fg = if (glass && !primary) Color.Black else if (primary || fill != null) Color.White else tint
         Row(
-            // The primary one — Play, Watch — a grainy red glow, a shade deeper while pressed; the rest a flat tint.
+            // The primary one — Play, Watch — a flat grainy red, a shade deeper while pressed; the rest a flat tint.
             (when {
                 // Opaque, one flat colour under the app's grain, no rim: red for the main one, near-white for the other.
                 glass -> Modifier.background(lerp(if (primary) Ink.accent else GLASS_LIGHT, Color.Black, if (pressed) 0.18f else 0f)).grain()
-                primary && fill == null -> Modifier.glow(accentGlow(), 0.85f, 1.1f).background(Color.Black.copy(alpha = if (pressed) 0.18f else 0f))
+                // No button carries a gradient (the owner's choice): the main action is one flat red under the grain.
+                primary && fill == null -> Modifier.background(lerp(Ink.accent, Color.Black, if (pressed) 0.18f else 0f)).grain()
                 else -> Modifier.background(bg)
             })
                 .height(if (compact) 34.dp else 46.dp).padding(horizontal = if (compact) 14.dp else 20.dp),
