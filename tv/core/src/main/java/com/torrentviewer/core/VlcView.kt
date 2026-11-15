@@ -17,71 +17,6 @@ import java.io.File
 
 private const val TAG = "VlcView"
 
-/** One selectable stream inside the media. `id` is libVLC's, not an index. */
-data class Track(val id: Int, val name: String)
-
-data class Tracks(val subtitles: List<Track>, val audio: List<Track>, val audioId: Int, val defaultAudio: Int, /** What libVLC is showing now; -1 is off. */ val spuId: Int = -1)
-
-data class Stats(
-    val videoCodec: String?,
-    val width: Int,
-    val height: Int,
-    val fps: Double,
-    val audioCodec: String?,
-    val channels: Int,
-    val sampleRate: Int,
-    val language: String?,
-    val inputKbps: Double,
-    val contentKbps: Double,
-    val displayed: Int,
-    val lostFrames: Int,
-    val lostBuffers: Int,
-    val cacheMs: Int,
-    /** Which backend, and for Media3 the decoders it picked. */
-    val engine: String = "VLC",
-)
-
-/** What the player screen drives: Media3 ([ExoView]) or libVLC ([VlcView]). */
-abstract class Video(context: Context) : FrameLayout(context) {
-    var onLoaded: (durationMs: Long) -> Unit = {}
-    var onTime: (ms: Long) -> Unit = {}
-    var onBuffering: (Boolean) -> Unit = {}
-    var onEnded: () -> Unit = {}
-    var onFailed: (String) -> Unit = {}
-    /** This backend cannot play the file, though another might. */
-    var onUnsupported: (String) -> Unit = { onFailed(it) }
-    var onTracks: (Tracks) -> Unit = {}
-    var onPlaying: (Boolean) -> Unit = {}
-    /** Subtitle text; null is the player's own default. Set before [open] — libVLC reads it only when it starts. */
-    open var subtitleStyle: SubtitleStyle? = null
-    /** What a link's server wants with each request (an addon's `proxyHeaders`). Set before [open]. */
-    var headers: Map<String, String> = emptyMap()
-    /** The stream's type when its link doesn't say (an HLS playlist with no .m3u8): a MIME type, or null to guess. Set before [open]. */
-    var mime: String? = null
-
-    abstract fun open(url: String, startAt: Long, cacheMs: Int, subtitles: List<String>)
-    abstract fun reload(ms: Long)
-    abstract val time: Long
-    /** How far past the picture this has read. */
-    open val aheadSeconds: Double get() = 0.0
-    abstract fun seekTo(ms: Long)
-    abstract fun setPaused(value: Boolean)
-    abstract val isPaused: Boolean
-    abstract fun setRate(value: Float)
-    abstract fun setSubtitleTrack(id: Int?)
-    abstract fun setAudioTrack(id: Int)
-    abstract fun setScale(type: MediaPlayer.ScaleType)
-    /**
-     * [select]: turn the last of [paths] on once it is attached. Done here, where the new track
-     * is known, and as one switch — picking "the last track" afterwards switched twice, off and
-     * on, and could land on one of the film's own; each switch has the player resync the stream.
-     */
-    abstract fun addSubtitleFiles(paths: List<String>, select: Boolean = false)
-    /** Positive shows subtitles later. False when this backend cannot shift them that way. */
-    open fun setSubtitleDelay(ms: Long): Boolean = ms == 0L
-    abstract fun stats(): Stats?
-}
-
 /**
  * A video surface backed by libVLC — the fallback to [ExoView]: software decode for what
  * the TV cannot, AVI, full ASS styling. It blends subtitles into the picture, which on a
@@ -205,7 +140,9 @@ class VlcView(context: Context) : Video(context) {
         player?.setAudioTrack(id)
     }
 
-    override fun setScale(type: MediaPlayer.ScaleType) {
+    override fun setScale(type: Scale) = setScale(vlcScale(type))
+
+    fun setScale(type: MediaPlayer.ScaleType) {
         scale = type
         player?.videoScale = type
     }
@@ -540,4 +477,27 @@ class VlcView(context: Context) : Video(context) {
         // Not loaded yet reports 0: keep the start point rather than rewind to the top.
         player?.let { reload(it.time.takeIf { t -> t > 0 } ?: startMs) }
     }
+}
+
+/** The app's [Scale] as libVLC's. */
+fun vlcScale(type: Scale): MediaPlayer.ScaleType = when (type) {
+    Scale.BEST_FIT -> MediaPlayer.ScaleType.SURFACE_BEST_FIT
+    Scale.FIT_SCREEN -> MediaPlayer.ScaleType.SURFACE_FIT_SCREEN
+    Scale.FILL -> MediaPlayer.ScaleType.SURFACE_FILL
+    Scale.RATIO_16_9 -> MediaPlayer.ScaleType.SURFACE_16_9
+    Scale.RATIO_4_3 -> MediaPlayer.ScaleType.SURFACE_4_3
+    Scale.ORIGINAL -> MediaPlayer.ScaleType.SURFACE_ORIGINAL
+}
+
+/** For the TV's screen, which still names libVLC's scales: any [Video] takes one. */
+fun Video.setScale(type: MediaPlayer.ScaleType) = setScale(appScale(type))
+
+/** libVLC's scale as the app's: for the TV's screen, which still names libVLC's. */
+fun appScale(type: MediaPlayer.ScaleType): Scale = when (type) {
+    MediaPlayer.ScaleType.SURFACE_FIT_SCREEN -> Scale.FIT_SCREEN
+    MediaPlayer.ScaleType.SURFACE_FILL -> Scale.FILL
+    MediaPlayer.ScaleType.SURFACE_16_9 -> Scale.RATIO_16_9
+    MediaPlayer.ScaleType.SURFACE_4_3 -> Scale.RATIO_4_3
+    MediaPlayer.ScaleType.SURFACE_ORIGINAL -> Scale.ORIGINAL
+    else -> Scale.BEST_FIT
 }

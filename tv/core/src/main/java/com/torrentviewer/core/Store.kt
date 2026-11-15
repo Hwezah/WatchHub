@@ -143,6 +143,8 @@ data class Settings(
     val genres: List<String> = emptyList(),
     /** libVLC from the start instead of Media3, which falls back to it on its own anyway. */
     val vlcPlayer: Boolean = false,
+    /** The phone's player engine: "mpv" (plays nearly anything) or "media3" (Android's own). The TV reads [vlcPlayer]. */
+    val phoneEngine: String = "mpv",
     /** SubDL language code ("EN"): searched online, and a matching built-in track comes on by itself. Empty: off, English search. */
     val subLang: String = "",
     /** Audio track to prefer when a release carries several; empty is the file's default. */
@@ -243,6 +245,7 @@ object SettingsStore {
         cacheCapMb = o.optInt("cacheMb", 0).takeIf { it in CACHE_CAPS } ?: 0,
         genres = o.strings("genres"),
         vlcPlayer = o.optBoolean("vlcPlayer", false),
+        phoneEngine = o.optString("phoneEngine").takeIf { it == "media3" } ?: "mpv",
         subLang = o.optString("subLang", ""),
         audioLang = o.optString("audioLang", ""),
         subtitles = SubtitleStyle(
@@ -277,7 +280,7 @@ object SettingsStore {
         _value.value = next
         val o = runCatching { JSONObject(Kv.global("settings") ?: "{}") }.getOrDefault(JSONObject())
         o.put("prepareMb", next.prepareMb).put("addTrackers", next.addTrackers)
-            .put("cacheMb", next.cacheCapMb).put("vlcPlayer", next.vlcPlayer)
+            .put("cacheMb", next.cacheCapMb).put("vlcPlayer", next.vlcPlayer).put("phoneEngine", next.phoneEngine)
             .put("subLang", next.subLang).put("audioLang", next.audioLang)
             .put("subSize", next.subtitles.size).put("subColor", if (next.subtitles.yellow) "yellow" else "white").put("subBackground", next.subtitles.box)
             .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro).put("navStyle", next.navStyle).put("accent", next.accent)

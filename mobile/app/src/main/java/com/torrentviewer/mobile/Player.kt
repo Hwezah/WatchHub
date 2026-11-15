@@ -17,6 +17,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -155,7 +156,7 @@ import com.torrentviewer.core.TorrentFile
 import com.torrentviewer.core.Tracks
 import com.torrentviewer.core.Type
 import com.torrentviewer.core.Video
-import com.torrentviewer.core.VlcView
+import com.torrentviewer.core.Scale
 import com.torrentviewer.core.Watch
 import com.torrentviewer.core.bytes
 import com.torrentviewer.core.clock
@@ -175,7 +176,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.videolan.libvlc.MediaPlayer
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.abs
@@ -189,12 +189,12 @@ private const val PAUSE_CARD_MS = 800L
 private const val SKIP = 10
 private val RATES = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 private val SCALES = listOf(
-    MediaPlayer.ScaleType.SURFACE_BEST_FIT to "Best fit",
-    MediaPlayer.ScaleType.SURFACE_FIT_SCREEN to "Zoom to fill",
-    MediaPlayer.ScaleType.SURFACE_FILL to "Stretch",
-    MediaPlayer.ScaleType.SURFACE_16_9 to "16:9",
-    MediaPlayer.ScaleType.SURFACE_4_3 to "4:3",
-    MediaPlayer.ScaleType.SURFACE_ORIGINAL to "Original",
+    Scale.BEST_FIT to "Best fit",
+    Scale.FIT_SCREEN to "Zoom to fill",
+    Scale.FILL to "Stretch",
+    Scale.RATIO_16_9 to "16:9",
+    Scale.RATIO_4_3 to "4:3",
+    Scale.ORIGINAL to "Original",
 )
 /** Sleep timer steps, in minutes; -1 is "at the end of this episode". */
 private val SLEEP = listOf(0, 15, 30, 60, -1)
@@ -329,8 +329,13 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     }
 
     val view = remember { mutableStateOf<Video?>(null) }
-    /** Media3 unless the setting asks for VLC, or Media3 has already given up on this file — now or any time before. */
-    var vlc by remember { mutableStateOf(SettingsStore.value.value.vlcPlayer || file?.let { NeedsVlc.has(it.name, it.size) } == true) }
+    /**
+     * mpv (Settings → Playback's default), or Media3 when that is picked — unless Media3 has already given up on this
+     * file, now or any time before. A phone older than Android 8 has only Media3.
+     */
+    var mpv by remember {
+        mutableStateOf(MpvView.available && (SettingsStore.value.value.phoneEngine == "mpv" || file?.let { NeedsVlc.has(it.name, it.size) } == true))
+    }
     var paused by remember { mutableStateOf(false) }
     var at by remember { mutableDoubleStateOf(startAt) }
     var duration by remember { mutableDoubleStateOf(0.0) }
@@ -584,7 +589,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     }
 
     // The stream arrives: hand it to the player, with the torrent's own subtitle files.
-    // From where it is, not startAt: a fallback to VLC picks up mid-film.
+    // From where it is, not startAt: a switch to mpv picks up mid-film.
     LaunchedEffect(ready, view.value) {
         val r = ready ?: return@LaunchedEffect
         val v = view.value ?: return@LaunchedEffect
@@ -746,9 +751,9 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     /* ---------------------------------------------------- TorBox stall */
 
     // A TorBox stream that hasn't moved goes to WatchHub's own engine: a video this phone can't
-    // decode left VLC silent, with no error to fall back on, and the film never started. Counted
-    // again from the switch to VLC: Media3's failed attempt used 4–6 s of VLC's time.
-    LaunchedEffect(watch.via, vlc) {
+    // decode left the player silent, with no error to fall back on, and the film never started. Counted
+    // again from a switch of engine: Media3's failed attempt used some of the next engine's time.
+    LaunchedEffect(watch.via, mpv) {
         if (watch.via == null) return@LaunchedEffect
         val from = at
         kotlinx.coroutines.delay(TORBOX_STALL_MS)
@@ -858,29 +863,28 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     /* ------------------------------------------------------------ layout */
 
     Box(Modifier.fillMaxSize().background(Color.Black).then(gestures)) {
-        key(vlc) {
+        key(mpv) {
             AndroidView(
                 factory = { ctx ->
-                    (if (vlc) VlcView(ctx) else ExoView(ctx)).also { v ->
+                    (if (mpv) MpvView(ctx) else ExoView(ctx)).also { v ->
                         // A fallback keeps the viewer's speed and picture.
                         v.setRate(rate)
                         v.subtitleStyle = SettingsStore.value.value.subtitles
                         v.setSubtitleDelay(subDelay)
                         v.setScale(SCALES[scale].first)
-                        if (!vlc) v.onUnsupported = { message ->
-                            Log.w("Player", "Media3 gave up ($message), falling back to VLC")
-                            watch.engine.note("player: Media3 gave up ($message), falling back to VLC")
-                            // Said, so a slower start isn't a mystery: VLC takes a few seconds more to open a file.
+                        if (!mpv && MpvView.available) v.onUnsupported = { message ->
+                            Log.w("Player", "Media3 gave up ($message), switching to mpv")
+                            watch.engine.note("player: Media3 gave up ($message), switching to mpv")
                             // A note, not the HUD: the loading screen is usually still up and hides the HUD.
-                            watch.notes.tryEmit("Switching to VLC — the built-in player can't play this video")
-                            // Next time this file opens straight in VLC.
+                            watch.notes.tryEmit("Switching to mpv — Media3 can't play this video")
+                            // Next time this file opens straight in mpv.
                             file?.let { NeedsVlc.add(it.name, it.size) }
                             // Track ids are the backend's own.
                             tracks = null
                             subtitle = null
                             audio = null
                             langDone.fill(false)
-                            vlc = true
+                            mpv = true
                         }
                         var recoveries = 0
                         v.onLoaded = { ms ->
@@ -1146,12 +1150,12 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                 delay = subDelay,
                 onDelay = { ms ->
                     subDelay = ms
-                    // Media3 can only hold subtitles back; earlier is VLC's, picked up where the film is.
-                    if (view.value?.setSubtitleDelay(ms) == false) {
-                        say("Switching to VLC to bring subtitles earlier", L.drawable.lucide_ic_captions)
+                    // Media3 can only hold subtitles back; earlier is mpv's, picked up where the film is.
+                    if (view.value?.setSubtitleDelay(ms) == false && MpvView.available) {
+                        say("Switching to mpv to bring subtitles earlier", L.drawable.lucide_ic_captions)
                         tracks = null
                         langDone.fill(false)
-                        vlc = true
+                        mpv = true
                     }
                 },
                 audio = audio ?: tracks?.defaultAudio,
@@ -1575,51 +1579,50 @@ private fun PausedCard(visible: Boolean, title: Title?, episode: Episode?, label
     }
 }
 
-/** Before the first frame: the title's own backdrop, its logo, and a ring that fills — the TV's loading screen. */
+/**
+ * Before the first frame: quiet and centred. The title's art far back and dim, its logo in the middle, one thin line
+ * under it that fills as the start of the film arrives, and a single line saying what is happening.
+ */
 @Composable
 private fun Loading(title: Title?, episode: Episode?, file: TorrentFile?, starting: Boolean, progress: Progress?, via: String?, asking: Boolean, onBack: () -> Unit) {
     val percent = if (starting) 100 else progress?.buffer ?: 0
-    val ring by animateFloatAsState(percent / 100f, Motion.spatial(), label = "ring")
+    val fill by animateFloatAsState(percent / 100f, Motion.spatial(), label = "fill")
+    // While nothing is measurable (finding peers, opening the stream) the line breathes rather than sitting empty.
+    val breathe by androidx.compose.animation.core.rememberInfiniteTransition(label = "breathe").animateFloat(
+        0.35f, 0.9f, androidx.compose.animation.core.infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "alpha",
+    )
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         (episode?.thumbnail ?: title?.art)?.let { art ->
-            Artwork(art, title?.title.orEmpty(), Modifier.fillMaxSize().then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(10.dp) else Modifier), fallback = title?.art)
+            Artwork(art, title?.title.orEmpty(), Modifier.fillMaxSize().then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(24.dp) else Modifier), fallback = title?.art)
         }
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.92f), 0.7f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.45f))))
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.82f)))
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 12.dp, vertical = 8.dp)) {
             RoundIcon(L.drawable.lucide_ic_arrow_left, onBack)
-            Row(Modifier.align(Alignment.CenterStart).padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    if (title != null) TitleMark(title, Modifier.widthIn(max = 380.dp), maxHeight = 76.dp, style = Type.display)
-                    else Text(searchableName(file?.name.orEmpty()).ifBlank { file?.name.orEmpty() }, style = Type.display, maxLines = 2)
-                    (episode?.let { "${episodeLabel(title, it.season, it.episode)}  ${it.name}" } ?: file?.let { fileEpisodeLabel(title, it.name) })
-                        ?.let { Text(it, Modifier.padding(top = 10.dp), style = Type.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    Row(Modifier.padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val live = via != null || (progress?.peers ?: 0) > 0
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(if (live) Ink.good else Ink.faint))
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            when {
-                                starting -> if (via != null) "Starting playback  ·  from $via" else "Starting playback"
-                                asking -> "Checking TorBox"
-                                progress == null -> "Finding peers"
-                                progress.peers == 0 -> "Finding peers  ·  ${progress.dhtNodes} DHT nodes"
-                                else -> "Buffering  ·  ${speed(progress.speed)}  ·  ${progress.peers} peers"
-                            },
-                            style = Type.label.copy(color = Ink.muted, fontSize = 14.sp),
-                        )
-                    }
+            Column(Modifier.align(Alignment.Center).padding(horizontal = 32.dp).widthIn(max = 420.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (title != null) TitleMark(title, Modifier.widthIn(max = 300.dp), maxHeight = 72.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
+                else Text(
+                    searchableName(file?.name.orEmpty()).ifBlank { file?.name.orEmpty() },
+                    style = Type.display.copy(textAlign = TextAlign.Center), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+                (episode?.let { "${episodeLabel(title, it.season, it.episode)}  ${it.name}" } ?: file?.let { fileEpisodeLabel(title, it.name) })
+                    ?.let { Text(it, Modifier.padding(top = 10.dp), style = Type.label.copy(color = Ink.muted, textAlign = TextAlign.Center), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                // The one line: the accent filling a faint track, rounded, the width of a short title.
+                Box(Modifier.padding(top = 26.dp).width(200.dp).height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f))) {
+                    if (percent > 0) Box(Modifier.fillMaxHeight().fillMaxWidth(fill.coerceIn(0f, 1f)).clip(CircleShape).background(Ink.accent))
+                    else Box(Modifier.fillMaxSize().background(Ink.accent.copy(alpha = breathe * 0.5f)))
                 }
-                Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) {
-                    val red = Ink.accent
-                    Canvas(Modifier.fillMaxSize()) {
-                        val stroke = 5.dp.toPx()
-                        val inset = Offset(stroke / 2, stroke / 2)
-                        val arc = Size(size.width - stroke, size.height - stroke)
-                        drawArc(Color.White.copy(alpha = 0.12f), 0f, 360f, false, inset, arc, style = Stroke(stroke))
-                        drawArc(red, -90f, 360f * ring, false, inset, arc, style = Stroke(stroke, cap = StrokeCap.Round))
-                    }
-                    Text("$percent%", style = Type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold))
-                }
+                Text(
+                    when {
+                        starting -> if (via != null) "Starting  ·  $via" else "Starting"
+                        asking -> "Checking TorBox"
+                        progress == null -> "Finding peers"
+                        progress.peers == 0 -> "Finding peers"
+                        else -> "Buffering  ·  ${speed(progress.speed)}  ·  ${progress.peers} peers"
+                    },
+                    Modifier.padding(top = 12.dp),
+                    style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp, textAlign = TextAlign.Center),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

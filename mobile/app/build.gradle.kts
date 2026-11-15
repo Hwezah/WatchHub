@@ -92,7 +92,11 @@ android {
     // Native libraries compressed in the APK (extracted on install): libVLC, libtorrent and libc++ are
     // ~65 MB per ABI uncompressed, which made a 100 MB phone APK and a 277 MB universal one.
     packaging {
-        jniLibs { useLegacyPackaging = true }
+        jniLibs {
+            useLegacyPackaging = true
+            // libmpv brings its own copy of the C++ runtime, as libtorrent4j may: one is kept.
+            pickFirsts += "**/libc++_shared.so"
+        }
         // The same licence and OSGi files come in several of the plugin library's jars.
         resources.excludes += setOf(
             "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST",
@@ -103,8 +107,14 @@ android {
     testOptions { unitTests.isReturnDefaultValues = true }
 }
 
+// libVLC stays the TV's (tv/core brings it): the phone plays with mpv and Media3, and is about 20 MB lighter without it.
+configurations.configureEach { exclude(group = "org.videolan.android") }
+
 dependencies {
     implementation(project(":core"))
+    // The player: mpv (libmpv with FFmpeg and libass), as in mpvKt and Findroid — nearly every video, audio and subtitle
+    // format, hardware decoding where the phone has it. 1.0.0, not the 1.1.0 published the day it was chosen.
+    implementation("dev.jdtech.mpv:libmpv:1.0.0")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     // Google Cast: the Expo build's version, with MediaRouter's device chooser.
