@@ -242,7 +242,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 // A link being renewed says nothing (the owner's choice): the spinner beside it is enough.
                 val status = when (row.state) {
-                        DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) } else "Finding peers…"
+                        DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) }?.let { if (it.startsWith("Waiting for its turn")) "Queued — starts when one finishes" else it } else "Finding peers…"
                         DlState.DOWNLOADING -> listOfNotNull("$pct%", speed(row.speed), "${row.peers} peers".takeIf { !row.job.link }).joinToString("  ·  ")
                         DlState.PAUSED -> "Paused  ·  $pct%"
                         DlState.WIFI -> "Waiting for Wi-Fi  ·  $pct%"
@@ -269,6 +269,9 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
                 // Failed: ↻ asks the sources again for the next fresh link at this resolution.
                 row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(10.dp)) }
+                // Queued behind the others: nothing is happening to it yet, so no spinner — it can be paused like a running one.
+                row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") == true ->
+                    Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
                 // Looking for a fresh link: a small spinner where the button was.
                 row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(10.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
                 row.state == DlState.WIFI -> Unit

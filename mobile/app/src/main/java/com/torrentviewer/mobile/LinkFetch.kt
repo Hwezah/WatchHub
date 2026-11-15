@@ -66,7 +66,7 @@ object LinkFetch {
     private const val TRIES = 4
 
     /** Playlist segments fetched at once, at most: each is held whole in memory (a few MB) until written. */
-    private const val HLS_MAX = 12
+    const val HLS_MAX = 12
 
     /** What [download] made: the file in [work], and the extension it should be kept under. */
     data class Result(val file: File, val ext: String)

@@ -521,12 +521,11 @@ object Downloads {
 
     private suspend fun runLink(job: DownloadJob) {
             try {
-                // Found a while ago (a season's batch, a restart): ask for today's link first, same source and name if it's there.
-                // Partly saved (paused for days, say) and the old link still answers: carried on with it as it is.
-                val started = File(linkWork(job.uri), "data.part").let { it.exists() && it.length() > 0 }
+                // Found a while ago (a season's batch waiting its turn, a pause, a restart): the link it has is asked first — a quick
+                // look, seconds — and only a link that no longer answers sends the sources off for a fresh one, which takes a while.
                 val stale = job.imdb != null && job.fetchedAt > 0 && System.currentTimeMillis() - job.fetchedAt > LINK_FRESH_MS
-                if (stale && started) update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Checking the link still works…", speed = 0) }
-                if (stale && !(started && LinkFetch.answers(job.uri, job.headers, job.playlist))) {
+                if (stale) update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Checking the link still works…", speed = 0) }
+                if (stale && !LinkFetch.answers(job.uri, job.headers, job.playlist)) {
                     update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Getting a fresh link…", speed = 0) }
                     val fresh = runCatching { LinkRefresh.fresh(job, tried(job), allowSame = true) }.getOrNull()
                     if (fresh != null) {
@@ -538,8 +537,10 @@ object Downloads {
                 update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null) }
                 val work = linkWork(job.uri)
                 // A host that drops connections ("connection closed", reset, timeouts) is usually saying "too many at once":
-                // the same link is tried again with half the connections, twice, where it left off, before anything else.
-                var conns = connections
+                // the same link is tried again with half the connections, where it left off, before anything else — and the
+                // host's next episodes start at what it took, rather than each finding out again.
+                val host = runCatching { java.net.URL(job.uri).host }.getOrDefault("")
+                var conns = minOf(connections, hostConns[host] ?: connections)
                 var attempt = 0
                 val result = run {
                     while (true) {
@@ -551,9 +552,11 @@ object Downloads {
                         } catch (e: java.io.IOException) {
                             if (e is LinkExpiredException || attempt >= DROPPED_RETRIES) throw e
                             attempt++
-                            conns = maxOf(MIN_CONNECTIONS, conns / 2)
+                            // A playlist never fetched more than LinkFetch's cap at once: halved from what it really used.
+                            conns = maxOf(MIN_CONNECTIONS, (if (job.playlist) minOf(conns, LinkFetch.HLS_MAX) else conns) / 2)
+                            hostConns[host] = conns
                             Log.w(TAG, "${job.label}: ${e.message}; again with $conns connections")
-                            update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Connection dropped — trying again with $conns connections…", speed = 0) }
+                            update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Connection dropped — trying again", speed = 0) }
                             kotlinx.coroutines.delay(3000L * attempt)
                         }
                     }
@@ -630,7 +633,10 @@ object Downloads {
     private val autoRounds = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     /** The same link tried again after dropped connections, each time with half the connections, before a fresh link. */
-    private const val DROPPED_RETRIES = 2
+    private const val DROPPED_RETRIES = 4
+
+    /** Per host: the connections it put up with last, so a season's next episodes don't each start at 64 and fail. */
+    private val hostConns = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     /** Never fewer connections than this on a retry: still quick, and few enough for a strict host. */
     private const val MIN_CONNECTIONS = 4
