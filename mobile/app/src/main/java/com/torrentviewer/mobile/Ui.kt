@@ -164,8 +164,8 @@ fun Tap(
     ) { content(pressed) }
 }
 
-/** The dark grey of a frosted button that isn't the main one: the same on either theme, since it sits on artwork. */
-private val GLASS_GREY = Color(0xFF2B2B2F)
+/** The near-white of a frosted button that isn't the main one, its words black: the same on either theme, since it sits on artwork. */
+private val GLASS_LIGHT = Color(0xFFF1F1F3)
 
 /** The TV's buttons, on touch: red for the main action, translucent grey for the rest. */
 @Composable
@@ -190,7 +190,7 @@ fun Button(
     onLongClick: (() -> Unit)? = null,
     /**
      * Frosted glass, for the buttons over artwork (the hero's Watch and My List): one flat, opaque colour under the
-     * app's grain — red when [primary], dark grey otherwise — with white words, no gradient glow and no rim.
+     * app's grain — red with white words when [primary], near-white with black words otherwise — no gradient glow, no rim.
      */
     glass: Boolean = false,
 ) {
@@ -213,12 +213,12 @@ fun Button(
             },
             Motion.effects(), label = "bg",
         )
-        val fg = if (primary || fill != null || glass) Color.White else tint
+        val fg = if (glass && !primary) Color.Black else if (primary || fill != null) Color.White else tint
         Row(
             // The primary one — Play, Watch — a grainy red glow, a shade deeper while pressed; the rest a flat tint.
             (when {
-                // Opaque, one flat colour under the app's grain, no rim: red for the main one, dark grey for the other.
-                glass -> Modifier.background(lerp(if (primary) Ink.accent else GLASS_GREY, Color.Black, if (pressed) 0.18f else 0f)).grain()
+                // Opaque, one flat colour under the app's grain, no rim: red for the main one, near-white for the other.
+                glass -> Modifier.background(lerp(if (primary) Ink.accent else GLASS_LIGHT, Color.Black, if (pressed) 0.18f else 0f)).grain()
                 primary && fill == null -> Modifier.glow(accentGlow(), 0.85f, 1.1f).background(Color.Black.copy(alpha = if (pressed) 0.18f else 0f))
                 else -> Modifier.background(bg)
             })
