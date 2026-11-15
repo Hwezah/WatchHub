@@ -945,7 +945,7 @@ private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?,
             }
             // Every release for this episode, to pick one by hand.
             Tap(onSources, shape = CircleShape) { Lc(L.drawable.lucide_ic_list_video, Modifier.padding(10.dp), tint = Ink.muted, size = 22.dp) }
-            Tap(onDownload, shape = CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(10.dp), tint = Ink.download, size = 22.dp) }
+            // No ⬇ of its own (the owner's choice): the sources' list has one on every release, and the season its Download.
         }
         ep.overview?.let { Text(it, Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 2, overflow = TextOverflow.Ellipsis) }
     }
