@@ -141,7 +141,29 @@ object Updates {
         }
     }
 
+    /**
+     * [fetchOnce], tried again a few times: a phone's lookup of github.com fails now and then for a moment (a network
+     * switching, a slow DNS) and the next try finds it. Said in plain words if it never does.
+     */
     private suspend fun fetch(r: AppRelease, to: File) {
+        var last: IOException? = null
+        repeat(3) { attempt ->
+            try {
+                return fetchOnce(r, to)
+            } catch (e: java.net.UnknownHostException) {
+                last = e
+            } catch (e: java.net.SocketTimeoutException) {
+                last = e
+            } catch (e: java.net.ConnectException) {
+                last = e
+            }
+            _progress.value = 0f
+            kotlinx.coroutines.delay(2_000L * (attempt + 1))
+        }
+        throw IOException(if (last is java.net.UnknownHostException) "Couldn't reach GitHub — check the connection (or a VPN / DNS blocker) and tap Update again" else "The download kept stalling — tap Update to try again", last)
+    }
+
+    private suspend fun fetchOnce(r: AppRelease, to: File) {
         val sha = MessageDigest.getInstance("SHA-256")
         var done = 0L
         // Timed out, not left blocked in a read: nothing could cancel that, and every retry found it still running.
