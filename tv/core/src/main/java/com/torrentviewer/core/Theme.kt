@@ -334,7 +334,8 @@ fun Facts(title: Title, modifier: Modifier = Modifier) {
 @Composable
 fun ProgressLine(progress: Float, modifier: Modifier = Modifier, height: Dp = 3.dp, color: Color = Ink.accent) {
     Box(modifier.fillMaxWidth().height(height).background(Color.White.copy(alpha = 0.25f))) {
-        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(height).background(color))
+        // NaN (nothing known yet: 0 of 0 bytes) gets past coerceIn and crashes the layout: an empty line instead.
+        Box(Modifier.fillMaxWidth(if (progress.isNaN()) 0f else progress.coerceIn(0f, 1f)).height(height).background(color))
     }
 }
 

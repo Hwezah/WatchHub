@@ -164,11 +164,12 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     LaunchedEffect(seasons) {
         if (seasons.isNotEmpty() && (season == null || season !in seasons)) season = continueAt?.season?.takeIf { it in seasons } ?: seasons.first()
     }
-    val episodes = title.episodes.filter { it.season == season }
+    // distinctBy: a catalogue listing an episode twice would crash the list (two rows with one key).
+    val episodes = title.episodes.filter { it.season == season }.distinctBy { it.id }
     // Long-running anime: every episode by its number through the show, a hundred at a time.
     val through = title.numberedThrough
     val numbered = remember(title.episodes) {
-        if (!through) emptyList() else absoluteNumbers(title.episodes).toList()
+        if (!through) emptyList() else absoluteNumbers(title.episodes.distinctBy { it.id }).toList()
     }
     val blocks = remember(numbered) { numbered.chunked(100) }
     var block by rememberSaveable(title.imdb) { mutableStateOf(0) }
