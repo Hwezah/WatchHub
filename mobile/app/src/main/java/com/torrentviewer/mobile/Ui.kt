@@ -164,6 +164,9 @@ fun Tap(
     ) { content(pressed) }
 }
 
+/** The dark grey of a frosted button that isn't the main one: the same on either theme, since it sits on artwork. */
+private val GLASS_GREY = Color(0xFF2B2B2F)
+
 /** The TV's buttons, on touch: red for the main action, translucent grey for the rest. */
 @Composable
 fun Button(
@@ -186,8 +189,8 @@ fun Button(
     /** Held instead of tapped: a second choice, such as "Send to 1DM" offering the phone's other apps. */
     onLongClick: (() -> Unit)? = null,
     /**
-     * [primary] as frosted glass, for a button over artwork (the hero's Watch): one flat red, a little see-through,
-     * with the app's grain and a faint light rim — no gradient glow.
+     * Frosted glass, for the buttons over artwork (the hero's Watch and My List): one flat, opaque colour under the
+     * app's grain — red when [primary], dark grey otherwise — with white words, no gradient glow and no rim.
      */
     glass: Boolean = false,
 ) {
@@ -210,12 +213,12 @@ fun Button(
             },
             Motion.effects(), label = "bg",
         )
-        val fg = if (primary || fill != null) Color.White else tint
+        val fg = if (primary || fill != null || glass) Color.White else tint
         Row(
             // The primary one — Play, Watch — a grainy red glow, a shade deeper while pressed; the rest a flat tint.
             (when {
-                glass -> Modifier.background(Ink.accent.copy(alpha = if (pressed) 0.66f else 0.8f)).grain()
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                // Opaque, one flat colour under the app's grain, no rim: red for the main one, dark grey for the other.
+                glass -> Modifier.background(lerp(if (primary) Ink.accent else GLASS_GREY, Color.Black, if (pressed) 0.18f else 0f)).grain()
                 primary && fill == null -> Modifier.glow(accentGlow(), 0.85f, 1.1f).background(Color.Black.copy(alpha = if (pressed) 0.18f else 0f))
                 else -> Modifier.background(bg)
             })

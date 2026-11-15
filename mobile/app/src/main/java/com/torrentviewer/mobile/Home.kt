@@ -485,7 +485,7 @@ private fun HeroButtons(t: Title, inList: Boolean, onOpen: (Title) -> Unit, modi
         // Wide enough for "In My List", and the details screen's toggle: a green disc springs in behind the tick.
         Button(
             if (inList) "In My List" else "My List", { SavedStore.toggle(t) }, each,
-            icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList, balanced = true,
+            icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList, balanced = true, glass = true,
         )
     }
 }
