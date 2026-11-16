@@ -743,7 +743,7 @@ private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
     Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) { pressed ->
         // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card); 2 dp on the right.
         Row(Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(72.dp).aspectRatio(2f / 3f)) {
+            Box(Modifier.width(88.dp).aspectRatio(2f / 3f)) {
                 Artwork("https://images.metahub.space/poster/medium/${s.imdb}/img", s.title, Modifier.fillMaxSize())
                 paused?.let { ProgressLine((it.progress / 100).toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp) }
             }
@@ -772,7 +772,7 @@ private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: ()
             Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.width(72.dp).aspectRatio(2f / 3f)) {
+            Box(Modifier.width(88.dp).aspectRatio(2f / 3f)) {
                 Artwork(remoteArt(item.poster) ?: item.art(), item.label, Modifier.fillMaxSize())
                 if (item.ratio > 0) ProgressLine(item.ratio.toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp)
             }

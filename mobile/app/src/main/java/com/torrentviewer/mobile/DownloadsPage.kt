@@ -236,7 +236,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     // padding stays on the right, and under the poster for whatever folds out below it.
     Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(end = CARD - 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Artwork(row.job.poster, row.job.label, Modifier.width(72.dp).aspectRatio(2f / 3f))
+            Artwork(row.job.poster, row.job.label, Modifier.width(88.dp).aspectRatio(2f / 3f))
             // Beside the poster: the words and buttons, and under them the progress line.
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
