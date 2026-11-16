@@ -221,6 +221,8 @@ fun Button(
                 glass -> Modifier.background(lerp(if (primary) Ink.accent else GLASS_LIGHT, Color.Black, if (pressed) 0.18f else 0f)).grain()
                 // No button carries a gradient (the owner's choice): the main action is one flat red under the grain.
                 primary && fill == null -> Modifier.background(lerp(Ink.accent, Color.Black, if (pressed) 0.18f else 0f)).grain()
+                // The download buttons' green as frosted glass: a deep, opaque green under the grain (the owner's choice).
+                fill != null -> Modifier.background(lerp(fill, Color.Black, if (pressed) 0.5f else 0.38f)).grain()
                 else -> Modifier.background(bg)
             })
                 .height(if (compact) 34.dp else 46.dp).padding(horizontal = if (compact) 14.dp else 20.dp),
