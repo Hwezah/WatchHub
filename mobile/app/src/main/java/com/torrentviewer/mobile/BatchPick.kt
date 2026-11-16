@@ -219,6 +219,28 @@ fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     ).first()
 }
 
+/**
+ * A season download's pick, by the owner's rule: the preferred format (MKV) first, then the preferred resolution (720p,
+ * else the next up), then a direct link before a torrent or a playlist — and among those the fewest MB, strictly. An
+ * unknown size after every known one; a dead torrent never before a live one.
+ */
+fun seasonPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
+    val candidates = prefs.usable(hits).filter(::batchable)
+    if (candidates.isEmpty()) return null
+    val traits = candidates.associateWith(::traitsOf)
+    fun t(h: Hit) = traits.getValue(h)
+    return candidates.minWithOrNull(
+        compareBy<Hit> { if (prefs.format.isNotEmpty() && t(it).format != prefs.format) 1 else 0 }
+            .thenBy { resolutionDistance(it.quality, prefs.quality) }
+            .thenByDescending { it.direct && !isPlaylist(it) }
+            .thenByDescending { alive(it) }
+            .thenBy { if (it.size > 0) 0 else 1 }
+            .thenBy { it.size }
+            .thenByDescending { prefs.codec.isNotEmpty() && t(it).codec == prefs.codec }
+            .thenByDescending { it.seeders },
+    )
+}
+
 /** Files within this of the lightest count as "the smallest" too: then a link, a quick swarm or the preferred codec decide. */
 const val NEAR_SIZE = 1.1
 
@@ -237,8 +259,8 @@ fun goodEnough(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
  * Whether what [preferredPick] takes from [hits] is what was asked for: the preferred resolution and format (720p MKV).
  * Unlike [goodEnough], a slow torrent still counts: this is about which file, not how fast.
  */
-fun onTarget(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
-    val pick = preferredPick(hits, prefs) ?: return false
+fun onTarget(hits: List<Hit>, prefs: DownloadPrefs, pickBy: (List<Hit>, DownloadPrefs) -> Hit? = ::preferredPick): Boolean {
+    val pick = pickBy(hits, prefs) ?: return false
     return pick.quality != null && resolutionDistance(pick.quality, prefs.quality) == 0 && (prefs.format.isEmpty() || traitsOf(pick).format == prefs.format)
 }
 

@@ -66,4 +66,15 @@ class LinkProbeTest {
         assertEquals(false, onTarget(listOf(link("Show 1080p x265 .mkv", 3L shl 30, "1080p")), p))
         assertEquals(false, onTarget(emptyList(), p))
     }
+
+    @Test fun seasonPickIsTheLightest720pMkvLink() {
+        val heavy1080 = link("Show 1080p x264 .mkv", 3L shl 30, "1080p", "https://a.example/1")
+        val big720 = link("Show 720p x265 .mkv", 900L shl 20, "720p", "https://a.example/2")
+        val small720 = link("Show 720p .mkv", 320L shl 20, "720p", "https://a.example/3")
+        val hls720 = link("Show 720p", 100L shl 20, "720p", "https://a.example/4.m3u8")
+        val torrent720 = Hit("hash", "Show 720p x265 .mkv", "magnet:?xt=urn:btih:hash", 50, 0, 200L shl 20, "720p", "tv", Scope.EPISODE, null)
+        assertEquals(small720, seasonPick(listOf(heavy1080, big720, small720, hls720, torrent720), DownloadPrefs()))
+        // No 720p MKV anywhere: up to 1080p.
+        assertEquals(heavy1080, seasonPick(listOf(heavy1080, hls720), DownloadPrefs()))
+    }
 }

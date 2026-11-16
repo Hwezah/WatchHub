@@ -26,6 +26,8 @@ import com.torrentviewer.core.AppScope
 import com.torrentviewer.core.Episode
 import com.torrentviewer.core.Hit
 import com.torrentviewer.core.Ink
+import com.torrentviewer.core.Lc
+import androidx.compose.foundation.shape.CircleShape
 import com.torrentviewer.core.Note
 import com.torrentviewer.core.Spinner
 import com.torrentviewer.core.Title
@@ -53,8 +55,6 @@ data class SeasonScan(
     val found: Map<String, List<Hit>> = emptyMap(),
     /** When the scan started: its links are at least this old, and renewed before they start if too old. */
     val at: Long = System.currentTimeMillis(),
-    /** Episodes asked a second time because their pick missed the preference ([onTarget]): their ids. */
-    val refilling: Set<String> = emptySet(),
 ) {
     val checked get() = found.size
     val done get() = found.size >= episodes.size
@@ -93,9 +93,24 @@ object SeasonBatch {
     suspend fun sources(title: Title, ep: Episode): List<Hit> =
         // Then the links that don't say what they are, asked for their file names ([LinkProbe]): the light 720p MKVs
         // among them are what a pick is after.
+        // Every source, the slow sites too (the owner's rule): the light 720p MKV links are often the last to answer.
         LinkProbe.describe(
-            gather(EPISODE_MS, EPISODE_MIN_MS, EPISODE_MORE_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } },
+            gatherAll(EPISODE_CAP_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } },
         )
+
+    /** The longest one episode's sources are waited on: only a plugin that hangs is ever cut short. */
+    private const val EPISODE_CAP_MS = 300_000L
+
+    /** Every answer [search] gives, waited on to the end — or [capMs], with what had come by then. */
+    private suspend fun gatherAll(capMs: Long, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
+        val latest = java.util.concurrent.atomic.AtomicReference<List<Hit>>(emptyList())
+        val job = AppScope.async(kotlinx.coroutines.Dispatchers.Default) { search { now -> latest.set(now) } }
+        try {
+            allowedHits(withTimeoutOrNull(capMs) { job.await() } ?: latest.get())
+        } finally {
+            job.cancel()
+        }
+    }.getOrDefault(emptyList())
 
     /**
      * Longer still for an episode with nothing worth taking yet — no pick as preferred, and no light link that may
@@ -169,31 +184,9 @@ object SeasonBatch {
                     }
                 }
             }
-            // The owner's check, done for them: every episode whose pick misses the preference (720p MKV) is asked once
-            // more, for longer — the slow sites answer late, and often hold exactly the file that was missing — and what
-            // comes is added to what it had. The plan then picks again from the lot.
-            val prefs = downloadPrefs()
-            val misses = episodes.filter { !onTarget(_scan.value?.found?.get(it.id).orEmpty(), prefs) }
-            if (misses.isEmpty()) return@launch
-            synchronized(this@SeasonBatch) { _scan.value = _scan.value?.copy(refilling = misses.mapTo(HashSet()) { it.id }) }
-            for (ep in misses) launch {
-                val more = runCatching { gate.withPermit { refill(title, ep) } }.getOrDefault(emptyList())
-                synchronized(this@SeasonBatch) {
-                    _scan.value = _scan.value?.takeIf { it.titleImdb == title.imdb && it.season == season }?.let {
-                        it.copy(found = it.found + (ep.id to (it.found[ep.id].orEmpty() + more).distinctBy { h -> h.id }), refilling = it.refilling - ep.id)
-                    }
-                }
-            }
         }
     }
 
-    /** The second look at an episode that missed: longer, stopping only on a pick that is on target. */
-    private suspend fun refill(title: Title, ep: Episode): List<Hit> = LinkProbe.describe(
-        gather(REFILL_MS, REFILL_MIN_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } },
-    )
-
-    private const val REFILL_MS = 150_000L
-    private const val REFILL_MIN_MS = 60_000L
 
     /** Queues every picked release; how many went. */
     fun download(title: Title, picks: List<Pair<Episode, Hit>>): Int {
@@ -218,7 +211,10 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     // resolution, else the next one up, then codec, format… as preferences, so every episode with anything gets
     // something. A chip tapped below is a hard choice instead: only releases with it.
     val prefs = downloadPrefs()
-    var showPlan by remember { mutableStateOf(false) }
+    // Open from the start: its ticks are how an episode is left out.
+    var showPlan by remember { mutableStateOf(true) }
+    /** Episodes ticked off by hand (their ids): left out of the download and the send. */
+    var skipped by remember(title.imdb, season) { mutableStateOf(emptySet<String>()) }
     /** Fresh links being fetched before they go to another app. */
     var sending by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -242,13 +238,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 Spinner(size = 20.dp)
                 Text("   Checking episodes · ${scan.checked} of ${scan.episodes.size}", style = Type.meta.copy(color = Ink.muted))
             }
-            if (scan.done && scan.refilling.isNotEmpty()) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Spinner(size = 20.dp)
-                Text(
-                    "   Looking again for ${prefs.quality.ifEmpty { "better" }} ${prefs.format} · ${scan.refilling.size} episode${if (scan.refilling.size == 1) "" else "s"}",
-                    style = Type.meta.copy(color = Ink.muted),
-                )
-            }
+
             if (scan.done && all.none(::batchable)) {
                 Note("Nothing downloadable was found for this season's episodes.")
                 return@Column
@@ -277,11 +267,11 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 scan.episodes.mapNotNull { ep ->
                     scan.found[ep.id]?.let { hits ->
                         val from = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
-                        ep to if (filter == BatchFilter()) preferredPick(from, prefs) else batchPick(from, filter, prefs.direct, prefs)
+                        ep to if (filter == BatchFilter()) seasonPick(from, prefs) else batchPick(from, filter, prefs.direct, prefs)
                     }
                 }
             }
-            val picks = plan.mapNotNull { (ep, hit) -> hit?.let { ep to it } }
+            val picks = plan.mapNotNull { (ep, hit) -> hit?.takeIf { ep.id !in skipped }?.let { ep to it } }
             val missing = plan.filter { it.second == null }.map { it.first.episode }
             val known = picks.sumOf { it.second.size }
             Text(
@@ -308,17 +298,26 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             )
             if (showPlan) plan.forEach { (ep, hit) ->
                 val t = hit?.let(::traitsOf)
+                val on = hit != null && ep.id !in skipped
+                // A tick to keep or leave out each episode, as a pack's episodes have in Downloads.
+                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Tap({ if (hit != null) skipped = if (ep.id in skipped) skipped - ep.id else skipped + ep.id }, shape = CircleShape) {
+                    Lc(
+                        if (on) L.drawable.lucide_ic_circle_check else L.drawable.lucide_ic_circle,
+                        Modifier.padding(6.dp), tint = if (on) Ink.download else Ink.faint, size = 20.dp,
+                    )
+                }
                 Text(
                     "${episodeTag(ep.season, ep.episode)}  " + if (hit == null) "—" else
                         listOfNotNull(hit.quality, t?.codec?.takeIf { it != UNKNOWN }?.let(::codecLabel), t?.format?.takeIf { it != UNKNOWN }, bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null })
                             .joinToString(" · ") + when {
-                            // Said, so a 1080p in the list isn't a mystery: still looking, or nothing nearer exists.
-                            ep.id in scan.refilling -> " · looking again…"
-                            filter == BatchFilter() && scan.done && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs) -> " · no ${prefs.quality} ${prefs.format} found"
+                            // Said, so a 1080p in the list isn't a mystery: every source was asked, and nothing nearer exists.
+                            filter == BatchFilter() && scan.done && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) -> " · no ${prefs.quality} ${prefs.format} found"
                             else -> ""
                         },
-                    Modifier.padding(top = 6.dp), style = Type.meta.copy(color = if (hit == null) Ink.faint else Ink.muted), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    Modifier.padding(start = 4.dp), style = Type.meta.copy(color = if (on) Ink.muted else Ink.faint), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                }
             }
 
             val many = "${picks.size} episode${if (picks.size == 1) "" else "s"}"
