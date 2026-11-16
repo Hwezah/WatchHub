@@ -51,13 +51,15 @@ data class SeasonScan(
     val titleImdb: String,
     val season: Int,
     val episodes: List<Episode>,
-    /** By episode id, once that episode has answered. */
+    /** By episode id: what each episode has found so far — filled in as its sources answer, not only at the end. */
     val found: Map<String, List<Hit>> = emptyMap(),
+    /** Episodes every source has answered for (their ids): their picks are final. */
+    val finished: Set<String> = emptySet(),
     /** When the scan started: its links are at least this old, and renewed before they start if too old. */
     val at: Long = System.currentTimeMillis(),
 ) {
-    val checked get() = found.size
-    val done get() = found.size >= episodes.size
+    val checked get() = finished.size
+    val done get() = finished.size >= episodes.size
 }
 
 /**
@@ -90,21 +92,33 @@ object SeasonBatch {
      * An episode's sources, as the title page finds them — but not waited on to the end ([gather]). Waiting on
      * every plugin (up to minutes each, per episode) made a season take many minutes for links nobody needed.
      */
-    suspend fun sources(title: Title, ep: Episode): List<Hit> =
+    suspend fun sources(title: Title, ep: Episode, onPartial: (List<Hit>) -> Unit = {}): List<Hit> =
         // Then the links that don't say what they are, asked for their file names ([LinkProbe]): the light 720p MKVs
         // among them are what a pick is after.
         // Every source, the slow sites too (the owner's rule): the light 720p MKV links are often the last to answer.
         LinkProbe.describe(
-            gatherAll(EPISODE_CAP_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } },
+            gatherAll(EPISODE_CAP_MS, onPartial) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } },
         )
 
     /** The longest one episode's sources are waited on: only a plugin that hangs is ever cut short. */
     private const val EPISODE_CAP_MS = 300_000L
 
     /** Every answer [search] gives, waited on to the end — or [capMs], with what had come by then. */
-    private suspend fun gatherAll(capMs: Long, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
+    private suspend fun gatherAll(capMs: Long, onPartial: (List<Hit>) -> Unit, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
         val latest = java.util.concurrent.atomic.AtomicReference<List<Hit>>(emptyList())
-        val job = AppScope.async(kotlinx.coroutines.Dispatchers.Default) { search { now -> latest.set(now) } }
+        var told = 0L
+        val job = AppScope.async(kotlinx.coroutines.Dispatchers.Default) {
+            search { now ->
+                latest.set(now)
+                // What has come so far, for the sheet to pick from at once — at most once a second, read by size where
+                // a link doesn't say ([guessed]); the file names are asked for at the end.
+                val t = System.currentTimeMillis()
+                if (t - told >= 1000) {
+                    told = t
+                    runCatching { onPartial(allowedHits(now).map(::guessed)) }
+                }
+            }
+        }
         try {
             allowedHits(withTimeoutOrNull(capMs) { job.await() } ?: latest.get())
         } finally {
@@ -177,11 +191,13 @@ object SeasonBatch {
             if (again) com.torrentviewer.mobile.cs.CsPlugins.forgetPages()
             kotlinx.coroutines.coroutineScope {
                 for (ep in episodes) launch {
-                    val hits = gate.withPermit { sources(title, ep) }
-                    synchronized(this@SeasonBatch) {
+                    fun put(hits: List<Hit>, final: Boolean) = synchronized(this@SeasonBatch) {
                         _scan.value = _scan.value?.takeIf { it.titleImdb == title.imdb && it.season == season }
-                            ?.let { it.copy(found = it.found + (ep.id to hits)) }
+                            ?.let { it.copy(found = it.found + (ep.id to hits), finished = if (final) it.finished + ep.id else it.finished) }
                     }
+                    // Each answer shown as it comes: the sheet picks from it at once, and swaps in better ones as they arrive.
+                    val hits = gate.withPermit { sources(title, ep) { partial -> put(partial, final = false) } }
+                    put(hits, final = true)
                 }
             }
         }
@@ -264,15 +280,16 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             // For another app: links that need no headers first, since a shared link can't carry them.
             // Worked out when the scan, the chips or the preferences change, not on every redraw of the sheet.
             val plan = remember(scan, filter, prefs, external) {
-                scan.episodes.mapNotNull { ep ->
-                    scan.found[ep.id]?.let { hits ->
-                        val from = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
-                        ep to if (filter == BatchFilter()) seasonPick(from, prefs) else batchPick(from, filter, prefs.direct, prefs)
-                    }
+                // Every episode, from the start: its pick so far, swapped for a better one as its sources answer.
+                scan.episodes.map { ep ->
+                    val hits = scan.found[ep.id].orEmpty()
+                    val from = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
+                    ep to if (filter == BatchFilter()) seasonPick(from, prefs) else batchPick(from, filter, prefs.direct, prefs)
                 }
             }
             val picks = plan.mapNotNull { (ep, hit) -> hit?.takeIf { ep.id !in skipped }?.let { ep to it } }
-            val missing = plan.filter { it.second == null }.map { it.first.episode }
+            // Only those every source has answered for: the rest are still being looked for.
+            val missing = plan.filter { it.second == null && it.first.id in scan.finished }.map { it.first.episode }
             val known = picks.sumOf { it.second.size }
             Text(
                 "Matches ${picks.size} of ${scan.episodes.size} episodes" +
@@ -308,11 +325,13 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                     )
                 }
                 Text(
-                    "${episodeTag(ep.season, ep.episode)}  " + if (hit == null) "—" else
+                    "${episodeTag(ep.season, ep.episode)}  " + if (hit == null) (if (ep.id in scan.finished) "—" else "searching…") else
                         listOfNotNull(hit.quality, t?.codec?.takeIf { it != UNKNOWN }?.let(::codecLabel), t?.format?.takeIf { it != UNKNOWN }, bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null })
                             .joinToString(" · ") + when {
                             // Said, so a 1080p in the list isn't a mystery: every source was asked, and nothing nearer exists.
-                            filter == BatchFilter() && scan.done && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) -> " · no ${prefs.quality} ${prefs.format} found"
+                            // Not final yet: a better file may still come from a slower source.
+                            ep.id !in scan.finished -> " · still looking"
+                            filter == BatchFilter() && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) -> " · no ${prefs.quality} ${prefs.format} found"
                             else -> ""
                         },
                     Modifier.padding(start = 4.dp), style = Type.meta.copy(color = if (on) Ink.muted else Ink.faint), maxLines = 1, overflow = TextOverflow.Ellipsis,
