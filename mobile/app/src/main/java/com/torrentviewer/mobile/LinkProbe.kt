@@ -77,7 +77,7 @@ object LinkProbe {
      * sizes last), since a pick wants the lightest. Never fails: a link that doesn't answer stays as it was.
      */
     suspend fun describe(hits: List<Hit>): List<Hit> {
-        val ask = hits.filter { unlabelled(it) && it.uri !in known }
+        val ask = hits.filter { unlabelled(it) && !known.containsKey(it.uri) }
             .sortedWith(compareBy<Hit> { if (it.size > 0) 0 else 1 }.thenBy { it.size }).take(MOST)
         if (ask.isNotEmpty()) {
             val gate = Semaphore(AT_ONCE)
