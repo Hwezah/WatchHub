@@ -138,10 +138,24 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
     var titles by remember(source) { mutableStateOf(Meta.peekCatalog(shelf.kind, source)) }
     LaunchedEffect(source) { if (titles.isNullOrEmpty()) titles = Meta.catalog(shelf.kind, source) }
     val shown = remember(titles, sort) { sortTitles(Kids.only(titles.orEmpty()), sort) }
+    val grid = rememberLazyGridState()
+    // Near the foot of the grid, the list's next page (an addon that pages, Cinemeta's lists): newest-first lists go on
+    // back in time rather than stopping at the first answer's twenty-odd.
+    var loading by remember(source) { mutableStateOf(false) }
+    LaunchedEffect(grid, source) {
+        androidx.compose.runtime.snapshotFlow { grid.layoutInfo.let { i -> i.totalItemsCount > 1 && (i.visibleItemsInfo.lastOrNull()?.index ?: 0) >= i.totalItemsCount - 9 } }
+            .collect { near ->
+                if (near && !loading && titles != null && Meta.pages(shelf.kind, source)) {
+                    loading = true
+                    Meta.more(shelf.kind, source)?.let { titles = it }
+                    loading = false
+                }
+            }
+    }
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             POSTER,
-            state = rememberLazyGridState(),
+            state = grid,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -158,6 +172,7 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
             if (titles == null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.padding(top = 40.dp), contentAlignment = Alignment.Center) { Spinner(size = 36.dp) } }
             else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Note("Nothing on this shelf right now.") }
             items(shown, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
+            if (loading) item(key = "~more~", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) { Spinner(size = 28.dp) } }
         }
         BackButton(onBack)
     }

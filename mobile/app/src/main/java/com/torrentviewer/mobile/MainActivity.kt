@@ -54,6 +54,9 @@ object Services {
         Downloads.init(context)
         // CloudStream plugins: loaded in the background, so they're ready by the time a title opens.
         com.torrentviewer.mobile.cs.CsPlugins.init(context)
+        // Addons read afresh, as Stremio and Nuvio do on launch: rows added on Xperience's or AIOMetadata's own site
+        // since the addon was added here then show without adding it again.
+        AppScope.launch(Dispatchers.IO) { runCatching { com.torrentviewer.core.Addons.refresh() } }
     }
 }
 

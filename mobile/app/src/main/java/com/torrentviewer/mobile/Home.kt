@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.sp
+import com.torrentviewer.core.ADDON_SHELF
 import com.torrentviewer.core.ANIME_GENRE
 import com.torrentviewer.core.Artwork
 import com.torrentviewer.core.Avatar
@@ -86,6 +87,7 @@ import com.torrentviewer.core.playedSize
 import com.torrentviewer.core.remoteArt
 import com.torrentviewer.core.TOP_SHELF
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.composables.icons.lucide.R as L
 
 data class Shelf(val title: String, val kind: String, val genre: String? = null) {
@@ -126,6 +128,8 @@ class HomeState {
     val list = LazyListState()
     val rows = HashMap<String, LazyListState>()
     val loaded = mutableStateMapOf<String, List<Title>>()
+    /** Rows fetching their next page, by key. */
+    val paging = mutableStateMapOf<String, Boolean>()
     var heroCount by mutableIntStateOf(0)
     val hero = PagerState { heroCount }
     var picks by mutableStateOf<List<Shelf>>(emptyList())
@@ -254,8 +258,23 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
     picks.mapTo(seen) { it.title.imdb }
     because.forEach { (_, titles) -> titles.mapTo(seen) { it.imdb } }
     charts.forEach { (_, _, titles) -> titles.mapTo(seen) { it.imdb } }
-    val rows = shelves.associate { s -> s.key to state.loaded[s.key].orEmpty().filter { seen.add(it.imdb) } }
+    // The viewer's addons' rows are theirs, shown whole and in the addon's order, as Stremio and Nuvio show them: a
+    // "Highly Rated" list that the charts above already cover otherwise emptied out and vanished.
+    val rows = shelves.associate { s ->
+        val all = state.loaded[s.key].orEmpty()
+        s.key to if (s.genre?.startsWith(ADDON_SHELF) == true) all.distinctBy { it.imdb }.also { it.mapTo(seen) { t -> t.imdb } } else all.filter { seen.add(it.imdb) }
+    }
     val visible = shelves.filter { state.loaded[it.key].isNullOrEmpty() || rows[it.key].orEmpty().isNotEmpty() }
+    // A row scrolled to its end asks for its next page (an addon that pages, Cinemeta's lists), so it keeps going back in time.
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun more(shelf: Shelf) {
+        if (state.paging[shelf.key] == true || !Meta.pages(shelf.kind, shelf.genre)) return
+        state.paging[shelf.key] = true
+        scope.launch {
+            Meta.more(shelf.kind, shelf.genre)?.let { state.loaded[shelf.key] = kids.only(it) }
+            state.paging[shelf.key] = false
+        }
+    }
     /** An addon's genres for the Genres row, while the shelves come from addons and none is hidden in Settings. */
     val genreTiles = remember(addons, kids.on) { if (kids.on) null else com.torrentviewer.core.Addons.genres() }
 
@@ -340,7 +359,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
             itemsIndexed(visible, key = { _, s -> s.key }) { _, shelf ->
                 val titles = rows[shelf.key].orEmpty()
                 Rail(shelf.title, onMore = { onShelf(shelf) }) {
-                    if (titles.isEmpty()) Placeholders() else TitleRow(state.row(shelf.key), titles, onOpen)
+                    if (titles.isEmpty()) Placeholders() else TitleRow(state.row(shelf.key), titles, onOpen, loading = state.paging[shelf.key] == true) { more(shelf) }
                 }
             }
         }
@@ -445,12 +464,24 @@ private fun Placeholders() {
     }
 }
 
+/**
+ * A row of posters. With [onEnd], nearing the last few cards asks for more, once each time the end comes into view;
+ * a placeholder card stands at the end while [loading].
+ */
 @Composable
-private fun TitleRow(state: LazyListState, titles: List<Title>, onOpen: (Title) -> Unit) {
+private fun TitleRow(state: LazyListState, titles: List<Title>, onOpen: (Title) -> Unit, loading: Boolean = false, onEnd: (() -> Unit)? = null) {
+    if (onEnd != null) {
+        val end = androidx.compose.runtime.rememberUpdatedState(onEnd)
+        LaunchedEffect(state) {
+            androidx.compose.runtime.snapshotFlow { state.layoutInfo.let { i -> i.totalItemsCount > 0 && (i.visibleItemsInfo.lastOrNull()?.index ?: 0) >= i.totalItemsCount - 5 } }
+                .collect { near -> if (near) end.value() }
+        }
+    }
     LazyRow(state = state, contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(CARD_GAP)) {
         items(titles, key = { it.imdb }) { t ->
             TitleCard(t.poster ?: t.wide, t.title, { onOpen(t) }, Modifier.width(posterWidth()), info = t.year?.take(4), rating = t.rating)
         }
+        if (loading) item(key = "~more~") { CardPlaceholder(Modifier.width(posterWidth())) }
     }
 }
 
