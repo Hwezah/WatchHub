@@ -93,7 +93,7 @@ object LinkProbe {
      * The most links asked for one episode. Every unlabelled one, in practice: an MKV whose name says nothing (a
      * Pixeldrain or Driveseed link) was left out when only the lightest few were asked, and a 1080p taken over it.
      */
-    private const val MOST = 80
+    private const val MOST = 120
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
 
     /** What each link was found to be, kept for the session: a rescan or a second pick doesn't ask again. */
@@ -106,20 +106,37 @@ object LinkProbe {
     suspend fun describe(hits: List<Hit>): List<Hit> {
         // The preferred resolution's first, then the lightest: those are the ones a pick might take.
         val wanted = downloadPrefs().quality
-        val ask = hits.filter { unlabelled(it) && !known.containsKey(it.uri) }
+        val ask = hits.filter { (unlabelled(it) || withHeaders(it)) && !known.containsKey(it.uri) }
             .sortedWith(compareBy<Hit> { if (it.quality == null || it.quality == wanted) 0 else 1 }.thenBy { if (it.size > 0) 0 else 1 }.thenBy { it.size }).take(MOST)
         if (ask.isNotEmpty()) {
             val gate = Semaphore(AT_ONCE)
             coroutineScope {
-                ask.map { h -> async { gate.withPermit { withTimeoutOrNull(EACH_MS) { runCatching { probe(h) }.getOrNull() }?.let { known[h.uri] = it } } } }.awaitAll()
+                ask.map { h ->
+                    async {
+                        gate.withPermit {
+                            withTimeoutOrNull(EACH_MS * 2) {
+                                // A link that comes with headers (a Referer) is first tried without them: most don't need
+                                // them, and one that doesn't can be handed to another app, which can't send them.
+                                val bare = if (withHeaders(h)) runCatching { probe(h.copy(headers = emptyMap())) }.getOrNull() else null
+                                bare ?: runCatching { probe(h) }.getOrNull() ?: h
+                            }?.let { known[h.uri] = it }
+                        }
+                    }
+                }.awaitAll()
             }
         }
         // What its server said; failing that, what its size says ([guessed]).
         return hits.map { guessed(known[it.uri]?.takeIf { k -> k.name == it.name } ?: it) }
     }
 
-    /** One byte asked for, redirects followed by hand (these hosts hop between http and https): the headers say the rest. */
-    private suspend fun probe(hit: Hit): Hit = withContext(Dispatchers.IO) {
+    /** A file link that comes with headers: worth checking whether it works without them. */
+    private fun withHeaders(hit: Hit) = hit.direct && !isPlaylist(hit) && !isDash(hit) && hit.headers.isNotEmpty()
+
+    /**
+     * One byte asked for, redirects followed by hand (these hosts hop between http and https): the headers say the rest.
+     * Null when no file came back (an error, a web page, no answer).
+     */
+    private suspend fun probe(hit: Hit): Hit? = withContext(Dispatchers.IO) {
         var target = hit.uri
         repeat(6) {
             val conn = (URL(target).openConnection() as HttpURLConnection).apply {
@@ -133,12 +150,12 @@ object LinkProbe {
             try {
                 val code = conn.responseCode
                 if (code in 300..399) {
-                    target = URL(URL(target), conn.getHeaderField("Location") ?: return@withContext hit).toString()
+                    target = URL(URL(target), conn.getHeaderField("Location") ?: return@withContext null).toString()
                 } else {
-                    if (code !in 200..299) return@withContext hit
+                    if (code !in 200..299) return@withContext null
                     val type = conn.contentType
                     // A web page, not the file: nothing to learn.
-                    if (type?.startsWith("text/", true) == true) return@withContext hit
+                    if (type?.startsWith("text/", true) == true) return@withContext null
                     // The whole size: from the range answer, or a server that sent it all from the start.
                     val length = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
                         ?: conn.contentLengthLong.takeIf { code == 200 && it > 1 } ?: 0L
@@ -148,6 +165,6 @@ object LinkProbe {
                 conn.disconnect()
             }
         }
-        hit
+        null
     }
 }
