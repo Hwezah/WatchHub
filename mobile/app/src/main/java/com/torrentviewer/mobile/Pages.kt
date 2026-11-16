@@ -501,7 +501,7 @@ private fun LibraryTabs(on: LibrarySection, running: Boolean, onPick: (LibrarySe
                     Text(s.label, style = Type.title.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium, color = if (chosen) Ink.text else Ink.muted))
                     if (s == LibrarySection.DOWNLOADS && running) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.accent))
                 }
-                Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (chosen) Ink.accent else Color.Transparent))
+                Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (chosen) Ink.accent else Color.Transparent))
             }
         }
     }
@@ -512,7 +512,13 @@ private fun LibraryTabs(on: LibrarySection, running: Boolean, onPick: (LibrarySe
 fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownloads: () -> Unit) {
     val downloading by Downloads.live.collectAsState()
     /** The Library's two halves: what is watched and wanted, and what is on (or coming to) this phone. */
-    var section by rememberSaveable { mutableStateOf(LibrarySection.WISHLIST) }
+    // Downloads first (the owner's choice), and back to it whenever something new is sent to download.
+    var section by rememberSaveable { mutableStateOf(LibrarySection.DOWNLOADS) }
+    var seenDownloads by remember { mutableStateOf(downloading.size) }
+    LaunchedEffect(downloading.size) {
+        if (downloading.size > seenDownloads) section = LibrarySection.DOWNLOADS
+        seenDownloads = downloading.size
+    }
     if (section == LibrarySection.DOWNLOADS) {
         DownloadsScreen(watch, onBack = null) {
             Heading("Library")
