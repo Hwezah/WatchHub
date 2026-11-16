@@ -331,6 +331,8 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                             // Said, so a 1080p in the list isn't a mystery: every source was asked, and nothing nearer exists.
                             // Not final yet: a better file may still come from a slower source.
                             ep.id !in scan.finished -> " · still looking"
+                            // Its server never said how big it is: unconfirmed, so said — untick it to leave it out.
+                            hit.size <= 0L -> " · size unknown"
                             filter == BatchFilter() && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) -> " · no ${prefs.quality} ${prefs.format} found"
                             else -> ""
                         },
