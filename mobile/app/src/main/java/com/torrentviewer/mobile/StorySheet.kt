@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +47,9 @@ fun StorySheet(title: Title, episode: Episode?, onDismiss: () -> Unit) {
             .onSuccess { story = it }
             .onFailure { e -> if (e !is kotlinx.coroutines.CancellationException) failed = e.message ?: "Couldn't get the story" }
     }
+    // What it's doing meanwhile: finding subtitles, reading them, the AI writing.
+    val steps by Breakdowns.steps.collectAsState()
+    val doing = steps[Breakdowns.keyOf(title, episode)]
     val heading = episode?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: title.title
     BottomSheet(heading, onDismiss) {
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -55,7 +59,8 @@ fun StorySheet(title: Title, episode: Episode?, onDismiss: () -> Unit) {
                 got == null -> item {
                     Column(Modifier.fillMaxWidth().padding(vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Spinner(size = 30.dp)
-                        Text("Reading it and writing it up — a few seconds the first time", Modifier.padding(top = 12.dp), style = Type.meta)
+                        Text(doing ?: "Starting…", Modifier.padding(top = 12.dp), style = Type.meta)
+                        Text("Only the first time: it's kept after", Modifier.padding(top = 4.dp), style = Type.meta.copy(color = Ink.faint))
                     }
                 }
                 else -> {

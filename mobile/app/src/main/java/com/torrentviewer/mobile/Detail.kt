@@ -478,14 +478,18 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             Text(plot,style = Type.body.copy(color = Ink.text.copy(alpha = 0.85f)), maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
                         }
                     }
-                    // The whole story, scene by scene with times, ending held back: a film's here, an episode's on its row.
-                    if (!title.isSeries) Tap({ storyEp = null; storyOpen = true }, Modifier.padding(top = 8.dp), RoundedCornerShape(6.dp)) {
-                        Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Lc(L.drawable.lucide_ic_info, tint = Ink.accent, size = 18.dp)
-                            Text("  Scene by Scene", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
+                    // The director at the left, and on the same line at the far right the whole story, scene by scene with times
+                    // and the ending held back: a film's here, an episode's on its row.
+                    if (title.directors.isNotEmpty() || !title.isSeries) Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (title.directors.isNotEmpty()) Crew(if (title.isSeries) "Creators" else "Director", title.directors.take(2), tmdb?.directors.orEmpty(), onPerson.takeUnless { com.torrentviewer.core.Kids.on }, Modifier.weight(1f))
+                        else Spacer(Modifier.weight(1f))
+                        if (!title.isSeries) Tap({ storyEp = null; storyOpen = true }, Modifier.padding(start = 10.dp), RoundedCornerShape(6.dp)) {
+                            Row(Modifier.padding(vertical = 6.dp, horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Lc(L.drawable.lucide_ic_info, tint = Ink.accent, size = 16.dp)
+                                Text("  Scene by Scene", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
+                            }
                         }
                     }
-                    if (title.directors.isNotEmpty()) Crew(if (title.isSeries) "Creators" else "Director", title.directors.take(2), tmdb?.directors.orEmpty(), onPerson.takeUnless { com.torrentviewer.core.Kids.on })
                     // However many actions there are, they share the width evenly.
                     Row(Modifier.fillMaxWidth().padding(top = 14.dp)) {
                         val share = Modifier.weight(1f)
@@ -869,8 +873,8 @@ private fun People(label: String, value: String) {
 /** "Director: A, B", each name opening their page once TMDB has told us who they are. Long names wrap to a new line. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun Crew(label: String, names: List<String>, known: List<com.torrentviewer.core.CastMember>, onPerson: ((com.torrentviewer.core.CastMember) -> Unit)?) {
-    androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 2.dp)) {
+private fun Crew(label: String, names: List<String>, known: List<com.torrentviewer.core.CastMember>, onPerson: ((com.torrentviewer.core.CastMember) -> Unit)?, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.FlowRow(modifier) {
         Text("$label: ", Modifier.padding(vertical = 6.dp), style = Type.meta.copy(color = Ink.faint))
         names.forEachIndexed { i, name ->
             if (i > 0) Text(", ", Modifier.padding(vertical = 6.dp), style = Type.meta.copy(color = Ink.faint))

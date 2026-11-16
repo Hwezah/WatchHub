@@ -1,6 +1,8 @@
 package com.torrentviewer.core
 
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -73,9 +75,10 @@ fun stamp(ms: Long): String {
 
 /**
  * The dialogue as the AI reads it: a line per half minute, starting with its time ("[12:30] …"). Past [maxChars]
- * each half minute is cut short alike, so the whole running time is still there to retell.
+ * each half minute is cut short alike, so the whole running time is still there to retell — and a film's worth stays
+ * short enough to be read in a few seconds (60,000 characters is most of a film's dialogue).
  */
-fun transcript(cues: List<Cue>, maxChars: Int = 150_000): String {
+fun transcript(cues: List<Cue>, maxChars: Int = 60_000): String {
     val windows = cues.groupBy { it.at / 30_000 }.toSortedMap().map { (w, c) -> stamp(w * 30_000) to c.joinToString(" ") { it.text } }
     if (windows.isEmpty()) return ""
     val each = (maxChars / windows.size - 10).coerceAtLeast(40)
@@ -90,7 +93,7 @@ fun transcript(cues: List<Cue>, maxChars: Int = 150_000): String {
 fun breakdownPrompt(name: String, said: String, parts: IntRange): String =
     "Below is the dialogue of $name, from its subtitles: each line starts with the time it is spoken.\n\n" +
         "In English, retell the story for someone deciding whether to watch it, as ${parts.first} to ${parts.last} parts covering the whole running " +
-        "time in order. Each part has the time it starts and ends (as in the dialogue's times) and two to four plain sentences on what " +
+        "time in order. Each part has the time it starts and ends (as in the dialogue's times) and two or three plain sentences on what " +
         "happens, naming the characters as the story does. No markdown. Put everything before the final act in \"scenes\", and the final " +
         "act — the climax, how it ends, and any twist revealed there — in \"ending\" only, so it can be kept hidden.\n\n" +
         "Reply with only JSON: {\"scenes\": [{\"from\": \"00:00\", \"to\": \"08:40\", \"text\": \"...\"}], \"ending\": [{\"from\": \"...\", \"to\": \"...\", \"text\": \"...\"}]}\n\n" +
@@ -136,6 +139,18 @@ fun plotBreakdown(paragraphs: List<String>): Pair<List<Scene>, List<Scene>>? {
 object Breakdowns {
     private const val STORE = "breakdown:v1:"
 
+    /** What each breakdown being made is doing ("Finding subtitles…"), by [keyOf], for the sheet to say. */
+    private val _steps = kotlinx.coroutines.flow.MutableStateFlow<Map<String, String>>(emptyMap())
+    val steps: kotlinx.coroutines.flow.StateFlow<Map<String, String>> = _steps
+
+    /** The key a title's (an episode's) breakdown is kept and followed under. */
+    fun keyOf(title: Title, episode: Episode?) = STORE + title.imdb + (episode?.let { ":${it.season}:${it.episode}" }.orEmpty())
+
+    private fun step(key: String, what: String?) = _steps.update { if (what == null) it - key else it + (key to what) }
+
+    /** Past this, it's said to have taken too long rather than left spinning. */
+    private const val MOST_MS = 150_000L
+
     /** What the sheet says when there's nothing to tell from. */
     const val NOTHING = "No subtitles or plot summary found for this one."
 
@@ -144,7 +159,7 @@ object Breakdowns {
      * is set up; else, for a film, Wikipedia's plot. [subdlKey] widens the subtitle search. Throws with a message to show.
      */
     suspend fun of(title: Title, episode: Episode?, subdlKey: String): Breakdown {
-        val key = STORE + title.imdb + (episode?.let { ":${it.season}:${it.episode}" }.orEmpty())
+        val key = keyOf(title, episode)
         Kv.cached(key)?.let { saved -> runCatching { read(saved) }.getOrNull()?.let { return it } }
         // Made outside the sheet that asked: closed before it's done, it's still kept, and asking again waits for the same one.
         val job = making.getOrPut(key) {
@@ -152,9 +167,12 @@ object Breakdowns {
             AppScope.async(kotlinx.coroutines.Dispatchers.Default, start = kotlinx.coroutines.CoroutineStart.LAZY) {
                 try {
                     // Only the AI's is kept: Wikipedia's stands in when the AI is missing or failed, and is cheap to read again.
-                    make(title, episode, subdlKey).also { if (it.timed) Kv.cache(key, write(it)) }
+                    kotlinx.coroutines.withTimeoutOrNull(MOST_MS) { make(key, title, episode, subdlKey) }
+                        ?.also { if (it.timed) Kv.cache(key, write(it)) }
+                        ?: throw IllegalStateException("That took too long — try again")
                 } finally {
                     making.remove(key)
+                    step(key, null)
                 }
             }
         }
@@ -166,26 +184,37 @@ object Breakdowns {
     private val making = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Deferred<Breakdown>>()
 
     /** From the subtitles through the AI, else Wikipedia's plot; throws with a message to show. */
-    private suspend fun make(title: Title, episode: Episode?, subdlKey: String): Breakdown {
+    private suspend fun make(key: String, title: Title, episode: Episode?, subdlKey: String): Breakdown {
         var why: Throwable? = null
-        val made = (if (AiSearch.ready.value) runCatching { fromSubtitles(title, episode, subdlKey) }.onFailure { why = it }.getOrNull() else null)
-            ?: if (episode == null) runCatching { fromWikipedia(title) }.getOrNull() else null
+        // A timeout or a closed app is no failure to explain: it goes straight up.
+        fun unlessCancelled(e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+        }
+        val made = (if (AiSearch.ready.value) runCatching { fromSubtitles(key, title, episode, subdlKey) }.onFailure { unlessCancelled(it); why = it }.getOrNull() else null)
+            ?: if (episode == null) runCatching { step(key, "Reading Wikipedia's plot…"); fromWikipedia(title) }.onFailure(::unlessCancelled).getOrNull() else null
         return made ?: throw IllegalStateException(
             why?.message ?: if (AiSearch.ready.value) NOTHING else "$NOTHING Add an AI in Settings → AI Search for a scene-by-scene breakdown from subtitles.",
         )
     }
 
     /** The subtitles found for it, the first few tried until one reads, retold by the viewer's AI. Null with no subtitles. */
-    private suspend fun fromSubtitles(title: Title, episode: Episode?, subdlKey: String): Breakdown? {
+    private suspend fun fromSubtitles(key: String, title: Title, episode: Episode?, subdlKey: String): Breakdown? {
+        step(key, "Finding subtitles…")
         val subs = findSubtitles(
             query = title.title, imdb = title.imdb.takeIf { it.startsWith("tt") }, season = episode?.season, episode = episode?.episode,
             type = if (episode != null) "tv" else "movie", language = "EN", subdlKey = subdlKey, fileName = "",
         )
-        // English first: it's what the retelling is written in, and the language most subtitles exist in.
+        // English first: it's what the retelling is written in, and the language most subtitles exist in. The first
+        // few fetched at once, the first in that order that reads kept: one slow server doesn't hold up the rest.
+        step(key, "Reading the subtitles…")
         val english = setOf("en", "eng", "english")
-        val cues = subs.sortedBy { if (it.language.lowercase() in english) 0 else 1 }.take(4).firstNotNullOfOrNull { sub -> runCatching { cuesFrom(sub.url) }.getOrNull()?.takeIf { it.size >= 40 } } ?: return null
+        val cues = kotlinx.coroutines.coroutineScope {
+            subs.sortedBy { if (it.language.lowercase() in english) 0 else 1 }.take(3)
+                .map { sub -> async { runCatching { cuesFrom(sub.url) }.getOrNull()?.takeIf { it.size >= 40 } } }.awaitAll()
+        }.firstOrNull { it != null } ?: return null
         val name = if (episode != null) "${title.title} S${episode.season}:E${episode.episode} · ${episode.name}" else "${title.title}${title.year?.let { " (${it.take(4)})" }.orEmpty()}"
-        val reply = AiSearch.ask(breakdownPrompt(name, transcript(cues), if (episode != null) 5..10 else 8..16), timeoutMs = 120_000)
+        step(key, "${AiSearch.provider()?.label ?: "The AI"} is writing it up…")
+        val reply = AiSearch.ask(breakdownPrompt(name, transcript(cues), if (episode != null) 4..8 else 8..12), timeoutMs = 90_000, quick = true)
         val (scenes, ending) = parseBreakdown(reply) ?: throw IllegalStateException("The AI's answer wasn't a breakdown — try again")
         return Breakdown(scenes, ending, timed = true, source = "From the subtitles, retold by ${AiSearch.provider()?.label ?: "AI"}")
     }
