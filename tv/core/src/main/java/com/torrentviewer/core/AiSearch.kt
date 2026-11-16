@@ -208,10 +208,23 @@ fun aiErrorText(provider: AiProvider, code: Int, body: String): String {
     return when (code) {
         401, 403 -> "${provider.label} didn't accept the key — check it in Settings → AI Search"
         404 -> "${provider.label} doesn't know that model — check it in Settings → AI Search"
-        429 -> "${provider.label}: too many requests or no credit left on the account"
+        429 -> "${provider.label}: too many requests (its lighter models too) or no credit left — try again in a minute"
+        500, 502, 503, 504, 529 -> "${provider.label} is busy right now (its lighter models too) — try again in a minute"
         else -> "${provider.label}: ${said ?: "error $code"}"
     }.take(200)
 }
+
+/**
+ * A reply that says the service is busy or out of its per-minute allowance, not that the request was wrong:
+ * worth a second try, or another model ("This model is currently experiencing high demand" is Gemini's 503).
+ */
+fun aiBusy(code: Int) = code in setOf(429, 500, 502, 503, 504, 529)
+
+/**
+ * Gemini's lighter models, asked in turn when the one in use is busy: each has its own capacity and its own free
+ * allowance, so they are often free while the main one is swamped.
+ */
+val GEMINI_WHEN_BUSY = listOf("gemini-flash-lite-latest", "gemini-2.5-flash-lite", "gemini-2.0-flash")
 
 /** Whether typed text reads like a description rather than a title: four words or more. */
 fun looksLikeDescription(query: String): Boolean = query.trim().split(Regex("\\s+")).count { it.length > 1 } >= 4
@@ -300,14 +313,42 @@ object AiSearch {
             }
             error("unreachable")
         }
+        /**
+         * [m], and if the service is busy ([aiBusy]): the same again after a moment, then — for Gemini — its lighter
+         * models in turn ([GEMINI_WHEN_BUSY]). The reply and the model that gave it; the first refusal if all are busy.
+         */
+        suspend fun askPatiently(m: String): Pair<String, String> {
+            val name = m.ifBlank { p.defaultModel }
+            val first = try {
+                return ask(m) to name
+            } catch (e: HttpException) {
+                if (!aiBusy(e.code)) throw e
+                e
+            }
+            kotlinx.coroutines.delay(1500)
+            try {
+                return ask(m) to name
+            } catch (e: HttpException) {
+                if (!aiBusy(e.code) || p != AiProvider.GEMINI) throw e
+            }
+            for (other in GEMINI_WHEN_BUSY.filter { it != name }) {
+                try {
+                    return ask(other) to other
+                } catch (e: HttpException) {
+                    // Busy too, or not offered to this key: on to the next.
+                    if (!aiBusy(e.code) && e.code != 404 && e.code != 400) throw e
+                }
+            }
+            throw first
+        }
         return try {
-            ask(model) to model.ifBlank { p.defaultModel }
+            askPatiently(model)
         } catch (e: HttpException) {
             val better = if (e.code == 404 && typed.isBlank()) discover(p, key)?.takeIf { it != model.ifBlank { p.defaultModel } } else null
             if (better == null) throw IllegalStateException(aiErrorText(p, e.code, e.body))
             Kv.setGlobal(foundKey(p), better)
             try {
-                ask(better) to better
+                askPatiently(better)
             } catch (again: HttpException) {
                 throw IllegalStateException(aiErrorText(p, again.code, again.body))
             }

@@ -75,4 +75,11 @@ class AiSearchTest {
         assertEquals(0, config(AiThinking.ZERO).getJSONObject("thinkingConfig").getInt("thinkingBudget"))
         assertFalse(config(AiThinking.DEFAULT).has("thinkingConfig"))
     }
+
+    @Test fun busyRepliesAreRetried() {
+        assertEquals(true, aiBusy(503))
+        assertEquals(true, aiBusy(429))
+        assertEquals(false, aiBusy(401))
+        assertEquals(false, aiBusy(404))
+    }
 }
