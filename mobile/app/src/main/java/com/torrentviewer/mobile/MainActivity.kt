@@ -116,11 +116,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        Downloads.visible = true
         com.torrentviewer.mobile.cs.CsPlugins.attach(this)
         // Back in front: a build pushed while away is offered (at most one check every 5 minutes).
         com.torrentviewer.core.Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-")
         preferHighRefreshRate()
         com.torrentviewer.core.refreshWatched()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Downloads.visible = false
     }
 
     /** Home while a film plays shrinks it to a window. Android 12+ does this itself from the params' auto-enter. */

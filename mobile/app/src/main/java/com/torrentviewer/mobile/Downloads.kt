@@ -407,7 +407,30 @@ object Downloads {
      * Android's daily limit on background downloading (six hours, Android 15) reached: the service goes, the
      * downloads go on while the process lives, and the background job takes over in bursts after that.
      */
-    fun onServiceTimeout() = BackgroundResume.soon(app, 1)
+    fun onServiceTimeout() {
+        refusedAt = System.currentTimeMillis()
+        BackgroundResume.soon(app, 1)
+    }
+
+    /** Android wouldn't let the service into the foreground: as [onServiceTimeout]. */
+    fun onServiceRefused() = onServiceTimeout()
+
+    /**
+     * When Android last refused or ended the foreground service: until the app is opened again (which resets Android's
+     * daily limit), it isn't asked from the background — each ask it refused risked the app being closed.
+     */
+    @Volatile private var refusedAt = 0L
+
+    /** An activity of the app is on screen: Android lets a foreground service start, and its daily limit starts over. */
+    @Volatile var visible = false
+        set(value) {
+            field = value
+            if (value && refusedAt > 0L) {
+                refusedAt = 0L
+                // Downloads carried on without the service meanwhile: back under its notification now the app is open.
+                if (::app.isInitialized && running) startService()
+            }
+        }
 
     /** Another episode out of a torrent already downloading widens it rather than starting it twice. */
     fun add(job: DownloadJob) {
@@ -978,7 +1001,9 @@ object Downloads {
     const val NOTE_ID = 7
 
     private fun startService() {
-        runCatching {
+        // Refused or out of time today, and the app not open: the background job carries on instead (see onServiceTimeout).
+        val held = refusedAt > 0 && !visible && System.currentTimeMillis() - refusedAt < 24 * 60 * 60 * 1000L
+        if (!held) runCatching {
             val i = Intent(app, DownloadService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(i) else app.startService(i)
         }
@@ -1054,15 +1079,36 @@ class DownloadService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // In the foreground first, at once: Android allows only a few seconds after it is asked to start, and starting
+        // the app's services below (the torrent engine, the plugins) can take longer — "did not then call
+        // startForeground()", the crash this was.
+        foreground()
         // Restarted by the system after the process died: the queue picks itself back up.
         Services.init(applicationContext)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    /**
+     * Into the foreground with the downloads' notification. Android may refuse (its daily limit on background
+     * downloading spent, or no leave to start from the background): then the background job carries the downloads
+     * on in bursts instead, and the app doesn't ask again until it has been opened.
+     */
+    private fun foreground(): Boolean = runCatching {
         val note = Downloads.notification(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(Downloads.NOTE_ID, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         else startForeground(Downloads.NOTE_ID, note)
         instance = this
+        true
+    }.getOrElse {
+        Log.w("DownloadService", "not let into the foreground: ${it.message}")
+        Downloads.onServiceRefused()
+        false
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (instance == null && !foreground()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (!Downloads.running) stopSelf()
         return START_STICKY
     }
