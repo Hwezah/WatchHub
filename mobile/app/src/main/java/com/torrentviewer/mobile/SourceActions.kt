@@ -168,13 +168,17 @@ fun SourceActions(
             Action(L.drawable.lucide_ic_list_video, "Play mirror", if (others.isEmpty()) "No other links from ${hit.addon.ifEmpty { "this source" }}" else "${others.size} more from ${hit.addon}") {
                 if (others.isEmpty()) say("No other links from this source.") else mirrors = !mirrors
             }
+            // From the sheet's left edge, as the rows above start, each marked with a green asterisk.
             if (mirrors) others.forEach { m ->
                 Tap({ onDismiss(); onPlay(m) }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
-                    Text(
-                        listOfNotNull(m.quality, m.name).joinToString("  ·  "),
-                        Modifier.padding(start = 56.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
-                        style = Type.body.copy(color = Ink.muted), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(Modifier.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Lc(L.drawable.lucide_ic_asterisk, tint = Ink.download, size = 16.dp)
+                        Text(
+                            listOfNotNull(m.quality, m.name).joinToString("  ·  "),
+                            Modifier.padding(start = 12.dp),
+                            style = Type.body.copy(color = Ink.muted), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             if (!link && !hit.external) Note("A torrent: it streams through the app's engine.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
