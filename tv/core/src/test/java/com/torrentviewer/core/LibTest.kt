@@ -51,6 +51,15 @@ class LibTest {
         assertEquals(listOf(false, true, false), lists.catalogs.map { it.required })
         assertEquals(listOf(true, false, true), lists.catalogs.map { it.search })
         assertEquals("old", lists.catalogs[2].name)
+        // A required choice with its options listed: shown, made with the first option.
+        val preset = toAddon(
+            "https://a.example",
+            JSONObject("""{"name":"P","resources":["catalog"],"types":["movie"],"catalogs":[
+               {"type":"movie","id":"trend","name":"Trending","extra":[{"name":"genre","isRequired":true,"options":["Action","Drama"]}]}]}"""),
+        )!!.catalogs.single()
+        assertFalse(preset.required)
+        assertEquals("genre=Action", preset.preset)
+        assertEquals("Action", preset.presetLabel)
         // The TV's QR link: sent only to a TV page on the home network.
         val tv = "http://192.168.1.5:40123/" + "ab".repeat(12)
         assertEquals(tv, tvDropUrl("watchly://tv-addons?to=" + java.net.URLEncoder.encode(tv, "UTF-8")))

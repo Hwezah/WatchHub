@@ -9,7 +9,16 @@ import org.json.JSONObject
 data class AddonResource(val name: String, val types: List<String>, val idPrefixes: List<String>?)
 
 /** A list an addon offers. [required] needs an extra (a genre, a search) before it lists anything; [search] takes a query. */
-data class AddonCatalog(val type: String, val id: String, val name: String, val required: Boolean, val search: Boolean)
+data class AddonCatalog(
+    val type: String, val id: String, val name: String, val required: Boolean, val search: Boolean,
+    /**
+     * For a catalogue that needs a choice made (a genre) and lists the choices: the first of them, as the extra
+     * path the request takes ("genre=Action") — the row then shows, as Stremio and Nuvio show it. Null otherwise.
+     */
+    val preset: String? = null,
+    /** [preset]'s choice, for the row's title ("Action"). */
+    val presetLabel: String? = null,
+)
 
 /** Watchly's own kind for a Stremio type: "movie" plays the id itself — films, and live "tv" channels — the rest hold videos. */
 fun kindOfType(type: String) = if (type == "movie" || type == "tv") "movie" else "tv"
@@ -108,9 +117,14 @@ fun toAddon(url: String, m: JSONObject, on: Boolean = true): Addon? {
         val id = c.str("id") ?: return@mapNotNull null
         // Two shapes: `extra` objects, and the older `extraRequired` / `extraSupported` name lists.
         val extra = c.optJSONArray("extra")?.objects().orEmpty()
-        val required = extra.any { it.optBoolean("isRequired") } || c.strings("extraRequired").isNotEmpty()
+        val needs = extra.filter { it.optBoolean("isRequired") }
+        // A choice that must be made, with the choices listed (and not a search): made with the first, so the row shows.
+        val presettable = needs.isNotEmpty() && c.strings("extraRequired").isEmpty() &&
+            needs.all { it.optString("name") != "search" && it.strings("options").isNotEmpty() }
+        val preset = if (presettable) needs.joinToString("&") { "${it.optString("name")}=${enc(it.strings("options").first())}" } else null
+        val required = (needs.isNotEmpty() && !presettable) || c.strings("extraRequired").isNotEmpty()
         val search = extra.any { it.optString("name") == "search" } || "search" in c.strings("extraSupported")
-        AddonCatalog(type, id, c.str("name") ?: id, required, search)
+        AddonCatalog(type, id, c.str("name") ?: id, required, search, preset, if (presettable) needs.first().strings("options").first() else null)
     }
     return if (resources.isEmpty() && catalogs.isEmpty()) null else Addon(url, name, resources, on, m.toString(), catalogs)
 }
@@ -230,7 +244,9 @@ object Addons {
 
     /** Every list that shows without a genre or search picked first, as (row title, kind, shelf key). */
     fun shelves(): List<Triple<String, String, String>> = _list.value.filter { it.on }.flatMap { a ->
-        a.catalogs.filter { !it.required }.map { c -> Triple("${c.name} · ${typeLabel(c.type)}", kindOfType(c.type), a.shelfKey(c)) }
+        a.catalogs.filter { !it.required }.map { c ->
+            Triple(listOfNotNull(c.name, c.presetLabel, typeLabel(c.type)).joinToString(" · "), kindOfType(c.type), a.shelfKey(c))
+        }
     }
 
     /** The addon and catalogue behind a home row's key. */

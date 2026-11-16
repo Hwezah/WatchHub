@@ -163,7 +163,11 @@ object Meta {
         remember("shelf:$kind:${genre.orEmpty()}", ::titlesFrom, ::titlesJson) {
             if (genre?.startsWith(ADDON_SHELF) == true) {
                 val (addon, list) = Addons.shelf(genre) ?: error("addon gone")
-                val metas = JSONObject(Net.get("${addon.url}/catalog/${list.type}/${enc(list.id)}.json", quiet = true)).optJSONArray("metas") ?: JSONArray()
+                // An addon that builds its lists on request (AIOMetadata, Xperience) can take a while on the first ask:
+                // given 40 seconds, and a second try, rather than a row silently missing.
+                val url = "${addon.url}/catalog/${list.type}/${enc(list.id)}${list.preset?.let { "/$it" }.orEmpty()}.json"
+                val body = runCatching { Net.get(url, timeoutMs = 40_000, quiet = true) }.getOrElse { Net.get(url, timeoutMs = 40_000, quiet = true) }
+                val metas = JSONObject(body).optJSONArray("metas") ?: JSONArray()
                 return@remember toTitles(metas, kindOfType(list.type), anyId = true, type = list.type)
             }
             if (genre?.startsWith(TOP_SHELF) == true) return@remember topRated(kind, genre.removePrefix(TOP_SHELF).ifEmpty { null })
@@ -425,7 +429,8 @@ fun toTitles(metas: JSONArray, kind: String, withEpisodes: Boolean = false, anyI
     val seen = HashSet<String>()
     return metas.objects().mapNotNull { m ->
         val id = m.str("imdb_id") ?: m.str("id") ?: return@mapNotNull null
-        if (!anyId && !Regex("^tt\\d+$").matches(id) || m.str("poster") == null && !withEpisodes || !seen.add(id)) return@mapNotNull null
+        // An addon's own lists (anyId) keep a title with no poster: it shows by its name, as Stremio's and Nuvio's do.
+        if (!anyId && !Regex("^tt\\d+$").matches(id) || m.str("poster") == null && !withEpisodes && !anyId || !seen.add(id)) return@mapNotNull null
         val stremioType = m.str("type") ?: type ?: if (kind == "movie") "movie" else "series"
         val name = m.optString("name")
         Title(
