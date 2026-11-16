@@ -128,6 +128,8 @@ class HomeState {
     val list = LazyListState()
     val rows = HashMap<String, LazyListState>()
     val loaded = mutableStateMapOf<String, List<Title>>()
+    /** The picture each Genres tile wears, by its list's key: claimed once, so no two tiles share one. */
+    val genreArt = mutableStateMapOf<String, String>()
     /** Rows fetching their next page, by key. */
     val paging = mutableStateMapOf<String, Boolean>()
     var heroCount by mutableIntStateOf(0)
@@ -320,7 +322,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                 item(key = "genres") {
                     Rail("Genres") {
                         LazyRow(state = state.row("genres"), contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(genres, key = { it.second }) { (name, key) -> GenreTile(name, kind, key) { onShelf(Shelf(name, kind, key)) } }
+                            items(genres, key = { it.second }) { (name, key) -> GenreTile(name, kind, key, state.genreArt) { onShelf(Shelf(name, kind, key)) } }
                         }
                     }
                 }
@@ -420,13 +422,20 @@ fun ReleasesSheet(all: List<Item>, watch: Watch, onDismiss: () -> Unit) {
 }
 
 /**
- * One genre as a wide picture tile: the backdrop of the genre's first title, darkened at the foot, its name in
- * capitals over it. The list is fetched when the tile first shows, and kept as Home's rows are.
+ * One genre as a wide picture tile: a backdrop from the genre's list, darkened at the foot, its name in capitals over
+ * it. The list is fetched when the tile first shows, and kept as Home's rows are. Each tile takes the first picture
+ * no other tile has ([taken], kept while Home is): a big film sits in half the genres, and every tile wore its face.
  */
 @Composable
-private fun GenreTile(name: String, kind: String, key: String, onOpen: () -> Unit) {
-    val art by produceState(Meta.peekCatalog(kind, key)?.firstNotNullOfOrNull { it.backdrop ?: it.poster }, key) {
-        if (value == null) value = Meta.catalog(kind, key).firstNotNullOfOrNull { it.backdrop ?: it.poster }
+private fun GenreTile(name: String, kind: String, key: String, taken: MutableMap<String, String>, onOpen: () -> Unit) {
+    fun claim(titles: List<Title>?): String? {
+        taken[key]?.let { return it }
+        val pictures = titles.orEmpty().mapNotNull { it.backdrop ?: it.poster }.ifEmpty { return null }
+        val used = taken.values.toSet()
+        return (pictures.firstOrNull { it !in used } ?: pictures.first()).also { taken[key] = it }
+    }
+    val art by produceState(taken[key], key) {
+        if (value == null) value = claim(Meta.peekCatalog(kind, key) ?: Meta.catalog(kind, key))
     }
     Tap(onOpen, Modifier.width(220.dp).aspectRatio(16f / 9f), RoundedCornerShape(10.dp)) {
         Box(Modifier.fillMaxSize().background(Ink.surface)) {
@@ -434,7 +443,8 @@ private fun GenreTile(name: String, kind: String, key: String, onOpen: () -> Uni
             Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.75f))))
             Text(
                 name.uppercase(), Modifier.align(Alignment.BottomStart).padding(12.dp),
-                style = Type.label.copy(color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                // The weight of the app's own headings, not heavier.
+                style = Type.label.copy(color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
     }
