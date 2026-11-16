@@ -466,33 +466,16 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             }
 
             val many = "${picks.size} episode${if (picks.size == 1) "" else "s"}"
-            /** Another app's downloader: every pick's link at once, in episode order — as found, straight away, when
-             *  the season was checked within [SEND_AS_FOUND_MS]; asked for again first only when older than that. */
+            /**
+             * Another app's downloader: every pick's link at once, in episode order, as found — straight away, however long
+             * ago the scan was (the owner's choice: asking every source again took minutes). Stale links are renewed only
+             * when asked, with Ask Every Source Again.
+             */
             fun send(to: Downloader) {
                 if (sending || picks.isEmpty()) return
-                if (System.currentTimeMillis() - scan.at < SEND_AS_FOUND_MS) {
-                    val handed = sendLinks(context, picks.map { it.second }, "${title.title} · season $season", to, picks.map { "${title.title} · ${com.torrentviewer.core.episodeTag(it.first.season, it.first.episode)}" })
-                    ExternalDownloaders.note(handed, many = true)?.let(say)
-                    if (handed != Handed.Failed) onDismiss()
-                    return
-                }
-                sending = true
-                scope.launch {
-                    val gate = Semaphore(3)
-                    val fresh = kotlinx.coroutines.coroutineScope {
-                        picks.map { (ep, hit) ->
-                            async {
-                                gate.withPermit {
-                                    refreshPick(SeasonBatch.sources(title, ep), "", hit.addon.ifEmpty { null }, hit.name, hit.quality) ?: hit
-                                }
-                            }
-                        }.map { it.await() }
-                    }
-                    sending = false
-                    val handed = sendLinks(context, fresh, "${title.title} · season $season", to, picks.map { "${title.title} · ${com.torrentviewer.core.episodeTag(it.first.season, it.first.episode)}" })
-                    ExternalDownloaders.note(handed, many = true)?.let(say)
-                    if (handed != Handed.Failed) onDismiss()
-                }
+                val handed = sendLinks(context, picks.map { it.second }, "${title.title} · season $season", to, picks.map { "${title.title} · ${com.torrentviewer.core.episodeTag(it.first.season, it.first.episode)}" })
+                ExternalDownloaders.note(handed, many = true)?.let(say)
+                if (handed != Handed.Failed) onDismiss()
             }
             // Picked in the "Download With" sheet (drawn over this one, below): sent from here, where the picks are.
             LaunchedEffect(chosen) { chosen?.let { chosen = null; send(it) } }
