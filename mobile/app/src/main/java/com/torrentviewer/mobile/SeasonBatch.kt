@@ -205,9 +205,10 @@ object SeasonBatch {
 
 
     /** Queues every picked release; how many went. */
-    fun download(title: Title, picks: List<Pair<Episode, Hit>>): Int {
+    fun download(title: Title, picks: List<Pair<Episode, Hit>>, paused: Boolean = false): Int {
         val at = _scan.value?.at ?: System.currentTimeMillis()
-        picks.forEach { (ep, hit) -> Downloads.add(downloadJob(hit, title, ep, foundAt = at)) }
+        // [paused]: added to the Downloads tab without starting — each waits for its ▶.
+        picks.forEach { (ep, hit) -> Downloads.add(downloadJob(hit, title, ep, foundAt = at).copy(paused = paused)) }
         return picks.size
     }
 }
@@ -372,23 +373,33 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             }
             // Picked in the "Download With" sheet (drawn over this one, below): sent from here, where the picks are.
             LaunchedEffect(chosen) { chosen?.let { chosen = null; send(it) } }
-            Button(
+            if (!external && picks.isNotEmpty()) {
+                // Add beside Download, the same size: Add puts the episodes in the Downloads tab paused, Download starts them.
+                Row(Modifier.padding(top = 16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        "Add", {
+                            SeasonBatch.download(title, picks, paused = true)
+                            say("Added $many of season $season to Downloads, paused — tap ▶ there to start")
+                            onDismiss()
+                        },
+                        Modifier.weight(1f), icon = L.drawable.lucide_ic_plus, primary = true,
+                    )
+                    Button(
+                        "Download", {
+                            SeasonBatch.download(title, picks)
+                            say("Downloading $many of season $season — see Downloads")
+                            onDismiss()
+                        },
+                        Modifier.weight(1f), icon = L.drawable.lucide_ic_download, fill = Ink.download,
+                    )
+                }
+            } else Button(
                 when {
                     picks.isEmpty() -> "Nothing matches"
                     sending -> "Getting fresh links…"
-                    external -> "Send $many to Downloader"
-                    else -> "Download $many"
+                    else -> "Send $many to Downloader"
                 },
-                {
-                    if (picks.isEmpty()) return@Button
-                    if (external) {
-                        send(sendTo)
-                        return@Button
-                    }
-                    SeasonBatch.download(title, picks)
-                    say("Downloading $many of season $season — see Downloads")
-                    onDismiss()
-                },
+                { if (picks.isNotEmpty() && external) send(sendTo) },
                 Modifier.padding(top = 16.dp).fillMaxWidth(), icon = if (external) L.drawable.lucide_ic_external_link else L.drawable.lucide_ic_download,
                 fill = Ink.download.takeIf { picks.isNotEmpty() },
                 onLongClick = { if (external && picks.isNotEmpty() && !sending) choosing = true },

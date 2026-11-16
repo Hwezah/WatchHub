@@ -450,9 +450,11 @@ object Downloads {
             return
         }
         synchronized(lock) {
-            _live.value = _live.value + LiveDownload(job, DlState.RESOLVING)
+            _live.value = _live.value + LiveDownload(job, if (job.paused) DlState.PAUSED else DlState.RESOLVING)
             writeQueue(jobs())
         }
+        // Added paused (the season sheet's Add): waits in the list for its ▶, nothing fetched yet.
+        if (job.paused && job.link) return
         // Asked once, on the first download: the viewer is right here, having just tapped it.
         if (!prefs().getBoolean("askedBattery", false)) {
             prefs().edit().putBoolean("askedBattery", true).apply()
