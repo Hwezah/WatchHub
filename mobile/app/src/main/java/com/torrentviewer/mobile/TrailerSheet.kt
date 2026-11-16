@@ -133,9 +133,10 @@ fun TrailerSheet(youtubeId: String, title: String, onDismiss: () -> Unit) {
                     Round(L.drawable.lucide_ic_maximize) { full = true }
                     Round(L.drawable.lucide_ic_x, onClick = onDismiss)
                 }
-                // The same view in both layouts, so going full screen doesn't restart the video.
+                // The same view in both layouts, so going full screen doesn't restart the video. Black from the first
+                // frame: the picture's space is there, spinner in it, while the trailer is found.
                 Box(
-                    if (full) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(18.dp)),
+                    (if (full) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(18.dp))).background(Color.Black),
                     contentAlignment = Alignment.TopEnd,
                 ) {
                     TrailerPlayer(youtubeId, ZOOMS[zoom].first)
