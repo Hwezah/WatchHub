@@ -731,9 +731,9 @@ fun whereLeft(item: Item): String? {
 private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
     val paused = com.torrentviewer.core.Stremio.library.collectAsState().value.paused.find { it.imdb == s.imdb }
     Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) { pressed ->
-        // The ⋯ ends as far from the right edge as the poster starts from the left: its own 8 dp, plus 2.
-        Row(Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(start = 10.dp, end = 2.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))) {
+        // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card); 2 dp on the right.
+        Row(Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(64.dp).aspectRatio(2f / 3f)) {
                 Artwork("https://images.metahub.space/poster/medium/${s.imdb}/img", s.title, Modifier.fillMaxSize())
                 paused?.let { ProgressLine((it.progress / 100).toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp) }
             }
@@ -756,13 +756,13 @@ private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
 @Composable
 private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: () -> Unit) {
     Tap(onPlay, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), onLongClick = onMore) { pressed ->
-        // A little room all round (14dp). The ⋮'s dots are a thin line in the middle of a 20dp icon: 4dp at the end
-        // puts them about as far from the card's edge as the poster is.
+        // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card). The ⋮'s dots are
+        // a thin line in the middle of a 20dp icon: 4dp at the end keeps them clear of the card's edge.
         Row(
-            Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(start = 14.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
+            Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))) {
+            Box(Modifier.width(64.dp).aspectRatio(2f / 3f)) {
                 Artwork(remoteArt(item.poster) ?: item.art(), item.label, Modifier.fillMaxSize())
                 if (item.ratio > 0) ProgressLine(item.ratio.toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp)
             }
