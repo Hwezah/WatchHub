@@ -380,6 +380,13 @@ fun sendLinks(context: Context, hits: List<Hit>, title: String, to: Downloader =
         // Each link's name, in the same order ("The Penguin · S01E01"), for a downloader that reads it (Grabber does):
         // a playlist's address (index_287.m3u8) says nothing of what it is.
         if (names.size == hits.size) putExtra("titles", names.toTypedArray())
+        // Each link's headers, in the same order, for a downloader that sends them (Grabber does): some file hosts
+        // (Moviesmod's) hand over a file only with the Referer of the page it came from. "referers" for the simple case,
+        // "headers_json" (a JSON array of {name: value} objects, one per link) for all of them.
+        if (hits.any { it.headers.isNotEmpty() }) {
+            putExtra("referers", hits.map { h -> h.headers.entries.firstOrNull { it.key.equals("referer", true) }?.value.orEmpty() }.toTypedArray())
+            putExtra("headers_json", org.json.JSONArray(hits.map { h -> org.json.JSONObject(h.headers) }).toString())
+        }
     }
     return ExternalDownloaders.hand(context, send, to, "Send links to", text)
 }

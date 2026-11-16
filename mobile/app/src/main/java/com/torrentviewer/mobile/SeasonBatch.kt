@@ -281,6 +281,8 @@ object SeasonBatch {
 @Composable
 fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -> Unit, external: Boolean = false, sendTo: Downloader = Downloader.Default) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    /** The app the links go to passes their headers on (Grabber): links that need a Referer can go too. */
+    val headersGo = remember(sendTo) { external && ExternalDownloaders.sendsHeaders(context, sendTo) }
     LaunchedEffect(title.imdb, season) { SeasonBatch.begin(title, season) }
     val scanned by SeasonBatch.scan.collectAsState()
     val scan = scanned?.takeIf { it.titleImdb == title.imdb && it.season == season }
@@ -311,7 +313,8 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 return@Column
             }
             /** What the plan may take from an episode's releases: for another app, the links that need no headers when there are any. */
-            fun usableFor(hits: List<Hit>) = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
+            // Grabber takes each link's headers with it, so for Grabber nothing is left out.
+            fun usableFor(hits: List<Hit>) = if (external && !headersGo) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
             // What a pick may take: the chips count only that, thin torrents left out as in the lists.
             val all = prefs.usable(scan.found.values.flatten())
             if (!scan.done) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -328,7 +331,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             // The rows' choices are counted when the scan or the chips change, not on every redraw.
             // Counted in episodes, from what the plan itself may take (for another app, only links that need no headers):
             // the number on a chip is how many episodes choosing it can fill.
-            val options = remember(scan, filter, external) {
+            val options = remember(scan, filter, external, headersGo) {
                 val eps = scan.found.values.map { hits -> usableFor(prefs.usable(hits)) }
                 listOf(
                     episodeOptions(eps, filter.copy(quality = null)) { it.quality },
@@ -346,7 +349,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
 
             // For another app: links that need no headers first, since a shared link can't carry them.
             // Worked out when the scan, the chips or the preferences change, not on every redraw of the sheet.
-            val plan = remember(scan, filter, prefs, external) {
+            val plan = remember(scan, filter, prefs, external, headersGo) {
                 // Every episode, from the start: its pick so far, swapped for a better one as its sources answer.
                 scan.episodes.map { ep ->
                     val hits = scan.found[ep.id].orEmpty()

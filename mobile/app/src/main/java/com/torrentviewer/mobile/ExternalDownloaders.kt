@@ -142,6 +142,20 @@ object ExternalDownloaders {
         }
     }
 
+    /**
+     * Whether the app [to] would send to passes each link's headers on (its Referer, say) — Grabber does; 1DM, ADM and
+     * the rest send only the link. Links that need their headers can go only to one that does.
+     */
+    fun sendsHeaders(context: Context, to: Downloader): Boolean {
+        val probe = sendProbe()
+        val (pkg, name) = when (to) {
+            is Downloader.App -> to.pkg to (apps(context, probe).firstOrNull { it.first == to.pkg }?.second ?: "")
+            Downloader.Default -> default(context, probe) ?: return false
+            else -> return false
+        }
+        return pkg.contains("grabber", true) || name.contains("grabber", true)
+    }
+
     /** What a caller says after [hand]. */
     fun note(handed: Handed, many: Boolean): String? = when (handed) {
         Handed.Opened -> null
