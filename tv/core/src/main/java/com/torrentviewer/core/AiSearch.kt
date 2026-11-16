@@ -44,14 +44,15 @@ enum class AiThinking { MINIMAL, ZERO, DEFAULT }
 /** One HTTP request to a provider, ready to send. [headers] carry the key: never log them. */
 data class AiRequest(val url: String, val headers: Map<String, String>, val body: String)
 
-/** A title the model named. [series] is null when it didn't say. */
-data class AiGuess(val title: String, val year: Int?, val series: Boolean?)
+/** A title the model named. [series] is null when it didn't say; [imdb] is its IMDb id, when it gave one that looks like one. */
+data class AiGuess(val title: String, val year: Int?, val series: Boolean?, val imdb: String? = null)
 
 /** What the model is asked: only a JSON list, so the reply can be read without a second guess at its shape. */
 fun aiPrompt(description: String): String =
     "Someone is trying to find a film or TV show. Their description:\n\n\"${description.trim()}\"\n\n" +
         "Reply with only a JSON array of up to 6 titles that best fit it, most likely first, each as " +
-        "{\"title\": \"<official English title>\", \"year\": <first release year>, \"type\": \"movie\" or \"series\"}. " +
+        "{\"title\": \"<official English title>\", \"year\": <first release year>, \"type\": \"movie\" or \"series\", " +
+        "\"imdb\": \"<its IMDb id, tt followed by digits, only if you are sure of it>\"}. " +
         "No other text."
 
 /**
@@ -194,9 +195,39 @@ fun aiGuesses(text: String): List<AiGuess> {
             "movie", "film" -> false
             else -> null
         }
-        AiGuess(title, year, series)
+        AiGuess(title, year, series, o.optString("imdb").trim().takeIf { IMDB_ID.matches(it) })
     }.take(8)
 }
+
+private val IMDB_ID = Regex("""^tt\d{5,10}$""")
+
+/**
+ * Which of the catalogue's answers is the title the AI meant, forgiving how it was spelt: the closest name
+ * ([fuzzyScore] — "Spiderman Into the Spider Verse" is "Spider-Man: Into the Spider-Verse"), nudged by how near its
+ * year is and whether it is a film or a series as the AI said. Failing that, a search's own first two answers when
+ * one came out that very year: the AI used another of its names ("Live Die Repeat" for "Edge of Tomorrow").
+ * [results] is each search's answers, in the catalogue's order. Null when none is it.
+ */
+fun aiMatch(results: List<List<Title>>, guess: AiGuess): Title? {
+    fun yearOf(t: Title) = t.year?.take(4)?.toIntOrNull()
+    val all = results.flatten().distinctBy { it.imdb }
+    val best = all.map { t ->
+        var score = fuzzyScore(t.title, guess.title)
+        val y = yearOf(t)
+        if (guess.year != null && y != null) score += when (kotlin.math.abs(y - guess.year)) {
+            0 -> 0.12
+            1 -> 0.06
+            2, 3 -> 0.0
+            else -> -0.2
+        }
+        if (guess.series != null) score += if ((t.kind == "tv") == guess.series) 0.05 else -0.05
+        t to score
+    }.filter { it.second >= AI_MATCH }.maxByOrNull { it.second }?.first
+    return best ?: guess.year?.let { y -> results.flatMap { it.take(2) }.firstOrNull { yearOf(it) == y } }
+}
+
+/** Close enough, with the year's and kind's nudges, to be the title the AI named. */
+const val AI_MATCH = 0.5
 
 /** A provider's error reply, as a sentence: its own message where it gave one. */
 fun aiErrorText(provider: AiProvider, code: Int, body: String): String {
@@ -363,6 +394,23 @@ object AiSearch {
         return "$model answered in ${"%.1f".format((System.currentTimeMillis() - start) / 1000.0)} s"
     }
 
+    /**
+     * The catalogue's title for one of the AI's guesses, found however it was named: films and series both (the AI
+     * gets that wrong, a mini-series most of all), the name before any subtitle too, then the IMDb id it gave if its
+     * name and year agree, then the addons' own search. Null when nothing is it.
+     */
+    private suspend fun find(g: AiGuess): Title? = coroutineScope {
+        val names = listOfNotNull(g.title, g.title.substringBefore(':').trim().takeIf { it.length >= 3 && it != g.title })
+        val kinds = if (g.series == true) listOf("tv", "movie") else listOf("movie", "tv")
+        val results = names.flatMap { n -> kinds.map { k -> async { Meta.search(n, k) } } }.awaitAll()
+        aiMatch(results, g)
+            ?: g.imdb?.let { id ->
+                // Only if the id is the film named: a model can be sure of an id and wrong about it.
+                kinds.firstNotNullOfOrNull { k -> runCatching { Meta.title(id, k) }.getOrNull() }?.let { aiMatch(listOf(listOf(it)), g) }
+            }
+            ?: runCatching { aiMatch(listOf(Meta.searchAddons(g.title)), g) }.getOrNull()
+    }
+
     suspend fun suggest(description: String, onPartial: (List<Title>) -> Unit = {}): List<Title> {
         val p = provider() ?: throw IllegalStateException("Choose an AI in Settings → AI Search")
         val key = Secrets.get(keyName(p)) ?: throw IllegalStateException("Add your ${p.label} key in Settings → AI Search")
@@ -374,12 +422,7 @@ object AiSearch {
         coroutineScope {
             guesses.forEachIndexed { i, g ->
                 launch {
-                    val kinds = when (g.series) {
-                        true -> listOf("tv")
-                        false -> listOf("movie")
-                        null -> listOf("movie", "tv")
-                    }
-                    val title = kinds.firstNotNullOfOrNull { k -> bestMatch(Meta.search(g.title, k), g.title, g.year?.toString()) } ?: return@launch
+                    val title = find(g) ?: return@launch
                     synchronized(found) { found[i] = title }
                     onPartial(now())
                 }

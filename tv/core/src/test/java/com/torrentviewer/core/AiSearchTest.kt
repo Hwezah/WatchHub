@@ -82,4 +82,28 @@ class AiSearchTest {
         assertEquals(false, aiBusy(401))
         assertEquals(false, aiBusy(404))
     }
+
+    @Test fun guessIds() {
+        val g = aiGuesses("""[{"title":"Interstellar","year":2014,"type":"movie","imdb":"tt0816692"},{"title":"X","imdb":"unknown"}]""")
+        assertEquals("tt0816692", g[0].imdb)
+        assertEquals(null, g[1].imdb)
+    }
+
+    @Test fun forgivingMatches() {
+        fun t(id: String, name: String, year: String, kind: String = "movie") = Title(id, kind, name, year = year)
+        // Spelt its own way.
+        val spider = t("tt1", "Spider-Man: Into the Spider-Verse", "2018")
+        assertEquals(spider, aiMatch(listOf(listOf(t("tt9", "Spider-Man", "2002"), spider)), AiGuess("Spiderman Into the Spider Verse", 2018, false)))
+        // Same name: the year settles it.
+        val dune = t("tt2", "Dune", "2021")
+        assertEquals(dune, aiMatch(listOf(listOf(t("tt3", "Dune", "1984"), dune)), AiGuess("Dune", 2021, false)))
+        // A series, though the AI called it a film.
+        val office = t("tt4", "The Office", "2005–2013", "tv")
+        assertEquals(office, aiMatch(listOf(emptyList(), listOf(office)), AiGuess("The Office", 2005, false)))
+        // Another of its names: the search's first answer, from that very year.
+        val edge = t("tt5", "Edge of Tomorrow", "2014")
+        assertEquals(edge, aiMatch(listOf(listOf(edge)), AiGuess("Live Die Repeat", 2014, false)))
+        // Nothing like it.
+        assertEquals(null, aiMatch(listOf(listOf(t("tt6", "Cars", "2006"))), AiGuess("Nonexistent Picture", 1999, false)))
+    }
 }
