@@ -232,9 +232,11 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     var openSeasons by remember(row.job.uri) {
         mutableStateOf(setOf(row.files.firstOrNull { it.wanted && !it.saved }?.let { parseEpisode(it.name)?.season }))
     }
-    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(CARD - 2.dp)) {
+    // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card); the card's own
+    // padding stays on the right, and under the poster for whatever folds out below it.
+    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(end = CARD - 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Artwork(row.job.poster, row.job.label, Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
+            Artwork(row.job.poster, row.job.label, Modifier.width(64.dp).aspectRatio(2f / 3f))
             // Beside the poster: the words and buttons, and under them the progress line.
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -284,6 +286,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             ProgressLine(row.ratio, Modifier.padding(top = 6.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
             }
         }
+        if (row.state == DlState.WIFI || pack) Column(Modifier.padding(start = CARD - 2.dp, bottom = CARD - 2.dp)) {
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
         // Fastest / In order live in Settings → Downloads now, for every download, not on each card.
@@ -318,6 +321,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                     }
                 }
             }
+        }
         }
     }
 }
