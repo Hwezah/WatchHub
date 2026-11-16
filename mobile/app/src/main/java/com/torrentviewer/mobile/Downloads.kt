@@ -904,8 +904,8 @@ object Downloads {
     }
 
     /**
-     * Data saver (Settings → Downloads): on mobile data, a season scan checks fewer links and stops an episode once it
-     * has a confirmed pick as preferred, rather than waiting on every site. On Wi-Fi it changes nothing.
+     * Data saver (Settings → Downloads): on mobile data, a season scan checks fewer links (the preferred resolution's,
+     * at most 40 an episode). On Wi-Fi it changes nothing.
      */
     var dataSaver: Boolean
         get() = prefs().getBoolean("dataSaver", true)

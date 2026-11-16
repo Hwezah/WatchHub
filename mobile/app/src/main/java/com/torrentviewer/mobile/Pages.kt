@@ -1039,13 +1039,13 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             // Data saver: on mobile data, season scans check fewer links and stop an episode once its pick is confirmed.
             var saver by remember { mutableStateOf(Downloads.dataSaver) }
             Text(
-                "Data saver: on mobile data, a season scan checks fewer links and stops each episode once it has a confirmed " +
-                    "${downloadPrefs().quality.ifEmpty { "preferred" }} pick, instead of waiting on every site. Wi-Fi isn't affected.",
+                "Data saver: on mobile data, a season scan checks only the ${downloadPrefs().quality.ifEmpty { "preferred" }} links, " +
+                    "fewer of them. Every site is still waited for. Wi-Fi isn't affected.",
                 Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
             )
             SpreadRow {
                 Chip("Data saver on", saver, onClick = { saver = true; Downloads.dataSaver = true })
-                Chip("Every site", !saver, onClick = { saver = false; Downloads.dataSaver = false })
+                Chip("Check every link", !saver, onClick = { saver = false; Downloads.dataSaver = false })
             }
             // Direct links: how many connections at once, as 1DM's threads.
             var connections by remember { mutableStateOf(Downloads.connections) }

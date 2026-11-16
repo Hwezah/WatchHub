@@ -107,9 +107,10 @@ object SeasonBatch {
                 checking = launch { runCatching { LinkProbe.describe(partial) } }
             }
         }
-        // Every source, the slow sites too (the owner's rule): the light 720p MKV links are often the last to answer.
-        // With data saver on mobile data, an episode stops once it holds a confirmed pick as preferred ([confirmed]).
-        val all = if (Downloads.saving()) gatherUntil(EPISODE_CAP_MS, watch, search) else gatherAll(EPISODE_CAP_MS, watch, search)
+        // Every source, the slow sites too (the owner's rule): the light 720p MKV links are often the last to answer. The
+        // one exception, on any network: an episode that already holds a confirmed 720p MKV of 400 MB or less
+        // ([confirmed]) stops there — nothing later would be meaningfully lighter.
+        val all = gatherUntil(EPISODE_CAP_MS, watch, search)
         // The checks under way finish (they're most of the work), then whatever came after them is checked.
         checking?.join()
         // Then whatever is left unchecked, asked for its file name ([LinkProbe]): the light 720p MKVs are what a pick is after.
@@ -117,8 +118,8 @@ object SeasonBatch {
     }
 
     /**
-     * A pick that needs nothing more: the preferred resolution and format, a direct file whose size is known and light.
-     * With data saver on, an episode that has one stops asking the slower sites.
+     * A pick that needs nothing more: the preferred resolution and format, a direct file whose size is known and at most
+     * [LIGHT_EPISODE_BYTES]. An episode that has one stops asking the slower sites; any other waits for every site.
      */
     private fun confirmed(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
         val pick = seasonPick(hits, prefs) ?: return false
@@ -127,8 +128,8 @@ object SeasonBatch {
         return pick.direct && !isPlaylist(pick) && pick.size in 1..light && onTarget(listOf(pick), prefs, ::seasonPick)
     }
 
-    /** With data saver, an episode stops only on a confirmed pick this light (a film: 2.5 times): a typical 720p encode. */
-    private const val LIGHT_EPISODE_BYTES = 600L * 1024 * 1024
+    /** An episode stops early only on a confirmed pick this light (a film: 2.5 times) — the owner's line, 350–400 MB. */
+    private const val LIGHT_EPISODE_BYTES = 400L * 1024 * 1024
 
     /** [gatherAll], but done as soon as what has come holds a [confirmed] pick (after a short floor for the quick sources). */
     private suspend fun gatherUntil(capMs: Long, onPartial: (List<Hit>) -> Unit, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
@@ -163,7 +164,7 @@ object SeasonBatch {
         }
     }.getOrDefault(emptyList())
 
-    /** Even with data saver, an episode is asked about this long: the quick sources' light files come in by then. */
+    /** Even with a light pick in hand, an episode is asked about this long: the quick sources' files come in by then. */
     private const val SAVING_FLOOR_MS = 20_000L
 
     /** The longest one episode's sources are waited on: only a plugin that hangs is ever cut short. */
