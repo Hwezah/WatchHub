@@ -77,4 +77,9 @@ class LinkProbeTest {
         // No 720p MKV anywhere: up to 1080p.
         assertEquals(heavy1080, seasonPick(listOf(heavy1080, hls720), DownloadPrefs()))
     }
+
+    @Test fun aStreamFoundOutIsAPlaylist() {
+        val d = described(link("FrameX [720p | English]", 0, "720p"), "index.m3u8", "application/vnd.apple.mpegurl")
+        assertEquals("HLS", traitsOf(d).format)
+    }
 }

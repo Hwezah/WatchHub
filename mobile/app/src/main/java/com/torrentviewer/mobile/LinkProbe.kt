@@ -53,6 +53,8 @@ fun described(hit: Hit, fileName: String?, contentType: String?, length: Long = 
     val name = fileName.orEmpty()
     val hasFormat = Regex("(?i)\\.(mkv|mp4|avi|webm|m4v|mov|ts)$").containsMatchIn(name)
     val release = (name + if (hasFormat) "" else " $ext").trim()
+    // A playlist after all: an HLS stream, never taken for a file.
+    if (contentType?.contains("mpegurl", true) == true) return hit.copy(mime = androidx.media3.common.MimeTypes.APPLICATION_M3U8)
     if (release.isEmpty() && length <= 0) return hit
     return hit.copy(
         quality = hit.quality ?: quality(name),
@@ -85,10 +87,13 @@ fun guessed(hit: Hit): Hit {
 
 object LinkProbe {
     /** Links asked at once, and how long one may take: a dead host mustn't hold a season up. */
-    private const val AT_ONCE = 6
+    private const val AT_ONCE = 10
     private const val EACH_MS = 7_000L
-    /** The most links asked for one episode: the lightest unlabelled ones, which are the ones a pick might take. */
-    private const val MOST = 14
+    /**
+     * The most links asked for one episode. Every unlabelled one, in practice: an MKV whose name says nothing (a
+     * Pixeldrain or Driveseed link) was left out when only the lightest few were asked, and a 1080p taken over it.
+     */
+    private const val MOST = 80
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
 
     /** What each link was found to be, kept for the session: a rescan or a second pick doesn't ask again. */
@@ -99,8 +104,10 @@ object LinkProbe {
      * sizes last), since a pick wants the lightest. Never fails: a link that doesn't answer stays as it was.
      */
     suspend fun describe(hits: List<Hit>): List<Hit> {
+        // The preferred resolution's first, then the lightest: those are the ones a pick might take.
+        val wanted = downloadPrefs().quality
         val ask = hits.filter { unlabelled(it) && !known.containsKey(it.uri) }
-            .sortedWith(compareBy<Hit> { if (it.size > 0) 0 else 1 }.thenBy { it.size }).take(MOST)
+            .sortedWith(compareBy<Hit> { if (it.quality == null || it.quality == wanted) 0 else 1 }.thenBy { if (it.size > 0) 0 else 1 }.thenBy { it.size }).take(MOST)
         if (ask.isNotEmpty()) {
             val gate = Semaphore(AT_ONCE)
             coroutineScope {
@@ -132,7 +139,9 @@ object LinkProbe {
                     val type = conn.contentType
                     // A web page, not the file: nothing to learn.
                     if (type?.startsWith("text/", true) == true) return@withContext hit
-                    val length = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull() ?: 0L
+                    // The whole size: from the range answer, or a server that sent it all from the start.
+                    val length = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
+                        ?: conn.contentLengthLong.takeIf { code == 200 && it > 1 } ?: 0L
                     return@withContext described(hit, fileNameOf(conn.getHeaderField("Content-Disposition"), target), type, length)
                 }
             } finally {
