@@ -370,10 +370,20 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     /** What the big button plays: the episode last looked at, where the series was left, or the first of the season. */
     val upNext = episode ?: continueAt ?: if (through) numbered.firstOrNull()?.first else episodes.firstOrNull()
 
+    /**
+     * What Play tries, in turn, until one plays: the preferred resolution's (720p) first — in the list's own order, plugin
+     * links first — then the rest; never another app's or a dead torrent. A dozen at most.
+     */
+    fun playLine(hits: List<Hit>): List<Hit> {
+        val wanted = downloadPrefs().quality
+        return hits.filter { !it.external && !deadTorrent(it) }.sortedBy { if (wanted.isNotEmpty() && it.quality == wanted) 0 else 1 }.take(12)
+    }
+
     fun playEpisode(ep: Episode) = scope.launch {
         val ready = if (episode?.id == ep.id && shown.isNotEmpty()) shown else findSources(ep).await()
-        ready.firstOrNull()?.let { watch.stream(it, title, episodeTag(ep.season, ep.episode), ep) }
-            ?: watch.notes.tryEmit(noneFound(episodeTag(ep.season, ep.episode)))
+        val line = playLine(ready)
+        if (line.isNotEmpty()) watch.streamFirstOf(line, title, episodeTag(ep.season, ep.episode), ep)
+        else watch.notes.tryEmit(noneFound(episodeTag(ep.season, ep.episode)))
     }
 
     val wide = isWide()
@@ -440,7 +450,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                 busy -> "Finding sources…"
                                 else -> "No sources"
                             },
-                            onClick = { shown.firstOrNull()?.let { watch.stream(it, title) } ?: watch.notes.tryEmit(if (busy) "Still finding sources…" else noneFound(title.title)) },
+                            onClick = { playLine(shown).takeIf { it.isNotEmpty() }?.let { watch.streamFirstOf(it, title) } ?: watch.notes.tryEmit(if (busy) "Still finding sources…" else noneFound(title.title)) },
                             modifier = Modifier.fillMaxWidth(),
                             icon = L.drawable.lucide_ic_play,
                             primary = true,

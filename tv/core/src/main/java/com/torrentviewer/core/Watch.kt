@@ -77,8 +77,46 @@ class Watch(val engine: TorrentStream) {
 
     fun fail(message: String) {
         Log.w("watch", message)
+        // Play lined up others: the next is tried instead of giving up.
+        if (tryNext(message)) return
         notes.tryEmit(message)
         phase = Phase.IDLE
+    }
+
+    /** What Play lined up after the release it opened, best first: tried in turn while one won't play. */
+    private var fallbacks: List<Hit> = emptyList()
+    private var fallbackTitle: Title? = null
+    private var fallbackTag: String? = null
+    private var fallbackEpisode: Episode? = null
+    /** How many of the lined-up releases have been tried, for the note. */
+    private var tried = 0
+
+    /**
+     * Play: the first of [hits] — and should it not play (an error, a dead link, a file no player opens), the next,
+     * and the next, rather than backing out. A release picked by hand is played alone ([stream]).
+     */
+    fun streamFirstOf(hits: List<Hit>, from: Title?, tag: String? = null, episode: Episode? = null) {
+        val first = hits.firstOrNull() ?: return
+        fallbacks = hits.drop(1)
+        fallbackTitle = from
+        fallbackTag = tag
+        fallbackEpisode = episode
+        tried = 1
+        open(first, from, tag, episode)
+    }
+
+    /**
+     * The release playing failed with [reason]: the next one Play lined up, from the same spot in the film (the
+     * place is the title's, whichever release plays it). False when none is left.
+     */
+    fun tryNext(reason: String): Boolean {
+        val next = fallbacks.firstOrNull() ?: return false
+        fallbacks = fallbacks.drop(1)
+        tried++
+        engine.note("play: ${reason.take(120)} — trying source $tried")
+        notes.tryEmit("That source didn't play — trying another (${next.quality ?: "next"}, ${fallbacks.size} more after it)")
+        open(next, fallbackTitle, fallbackTag, fallbackEpisode)
+        return true
     }
 
     private fun uriOf(raw: String) = if (SettingsStore.value.value.addTrackers) withTrackers(raw) else raw
@@ -154,7 +192,14 @@ class Watch(val engine: TorrentStream) {
     }
 
     /** A chosen release becomes a stream. `tag` (S01E02) picks the file inside a pack. */
-    fun stream(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null) = AppScope.launch {
+    fun stream(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null): kotlinx.coroutines.Job {
+        // A release picked by hand is played alone: no line-up behind it.
+        fallbacks = emptyList()
+        return open(hit, from, tag, episode)
+    }
+
+    /** [stream] without touching the line-up: Play's first release, and each next one tried. */
+    private fun open(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null) = AppScope.launch {
         if (hit.external) {
             opens.tryEmit(hit.uri)
             return@launch
@@ -531,6 +576,7 @@ class Watch(val engine: TorrentStream) {
     fun startAt(): Double = item?.let { History.find(it.uri)?.positions?.get(playingIndex) } ?: 0.0
 
     fun exit() {
+        fallbacks = emptyList()
         pauseOnStremio()
         gen++
         phase = Phase.IDLE

@@ -947,7 +947,8 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                         v.onFailed = { message ->
                             watch.engine.note("player: failed — $message")
                             // From TorBox: on to WatchHub's own engine at the same spot, not out of the film.
-                            if (!watch.leaveTorBox(at)) {
+                            // Then the next source Play lined up, from the same spot; only with none left does it back out.
+                            if (!watch.leaveTorBox(at) && !watch.tryNext(message)) {
                                 watch.notes.tryEmit(message)
                                 watch.exit()
                             }
