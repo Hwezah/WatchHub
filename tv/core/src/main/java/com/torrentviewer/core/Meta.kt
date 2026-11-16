@@ -180,6 +180,7 @@ object Meta {
                 val body = runCatching { Net.get(url, timeoutMs = 40_000, quiet = true) }.getOrElse { Net.get(url, timeoutMs = 40_000, quiet = true) }
                 val metas = JSONObject(body).optJSONArray("metas") ?: JSONArray()
                 fetched["shelf:$kind:$genre"] = metas.length()
+                pageSize["shelf:$kind:$genre"] = metas.length()
                 return@remember toTitles(metas, kindOfType(list.type), anyId = true, type = list.type)
             }
             if (genre?.startsWith(TOP_SHELF) == true) return@remember topRated(kind, genre.removePrefix(TOP_SHELF).ifEmpty { null })
@@ -187,6 +188,7 @@ object Meta {
             val url = if (genre == ANIME_GENRE) ANIME else catalogUrl(CATALOG, type, "top", genre?.let { "genre=${enc(it)}" })
             val metas = JSONObject(Net.get(url)).optJSONArray("metas") ?: JSONArray()
             fetched["shelf:$kind:${genre.orEmpty()}"] = metas.length()
+            pageSize["shelf:$kind:${genre.orEmpty()}"] = metas.length()
             toTitles(metas, kind)
         }
     }.getOrDefault(emptyList())
@@ -198,6 +200,8 @@ object Meta {
     private val fetched = ConcurrentHashMap<String, Int>()
     /** Lists whose last page came back with nothing new: asked no more this run. */
     private val ended = ConcurrentHashMap.newKeySet<String>()
+    /** Each list's page size: its first answer's length. */
+    private val pageSize = ConcurrentHashMap<String, Int>()
     /** One page at a time per list, so a row and its "See all" don't both fetch the same one. */
     private val paging = ConcurrentHashMap<String, Mutex>()
 
@@ -214,39 +218,45 @@ object Meta {
     /**
      * The list with its next page added — newest first lists going further back in time — or null when there is
      * no more (or the addon didn't answer: asked again on the next scroll). Kept in memory, so the row on Home and
-     * its "See all" grow together; the copy on disk stays the first page.
+     * its "See all" grow together; the copy on disk stays the first page. [batch] pages are asked at once, a page's
+     * length apart, for a whole list wanted quickly (to put it in order).
      */
-    suspend fun more(kind: String, genre: String?): List<Title>? {
+    suspend fun more(kind: String, genre: String?, batch: Int = 1): List<Title>? {
         val key = "shelf:$kind:${genre.orEmpty()}"
         if (!pages(kind, genre)) return null
         return paging.getOrPut(key) { Mutex() }.withLock {
             @Suppress("UNCHECKED_CAST")
             val have = memory[key] as List<Title>? ?: return@withLock null
             val skip = fetched[key] ?: have.size
-            val page = runCatching {
-                withContext(Dispatchers.Default) {
-                    if (genre?.startsWith(ADDON_SHELF) == true) {
-                        val (addon, list) = Addons.shelf(genre) ?: return@withContext null
-                        val metas = JSONObject(Net.get(catalogUrl(addon.url, list.type, list.id, addonExtra(genre, list), skip), timeoutMs = 40_000, quiet = true))
-                            .optJSONArray("metas") ?: JSONArray()
-                        metas.length() to toTitles(metas, kindOfType(list.type), anyId = true, type = list.type)
-                    } else {
-                        val type = if (kind == "tv") "series" else "movie"
-                        val metas = JSONObject(Net.get(catalogUrl(CATALOG, type, "top", genre?.let { "genre=${enc(it)}" }, skip), quiet = true))
-                            .optJSONArray("metas") ?: JSONArray()
-                        metas.length() to toTitles(metas, kind)
-                    }
-                }
-            }.getOrNull() ?: return@withLock null
-            val (count, titles) = page
+            // The first page's length is the addon's page size: later pages start at its multiples.
+            val size = pageSize.getOrPut(key) { have.size }
+            val skips = if (size <= 0) listOf(skip) else (0 until batch.coerceAtLeast(1)).map { skip + it * size }
+            val answers = coroutineScope { skips.map { at -> async { runCatching { page(kind, genre, at) }.getOrNull() } }.awaitAll() }
+            // Up to the first page that didn't come: one after it would leave a hole.
+            val got = answers.takeWhile { it != null }.filterNotNull()
+            if (got.isEmpty()) return@withLock null
             val known = have.mapTo(HashSet()) { it.imdb }
-            val fresh = titles.filter { known.add(it.imdb) }
-            fetched[key] = skip + count
-            if (fresh.isEmpty()) {
-                ended += key
-                return@withLock null
-            }
+            val fresh = got.flatMap { it.second }.filter { known.add(it.imdb) }
+            fetched[key] = skip + got.sumOf { it.first }
+            // Nothing new, or an empty page: the list's end.
+            if (fresh.isEmpty() || got.any { it.first == 0 }) ended += key
+            if (fresh.isEmpty()) return@withLock null
             (have + fresh).also { memory[key] = it }
+        }
+    }
+
+    /** One page of a list from [skip]: how many entries it held, and its titles. Null when the addon is gone. */
+    private suspend fun page(kind: String, genre: String?, skip: Int): Pair<Int, List<Title>>? = withContext(Dispatchers.Default) {
+        if (genre?.startsWith(ADDON_SHELF) == true) {
+            val (addon, list) = Addons.shelf(genre) ?: return@withContext null
+            val metas = JSONObject(Net.get(catalogUrl(addon.url, list.type, list.id, addonExtra(genre, list), skip), timeoutMs = 40_000, quiet = true))
+                .optJSONArray("metas") ?: JSONArray()
+            metas.length() to toTitles(metas, kindOfType(list.type), anyId = true, type = list.type)
+        } else {
+            val type = if (kind == "tv") "series" else "movie"
+            val metas = JSONObject(Net.get(catalogUrl(CATALOG, type, "top", genre?.let { "genre=${enc(it)}" }, skip), quiet = true))
+                .optJSONArray("metas") ?: JSONArray()
+            metas.length() to toTitles(metas, kind)
         }
     }
 
@@ -446,13 +456,18 @@ object Meta {
 
 enum class Sort(val label: String) { POPULAR("Popular"), RATING("Top rated"), YEAR("Newest"), TITLE("A–Z") }
 
-/** A title missing the field goes last, not as zero — unrated is unknown, not bad — in the catalogue's own order. */
+/**
+ * A title missing the field goes last, not as zero — unrated is unknown, not bad — in the catalogue's own order.
+ * Newest is year by year, each year's best rated first, so one year is done before the one before it starts.
+ */
 fun sortTitles(titles: List<Title>, sort: Sort): List<Title> {
-    fun key(t: Title) = (if (sort == Sort.RATING) t.rating else t.year?.take(4))?.toDoubleOrNull()
+    fun year(t: Title) = t.year?.take(4)?.toDoubleOrNull()
+    fun rating(t: Title) = t.rating?.toDoubleOrNull()
     return when (sort) {
         Sort.POPULAR -> titles
         Sort.TITLE -> titles.sortedBy { it.title.lowercase() }
-        else -> titles.sortedWith(compareBy(nullsLast(reverseOrder())) { t: Title -> key(t) })
+        Sort.RATING -> titles.sortedWith(compareBy(nullsLast(reverseOrder())) { t: Title -> rating(t) })
+        Sort.YEAR -> titles.sortedWith(compareBy<Title, Double?>(nullsLast(reverseOrder())) { year(it) }.thenBy(nullsLast(reverseOrder())) { rating(it) })
     }
 }
 

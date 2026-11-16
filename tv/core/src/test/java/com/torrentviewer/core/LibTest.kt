@@ -489,6 +489,12 @@ class LibTest {
         assertEquals(listOf("tt3", "tt1", "tt2"), sortTitles(t, Sort.YEAR).map { it.imdb })
         assertEquals(listOf("tt2", "tt1", "tt3"), sortTitles(t, Sort.TITLE).map { it.imdb })
         assertEquals(t, sortTitles(t, Sort.POPULAR))
+        // Newest: a year at a time, its best rated first, then the year before.
+        val years = listOf(
+            Title("a", "movie", "A", year = "2013", rating = "8.2"), Title("b", "movie", "B", year = "2014", rating = "8.1"),
+            Title("c", "movie", "C", year = "2013", rating = "8.5"), Title("d", "movie", "D", year = "2014"), Title("e", "movie", "E", year = "2014", rating = "8.4"),
+        )
+        assertEquals(listOf("e", "b", "d", "c", "a"), sortTitles(years, Sort.YEAR).map { it.imdb })
     }
 
     @Test fun languages() {

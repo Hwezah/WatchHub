@@ -129,25 +129,54 @@ private fun subOf(t: Title) = listOfNotNull(if (t.isSeries) "Series" else "Film"
 
 /* -------------------------------------------------------------- catalog */
 
-/** A whole shelf as a grid, with the phone's four orders. */
+/** How much of a list is read to put it in order: past this, later pages still come as the grid is scrolled. */
+private const val WHOLE_LIST = 400
+
+/**
+ * A whole shelf as a grid, with the phone's four orders. An addon's list opens newest first, a year at a time and each
+ * year's best rated first, the whole list read for it; the built-in shelves open as they're ranked.
+ */
 @Composable
 fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
-    var sort by rememberSaveable { mutableStateOf(Sort.POPULAR) }
+    var sort by rememberSaveable { mutableStateOf(if (shelf.genre?.startsWith(ADDON_SHELF) == true) Sort.YEAR else Sort.POPULAR) }
     // Top rated is the genre's real best, not just its fifty most popular reordered. An addon's list is only itself.
     val source = if (sort == Sort.RATING && shelf.genre?.startsWith(ADDON_SHELF) != true) TOP_SHELF + shelf.genre.orEmpty() else shelf.genre
     var titles by remember(source) { mutableStateOf(Meta.peekCatalog(shelf.kind, source)) }
     LaunchedEffect(source) { if (titles.isNullOrEmpty()) titles = Meta.catalog(shelf.kind, source) }
     val shown = remember(titles, sort) { sortTitles(Kids.only(titles.orEmpty()), sort) }
     val grid = rememberLazyGridState()
+    /** A longer list in, never a shorter one: a scroll's page and the ordering's can finish in either order. */
+    fun grow(next: List<Title>?) {
+        if (next != null && next.size > (titles?.size ?: 0)) titles = next
+    }
+    // Put in an order of its own (by year, rating, name): the whole list first, a few pages at once, so a year isn't
+    // done before its later pages came — up to [WHOLE_LIST]. The catalogue's own order needs only what's scrolled to.
+    var filling by remember(source) { mutableStateOf(false) }
+    LaunchedEffect(source, sort, titles != null) {
+        if (sort == Sort.POPULAR || titles == null) {
+            filling = false
+            return@LaunchedEffect
+        }
+        filling = true
+        try {
+            while ((titles?.size ?: 0) < WHOLE_LIST && Meta.pages(shelf.kind, source)) {
+                val next = Meta.more(shelf.kind, source, batch = 4) ?: break
+                grow(next)
+            }
+        } finally {
+            // Also when another order is picked mid-way, which starts this afresh.
+            filling = false
+        }
+    }
     // Near the foot of the grid, the list's next page (an addon that pages, Cinemeta's lists): newest-first lists go on
     // back in time rather than stopping at the first answer's twenty-odd.
     var loading by remember(source) { mutableStateOf(false) }
     LaunchedEffect(grid, source) {
         androidx.compose.runtime.snapshotFlow { grid.layoutInfo.let { i -> i.totalItemsCount > 1 && (i.visibleItemsInfo.lastOrNull()?.index ?: 0) >= i.totalItemsCount - 9 } }
             .collect { near ->
-                if (near && !loading && titles != null && Meta.pages(shelf.kind, source)) {
+                if (near && !loading && !filling && titles != null && Meta.pages(shelf.kind, source)) {
                     loading = true
-                    Meta.more(shelf.kind, source)?.let { titles = it }
+                    grow(Meta.more(shelf.kind, source))
                     loading = false
                 }
             }
@@ -170,8 +199,15 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                 }
             }
             if (titles == null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.padding(top = 40.dp), contentAlignment = Alignment.Center) { Spinner(size = 36.dp) } }
+            else if (filling) item(span = { GridItemSpan(maxLineSpan) }) {
+                // The order shows once the list is all in, rather than titles jumping about as each page lands.
+                Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Spinner(size = 36.dp)
+                    Text("Putting the list in order · ${titles?.size ?: 0} titles", Modifier.padding(top = 12.dp), style = Type.meta)
+                }
+            }
             else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Note("Nothing on this shelf right now.") }
-            items(shown, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
+            if (!filling) items(shown, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
             if (loading) item(key = "~more~", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) { Spinner(size = 28.dp) } }
         }
         BackButton(onBack)
