@@ -478,15 +478,15 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             Text(plot,style = Type.body.copy(color = Ink.text.copy(alpha = 0.85f)), maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
                         }
                     }
-                    // The director at the left, and on the same line at the far right the whole story, scene by scene with times
-                    // and the ending held back: a film's here, an episode's on its row.
+                    // The director at the left, and on the same line at the far right the whole story (Wikipedia's plot), the
+                    // ending held back: a film's here, an episode's on its row.
                     if (title.directors.isNotEmpty() || !title.isSeries) Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (title.directors.isNotEmpty()) Crew(if (title.isSeries) "Creators" else "Director", title.directors.take(2), tmdb?.directors.orEmpty(), onPerson.takeUnless { com.torrentviewer.core.Kids.on }, Modifier.weight(1f))
                         else Spacer(Modifier.weight(1f))
                         if (!title.isSeries) Tap({ storyEp = null; storyOpen = true }, Modifier.padding(start = 10.dp), RoundedCornerShape(6.dp)) {
                             Row(Modifier.padding(vertical = 6.dp, horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Lc(L.drawable.lucide_ic_info, tint = Ink.accent, size = 16.dp)
-                                Text("  Scene by Scene", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
+                                Text("  Full Plot", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
                             }
                         }
                     }
@@ -975,7 +975,7 @@ private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?,
                     ep.released?.take(10)?.let { Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp)) }
                 }
             }
-            // The episode's story, scene by scene ([StorySheet]).
+            // The episode's full summary ([StorySheet]).
             Tap(onStory, shape = CircleShape) { Lc(L.drawable.lucide_ic_info, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
             // Every release for this episode, to pick one by hand.
             Tap(onSources, shape = CircleShape) { Lc(L.drawable.lucide_ic_list_video, Modifier.padding(10.dp), tint = Ink.muted, size = 22.dp) }

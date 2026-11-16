@@ -302,13 +302,13 @@ object AiSearch {
      * to show when the provider fails.
      */
     /** One request and its answer's text; a connection cut before the answer is asked once more, then said in plain words. */
-    private suspend fun askOnce(p: AiProvider, m: String, key: String, prompt: String, thinking: AiThinking, timeoutMs: Int): String {
+    private suspend fun askOnce(p: AiProvider, m: String, key: String, prompt: String, thinking: AiThinking): String {
         val req = aiRequest(p, m, key, prompt, thinking)
         // A connection cut before the answer (the app left the screen, the network switched) is asked once more;
         // a second cut is said in plain words. The service's own errors (HttpException) go straight up.
         repeat(2) { attempt ->
             try {
-                return aiReplyText(p, Net.postJson(req.url, req.body, timeoutMs = timeoutMs, quiet = true, headers = req.headers))
+                return aiReplyText(p, Net.postJson(req.url, req.body, timeoutMs = 30_000, quiet = true, headers = req.headers))
             } catch (e: HttpException) {
                 throw e
             } catch (e: java.io.IOException) {
@@ -326,20 +326,18 @@ object AiSearch {
      * earlier for this service, else the default; an unknown default makes it ask the service which models the key
      * may use and switch to the newest. Throws with a message to show.
      */
-    private suspend fun complete(p: AiProvider, key: String, prompt: String, timeoutMs: Int = 30_000, quick: Boolean = false): Pair<String, String> {
+    private suspend fun complete(p: AiProvider, key: String, prompt: String): Pair<String, String> {
         val typed = SettingsStore.value.value.aiModel
-        val usual = typed.ifBlank { Kv.global(foundKey(p)).orEmpty() }
-        // [quick], with no model typed: Gemini's light model first — a long read written up several times faster.
-        val model = if (quick && typed.isBlank() && p == AiProvider.GEMINI) GEMINI_WHEN_BUSY.first() else usual
+        val model = typed.ifBlank { Kv.global(foundKey(p)).orEmpty() }
         suspend fun ask(m: String): String {
-            if (p != AiProvider.GEMINI) return askOnce(p, m, key, prompt, AiThinking.DEFAULT, timeoutMs)
+            if (p != AiProvider.GEMINI) return askOnce(p, m, key, prompt, AiThinking.DEFAULT)
             // From the way this model last accepted, so a refused spelling costs a round trip once, not every search.
             val name = m.ifBlank { p.defaultModel }
             val known = Kv.global("ai-thinking:$name")?.let { saved -> AiThinking.entries.firstOrNull { it.name == saved } }
             val ways = AiThinking.entries.dropWhile { known != null && it != known }
             for ((i, way) in ways.withIndex()) {
                 try {
-                    return askOnce(p, m, key, prompt, way, timeoutMs).also { if (way != known) Kv.setGlobal("ai-thinking:$name", way.name) }
+                    return askOnce(p, m, key, prompt, way).also { if (way != known) Kv.setGlobal("ai-thinking:$name", way.name) }
                 } catch (e: HttpException) {
                     if (e.code != 400 || i == ways.lastIndex) throw e
                 }
@@ -377,12 +375,6 @@ object AiSearch {
         return try {
             askPatiently(model)
         } catch (e: HttpException) {
-            // The light model not offered to this key: the usual one.
-            if (model != usual && e.code in setOf(400, 404)) return try {
-                askPatiently(usual)
-            } catch (again: HttpException) {
-                throw IllegalStateException(aiErrorText(p, again.code, again.body))
-            }
             val better = if (e.code == 404 && typed.isBlank()) discover(p, key)?.takeIf { it != model.ifBlank { p.defaultModel } } else null
             if (better == null) throw IllegalStateException(aiErrorText(p, e.code, e.body))
             Kv.setGlobal(foundKey(p), better)
@@ -392,18 +384,6 @@ object AiSearch {
                 throw IllegalStateException(aiErrorText(p, again.code, again.body))
             }
         }
-    }
-
-    /**
-     * Any question to the viewer's AI, its answer's text: a film's scene-by-scene breakdown ([Breakdowns]). The same
-     * patience as search — busy services tried again, lighter models — with [timeoutMs] for a long read. [quick] asks
-     * Gemini's light model first (unless the viewer typed a model): much faster at writing a long answer.
-     * Throws with a message to show.
-     */
-    suspend fun ask(prompt: String, timeoutMs: Int = 30_000, quick: Boolean = false): String {
-        val p = provider() ?: throw IllegalStateException("Choose an AI in Settings → AI Search")
-        val key = Secrets.get(keyName(p)) ?: throw IllegalStateException("Add your ${p.label} key in Settings → AI Search")
-        return complete(p, key, prompt, timeoutMs, quick).first
     }
 
     /** Settings' Test Key: a one-word question, so the viewer knows the key and model answer. Which model, and how fast. */

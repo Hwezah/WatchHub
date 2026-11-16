@@ -27,15 +27,14 @@ import com.torrentviewer.core.Breakdowns
 import com.torrentviewer.core.Episode
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Scene
-import com.torrentviewer.core.Secrets
 import com.torrentviewer.core.Spinner
 import com.torrentviewer.core.Title
 import com.torrentviewer.core.Type
 
 /**
- * A film's or episode's story, scene by scene with times, to read before watching ([Breakdowns]). Everything up to the
- * final act shows; the ending waits behind a button, as asked for. Made once, by the viewer's AI from the subtitles,
- * then kept: a second look is instant.
+ * A film's or episode's full story, to read before watching ([Breakdowns]: Wikipedia's plot, or the episode's summary).
+ * Everything but the last paragraph shows; the ending waits behind a button, as asked for. Kept once read: a second
+ * look is instant.
  */
 @Composable
 fun StorySheet(title: Title, episode: Episode?, onDismiss: () -> Unit) {
@@ -43,11 +42,11 @@ fun StorySheet(title: Title, episode: Episode?, onDismiss: () -> Unit) {
     var failed by remember(title.imdb, episode?.id) { mutableStateOf<String?>(null) }
     var ending by remember(title.imdb, episode?.id) { mutableStateOf(false) }
     LaunchedEffect(title.imdb, episode?.id) {
-        runCatching { Breakdowns.of(title, episode, Secrets.subdl.value.ifBlank { BuildConfig.SUBDL_KEY }) }
+        runCatching { Breakdowns.of(title, episode) }
             .onSuccess { story = it }
             .onFailure { e -> if (e !is kotlinx.coroutines.CancellationException) failed = e.message ?: "Couldn't get the story" }
     }
-    // What it's doing meanwhile: finding subtitles, reading them, the AI writing.
+    // What it's doing meanwhile ("Reading Wikipedia…").
     val steps by Breakdowns.steps.collectAsState()
     val doing = steps[Breakdowns.keyOf(title, episode)]
     val heading = episode?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: title.title
@@ -60,7 +59,6 @@ fun StorySheet(title: Title, episode: Episode?, onDismiss: () -> Unit) {
                     Column(Modifier.fillMaxWidth().padding(vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Spinner(size = 30.dp)
                         Text(doing ?: "Starting…", Modifier.padding(top = 12.dp), style = Type.meta)
-                        Text("Only the first time: it's kept after", Modifier.padding(top = 4.dp), style = Type.meta.copy(color = Ink.faint))
                     }
                 }
                 else -> {
@@ -81,7 +79,7 @@ fun StorySheet(title: Title, episode: Episode?, onDismiss: () -> Unit) {
     }
 }
 
-/** One stretch: its times on the left, what happens beside them. A plot summary's paragraphs have no times. */
+/** One paragraph; with times (none from Wikipedia), those on the left. */
 @Composable
 private fun SceneText(scene: Scene) {
     Row {

@@ -51,33 +51,10 @@ object Net {
         return request(url, "POST", body, timeoutMs, quiet, "multipart/form-data; boundary=$boundary", headers)
     }
 
-    /**
-     * A file's bytes (a subtitle, which may come zipped), at most [cap] of them: null past that, so a link to
-     * something far bigger than it should be is never read whole.
-     */
-    suspend fun bytes(url: String, timeoutMs: Int = 20_000, quiet: Boolean = true, cap: Int = 8 * 1024 * 1024): ByteArray? =
-        send(url, "GET", null, timeoutMs, quiet) { input ->
-            val out = java.io.ByteArrayOutputStream()
-            val buf = ByteArray(16 * 1024)
-            while (true) {
-                val n = input.read(buf)
-                if (n < 0) break
-                out.write(buf, 0, n)
-                if (out.size() > cap) return@send null
-            }
-            out.toByteArray()
-        }
-
     private suspend fun request(
         url: String, method: String, body: String?, timeoutMs: Int, quiet: Boolean,
         type: String = "application/json", headers: Map<String, String> = emptyMap(),
-    ): String = send(url, method, body, timeoutMs, quiet, type, headers) { it.bufferedReader().use { r -> r.readText() } }
-
-    /** One request, its answer read by [read]; a status outside 2xx throws [HttpException] with what the service said. */
-    private suspend fun <T> send(
-        url: String, method: String, body: String?, timeoutMs: Int, quiet: Boolean,
-        type: String = "application/json", headers: Map<String, String> = emptyMap(), read: (java.io.InputStream) -> T,
-    ): T =
+    ): String =
         withContext(Dispatchers.IO) {
             val conn = try {
                 (URL(url).openConnection() as HttpURLConnection).apply {
@@ -109,7 +86,7 @@ object Net {
                     val said = runCatching { conn.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull().orEmpty()
                     throw HttpException(code, "${url.substringBefore('?')} returned $code", said)
                 }
-                conn.inputStream.use(read)
+                conn.inputStream.bufferedReader().use { it.readText() }
             } finally {
                 conn.disconnect()
             }
