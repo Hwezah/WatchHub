@@ -400,7 +400,6 @@ fun ReleasesSheet(all: List<Item>, watch: Watch, onDismiss: () -> Unit) {
     )
 }
 
-@Composable
 /**
  * One genre as a wide picture tile: the backdrop of the genre's first title, darkened at the foot, its name in
  * capitals over it. The list is fetched when the tile first shows, and kept as Home's rows are.
