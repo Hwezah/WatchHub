@@ -19,6 +19,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -289,6 +292,8 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     val context = androidx.compose.ui.platform.LocalContext.current
     /** The app the links go to passes their headers on (Grabber): links that need a Referer can go too. */
     val headersGo = remember(sendTo) { external && ExternalDownloaders.sendsHeaders(context, sendTo) }
+    /** The app the links go to opens torrents (1DM does): magnets can go too. Other apps get only direct links. */
+    val magnetsGo = remember(sendTo) { external && ExternalDownloaders.takesMagnets(context, sendTo) }
     LaunchedEffect(title.imdb, season) { SeasonBatch.begin(title, season) }
     val scanned by SeasonBatch.scan.collectAsState()
     val scan = scanned?.takeIf { it.titleImdb == title.imdb && it.season == season }
@@ -320,7 +325,11 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             }
             /** What the plan may take from an episode's releases: for another app, the links that need no headers when there are any. */
             // Grabber takes each link's headers with it, so for Grabber nothing is left out.
-            fun usableFor(hits: List<Hit>) = if (external && !headersGo) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
+            fun usableFor(hits: List<Hit>): List<Hit> {
+                if (!external) return hits
+                val sendable = hits.filter { (it.direct || magnetsGo) && (headersGo || it.headers.isEmpty()) }
+                return sendable.ifEmpty { hits }
+            }
             // What a pick may take: the chips count only that, thin torrents left out as in the lists.
             val all = prefs.usable(scan.found.values.flatten())
             if (!scan.done) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -337,7 +346,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             // The rows' choices are counted when the scan or the chips change, not on every redraw.
             // Counted in episodes, from what the plan itself may take (for another app, only links that need no headers):
             // the number on a chip is how many episodes choosing it can fill.
-            val options = remember(scan, filter, external, headersGo) {
+            val options = remember(scan, filter, external, headersGo, magnetsGo) {
                 val eps = scan.found.values.map { hits -> usableFor(prefs.usable(hits)) }
                 listOf(
                     episodeOptions(eps, filter.copy(quality = null)) { it.quality },
@@ -355,7 +364,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
 
             // For another app: links that need no headers first, since a shared link can't carry them.
             // Worked out when the scan, the chips or the preferences change, not on every redraw of the sheet.
-            val plan = remember(scan, filter, prefs, external, headersGo) {
+            val plan = remember(scan, filter, prefs, external, headersGo, magnetsGo) {
                 // Every episode, from the start: its pick so far, swapped for a better one as its sources answer.
                 scan.episodes.map { ep ->
                     val hits = scan.found[ep.id].orEmpty()
@@ -389,6 +398,34 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 if (showPlan) "Hide what each episode gets" else "Show what each episode gets", { showPlan = !showPlan },
                 Modifier.padding(top = 14.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_list_video,
             )
+            // A light season pack (a torrent of the whole season at 720p, 450 MB an episode at most): one download instead of eight.
+            val pack = remember(scan, prefs, magnetsGo) {
+                if (external && !magnetsGo) null else lightPack(scan.found.values.flatten(), season, scan.episodes.size, prefs)
+            }
+            if (pack != null && filter == BatchFilter()) Column(
+                Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Ink.text.copy(alpha = 0.06f)).padding(12.dp),
+            ) {
+                Text("Season pack", style = Type.overline.copy(color = Ink.muted))
+                Text(
+                    listOfNotNull(pack.quality, traitsOf(pack).codec.takeIf { it != UNKNOWN }?.let(::codecLabel), bytes(pack.size), "${pack.seeders} seeds").joinToString(" · ") +
+                        " — about ${bytes(pack.size / scan.episodes.size.coerceAtLeast(1))} an episode",
+                    Modifier.padding(top = 2.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold),
+                )
+                Text(pack.release, Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Button(
+                    if (external) "Send the Pack" else "Download the Pack",
+                    {
+                        if (external) {
+                            ExternalDownloaders.note(openInDownloader(context, pack, "${title.title} · season $season", sendTo), many = false)?.let(say)
+                        } else {
+                            Downloads.add(downloadJob(pack, title).copy(season = season))
+                            say("Downloading season $season as one pack — see Downloads")
+                        }
+                        onDismiss()
+                    },
+                    Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_layers, fill = Ink.download,
+                )
+            }
             if (showPlan) plan.forEach { (ep, hit) ->
                 val t = hit?.let(::traitsOf)
                 val on = hit != null && ep.id !in skipped
@@ -411,6 +448,10 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 // unconfirmed, or why it isn't the preferred 720p MKV.
                 val note = if (hit == null) null else when {
                     ep.id !in scan.finished -> "still looking"
+                    // A much lighter 720p MKV exists, but only for the app's own downloader (it needs its site's headers, or is a torrent).
+                    external && filter == BatchFilter() && onTarget(listOf(hit), prefs, ::seasonPick) &&
+                        seasonPick(scan.found[ep.id].orEmpty(), prefs)?.let { it.size > 0 && hit.size > 0 && it.size < hit.size * 0.7 } == true ->
+                        "a ${bytes(seasonPick(scan.found[ep.id].orEmpty(), prefs)?.size ?: 0)} one is only for the app's own downloader"
                     filter == BatchFilter() && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) ->
                         // For another app: 720p MKVs that need their site's headers, which a shared link can't carry.
                         if (external && onTarget(scan.found[ep.id].orEmpty(), prefs, ::seasonPick)) "its ${prefs.quality} ${prefs.format} files need the app's own downloader"

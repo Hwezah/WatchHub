@@ -73,7 +73,11 @@ class LinkProbeTest {
         val small720 = link("Show 720p .mkv", 320L shl 20, "720p", "https://a.example/3")
         val hls720 = link("Show 720p", 100L shl 20, "720p", "https://a.example/4.m3u8")
         val torrent720 = Hit("hash", "Show 720p x265 .mkv", "magnet:?xt=urn:btih:hash", 50, 0, 200L shl 20, "720p", "tv", Scope.EPISODE, null)
-        assertEquals(small720, seasonPick(listOf(heavy1080, big720, small720, hls720, torrent720), DownloadPrefs()))
+        // A well-seeded torrent competes on size with the links: the lighter wins.
+        assertEquals(torrent720, seasonPick(listOf(heavy1080, big720, small720, hls720, torrent720), DownloadPrefs()))
+        // A thin one (under 10 seeds) doesn't.
+        val thin = torrent720.copy(id = "thin", uri = "magnet:?xt=urn:btih:thin", seeders = 6)
+        assertEquals(small720, seasonPick(listOf(heavy1080, big720, small720, hls720, thin), DownloadPrefs()))
         // No 720p MKV anywhere: up to 1080p.
         assertEquals(heavy1080, seasonPick(listOf(heavy1080, hls720), DownloadPrefs()))
     }
@@ -89,5 +93,14 @@ class LinkProbeTest {
         val q = episodeOptions(listOf(ep1, ep2), BatchFilter()) { it.quality }.toMap()
         assertEquals(1, q["720p"])
         assertEquals(1, q["1080p"])
+    }
+
+    @Test fun aLightSeasonPackIsFound() {
+        fun pack(name: String, size: Long, seeds: Int) = Hit(name, name, "magnet:?xt=urn:btih:$name", seeds, 0, size, "720p", "tv", Scope.SEASON, null)
+        val light = pack("Show.S01.720p.x265", 2L shl 30, 40)
+        val heavy = pack("Show.S01.720p.x264", 9L shl 30, 80)
+        val thin = pack("Show.S01.720p.HEVC.small", 1L shl 30, 4)
+        assertEquals(light, lightPack(listOf(light, heavy, thin), 1, 8, DownloadPrefs()))
+        assertNull(lightPack(listOf(heavy), 1, 8, DownloadPrefs()))
     }
 }

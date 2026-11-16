@@ -156,6 +156,16 @@ object ExternalDownloaders {
         return pkg.contains("grabber", true) || name.contains("grabber", true)
     }
 
+    /** Whether the app [to] would send to opens torrents: 1DM does; Grabber and most others take only http links. */
+    fun takesMagnets(context: Context, to: Downloader): Boolean {
+        val pkg = when (to) {
+            is Downloader.App -> to.pkg
+            Downloader.Default -> default(context, sendProbe())?.first ?: return false
+            else -> return false
+        }
+        return pkg.startsWith("idm.internet.download.manager")
+    }
+
     /** What a caller says after [hand]. */
     fun note(handed: Handed, many: Boolean): String? = when (handed) {
         Handed.Opened -> null

@@ -242,12 +242,37 @@ fun seasonPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     return candidates.minWithOrNull(
         compareBy<Hit> { if (prefs.format.isNotEmpty() && t(it).format != prefs.format) 1 else 0 }
             .thenBy { resolutionDistance(it.quality, prefs.quality) }
-            .thenByDescending { it.direct && !isPlaylist(it) }
-            .thenByDescending { alive(it) }
+            // A file, link or torrent, before a stream (no size to go by, and joined from pieces).
+            .thenByDescending { !(it.direct && isPlaylist(it)) }
+            // Ready to download: a link, or a torrent with [MIN_SEEDS] or more — the owner's floor — or cached on TorBox.
+            .thenByDescending { ready(it, prefs.cached) }
             .thenBy { if (it.size > 0) 0 else 1 }
+            // Then the fewest MB, links and torrents alike; a link only breaks a tie.
             .thenBy { it.size }
+            .thenByDescending { it.direct }
             .thenByDescending { prefs.codec.isNotEmpty() && t(it).codec == prefs.codec }
             .thenByDescending { it.seeders },
+    )
+}
+
+/** Downloads without waiting on a thin swarm: a direct link, a torrent of [MIN_SEEDS] seeds or more, or one cached on TorBox. */
+fun ready(hit: Hit, cached: Set<String> = emptySet()) = hit.direct || !fewSeeds(hit, cached)
+
+/**
+ * The season pack worth taking instead of the episodes one by one: season [season] alone (not a complete series),
+ * at the preferred resolution, ready ([ready]), and light — no more than [perEpisode] bytes an episode for its
+ * [episodes] on average. The lightest such, x265 first among near sizes; null when there is none.
+ */
+fun lightPack(hits: List<Hit>, season: Int, episodes: Int, prefs: DownloadPrefs, perEpisode: Long = 450L * 1024 * 1024): Hit? {
+    if (episodes <= 0) return null
+    return hits.filter {
+        !it.direct && it.scope == Scope.SEASON && com.torrentviewer.core.parseEpisode(it.release) == null && season in com.torrentviewer.core.seasonsIn(it.release) &&
+            ready(it, prefs.cached) && !deadTorrent(it, prefs.cached) &&
+            (prefs.quality.isEmpty() || it.quality == prefs.quality) && it.size > 0 && it.size <= perEpisode * episodes
+    }.distinctBy { it.id }.minWithOrNull(
+        compareBy<Hit> { it.size / (64L * 1024 * 1024) }
+            .thenByDescending { prefs.codec.isNotEmpty() && traitsOf(it).codec == prefs.codec }
+            .thenBy { it.size },
     )
 }
 
