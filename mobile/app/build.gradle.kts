@@ -122,6 +122,9 @@ dependencies {
     // Bump it when plugins start failing with NoSuchMethodError / NoClassDefFoundError.
     implementation("com.github.recloudstream.cloudstream:library:5d66bbeaf3")
     implementation("com.github.Blatzar:NiceHttp:0.4.18")
+    // YouTube's streams read on the phone, for trailers in the app's own player: the version CloudStream's library is
+    // built with (it ships it already; named here to call it directly). Bump together with the library.
+    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.3")
     // TLS for older Androids, as CloudStream bundles.
     implementation("org.conscrypt:conscrypt-android:2.5.3")
 

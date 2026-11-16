@@ -38,6 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
@@ -136,7 +138,7 @@ fun TrailerSheet(youtubeId: String, title: String, onDismiss: () -> Unit) {
                     if (full) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(18.dp)),
                     contentAlignment = Alignment.TopEnd,
                 ) {
-                    YouTubeView(youtubeId, ZOOMS[zoom].first)
+                    TrailerPlayer(youtubeId, ZOOMS[zoom].first)
                     if (full) Row(Modifier.padding(12.dp)) {
                         Round(L.drawable.lucide_ic_zoom_in, dark = true) { zoom = (zoom + 1) % ZOOMS.size }
                         Round(L.drawable.lucide_ic_minimize, dark = true) { full = false }
@@ -203,12 +205,157 @@ if(v.paused)v.play();else v.pause();})();
 
 private fun clock(seconds: Float): String = seconds.toInt().let { "%d:%02d".format(it / 60, it % 60) }
 
+/** What the controls drive: the app's own player, or YouTube's page as the fallback. */
+private interface TrailerPlayback {
+    /** Where it is, handed to [onState] as (seconds, length, paused); a page answers later. */
+    fun poll(onState: (Float, Float, Boolean) -> Unit)
+    fun toggle()
+    fun seek(seconds: Float)
+}
+
+/** YouTube's embed page driven by script. */
+private class WebPlayback(private val web: WebView) : TrailerPlayback {
+    override fun poll(onState: (Float, Float, Boolean) -> Unit) = web.evaluateJavascript(STATE_SCRIPT) { raw ->
+        // evaluateJavascript hands a JSON string of the script's result: a quoted "[..]" here.
+        runCatching { org.json.JSONArray(org.json.JSONTokener(raw).nextValue() as String) }.getOrNull()?.let {
+            onState(it.optDouble(0).toFloat(), it.optDouble(1).toFloat().takeIf { d -> d.isFinite() } ?: 0f, it.optBoolean(2))
+        }
+    }
+
+    override fun toggle() = web.evaluateJavascript(TOGGLE_SCRIPT, null)
+    override fun seek(seconds: Float) = web.evaluateJavascript("(function(){var v=document.querySelector('video');if(v)v.currentTime=$seconds;})()", null)
+}
+
+/** The app's own player. */
+private class ExoPlayback(private val player: androidx.media3.exoplayer.ExoPlayer) : TrailerPlayback {
+    override fun poll(onState: (Float, Float, Boolean) -> Unit) {
+        val length = player.duration.takeIf { it != androidx.media3.common.C.TIME_UNSET && it > 0 } ?: 0L
+        onState(player.currentPosition / 1000f, length / 1000f, !player.playWhenReady)
+    }
+
+    override fun toggle() {
+        // At its end: from the start again.
+        if (player.playbackState == androidx.media3.common.Player.STATE_ENDED) {
+            player.seekTo(0)
+            player.playWhenReady = true
+        } else player.playWhenReady = !player.playWhenReady
+    }
+
+    override fun seek(seconds: Float) = player.seekTo((seconds * 1000).toLong())
+}
+
 /**
- * The app's own controls over the trailer, in place of YouTube's: a tap on the picture shows them and plays or
- * pauses; a thin bar to scrub, with the time. Gone again a few seconds into playing.
+ * The trailer, in the app's own player ([Trailers]: YouTube's streams read on the phone, as Nuvio plays them) — each
+ * of its ways tried in turn if one won't play — and YouTube's embed page only when none will.
  */
 @Composable
-private fun TrailerControls(web: WebView?) {
+private fun TrailerPlayer(id: String, zoom: Float) {
+    var ways by remember(id) { mutableStateOf<List<TrailerStream>?>(null) }
+    var web by remember(id) { mutableStateOf(false) }
+    LaunchedEffect(id) {
+        val found = runCatching { Trailers.streams(id) }
+            .onFailure { android.util.Log.w("trailer", "streams for $id: ${it.message}") }.getOrDefault(emptyList())
+        if (found.isEmpty()) web = true else ways = found
+    }
+    val found = ways
+    when {
+        web -> YouTubeView(id, zoom)
+        found == null -> Waiting(id)
+        else -> NativeTrailer(found, zoom) { web = true }
+    }
+}
+
+/** A spinner while the trailer is found; after a while, a way out. */
+@Composable
+private fun Waiting(id: String) {
+    var slow by remember(id) { mutableStateOf(false) }
+    LaunchedEffect(id) {
+        kotlinx.coroutines.delay(10_000)
+        slow = true
+    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            com.torrentviewer.core.Spinner(size = 36.dp)
+            if (slow) Text(
+                "Taking long — the ↗ button above opens it in YouTube", Modifier.padding(top = 12.dp, start = 24.dp, end = 24.dp),
+                style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f), textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+            )
+        }
+    }
+}
+
+/**
+ * [ways] played by Media3, the first that plays kept; [onGiveUp] when none will. The picture keeps its own shape
+ * inside the frame, scaled by [zoom] from its centre and clipped.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun NativeTrailer(ways: List<TrailerStream>, zoom: Float, onGiveUp: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val player = remember {
+        androidx.media3.exoplayer.ExoPlayer.Builder(ctx).build().apply {
+            // A phone-sized picture: YouTube's stream offers 1080p and more, at twice the data and more.
+            trackSelectionParameters = trackSelectionParameters.buildUpon().setMaxVideoSize(1280, 720).build()
+        }
+    }
+    var which by remember { mutableIntStateOf(0) }
+    var ratio by remember { mutableStateOf(16f / 9f) }
+    var playing by remember { mutableStateOf(false) }
+    val giveUp = androidx.compose.runtime.rememberUpdatedState(onGiveUp)
+    LaunchedEffect(which) {
+        val way = ways.getOrNull(which) ?: return@LaunchedEffect giveUp.value()
+        fun source(url: String) = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setUserAgent(Trailers.userAgent(url)).setAllowCrossProtocolRedirects(true).let { http ->
+                val item = androidx.media3.common.MediaItem.fromUri(url)
+                if (way.hls) androidx.media3.exoplayer.hls.HlsMediaSource.Factory(http).createMediaSource(item)
+                else androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(http).createMediaSource(item)
+            }
+        val video = source(way.video)
+        // A picture-only stream and its sound, played as one.
+        player.setMediaSource(way.audio?.let { androidx.media3.exoplayer.source.MergingMediaSource(video, source(it)) } ?: video)
+        player.prepare()
+        player.playWhenReady = true
+    }
+    DisposableEffect(player) {
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                android.util.Log.w("trailer", "way ${which + 1} of ${ways.size}: ${error.errorCodeName}")
+                which++
+            }
+
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
+                if (size.width > 0 && size.height > 0) ratio = size.width * size.pixelWidthHeightRatio / size.height
+            }
+
+            override fun onRenderedFirstFrame() {
+                playing = true
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    Box(Modifier.fillMaxSize().background(Color.Black).clipToBounds(), contentAlignment = Alignment.Center) {
+        AndroidView(
+            factory = { c -> android.view.TextureView(c).also { player.setVideoTextureView(it) } },
+            modifier = Modifier.aspectRatio(ratio).graphicsLayer {
+                scaleX = zoom
+                scaleY = zoom
+            },
+        )
+        if (playing) TrailerControls(remember(player) { ExoPlayback(player) })
+        else com.torrentviewer.core.Spinner(size = 36.dp)
+    }
+}
+
+/**
+ * The app's own controls over the trailer: a tap on the picture shows them and plays or pauses; a thin bar to
+ * scrub, with the time. Gone again a few seconds into playing.
+ */
+@Composable
+private fun TrailerControls(playback: TrailerPlayback?) {
     var at by remember { mutableStateOf(0f) }
     var length by remember { mutableStateOf(0f) }
     var paused by remember { mutableStateOf(false) }
@@ -216,15 +363,12 @@ private fun TrailerControls(web: WebView?) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     var shownAt by remember { mutableStateOf(0L) }
     var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(web) {
+    LaunchedEffect(playback) {
         while (true) {
-            web?.evaluateJavascript(STATE_SCRIPT) { raw ->
-                // evaluateJavascript hands a JSON string of the script's result: a quoted "[..]" here.
-                runCatching { org.json.JSONArray(org.json.JSONTokener(raw).nextValue() as String) }.getOrNull()?.let {
-                    at = it.optDouble(0).toFloat()
-                    length = it.optDouble(1).toFloat().takeIf { d -> d.isFinite() } ?: 0f
-                    paused = it.optBoolean(2)
-                }
+            playback?.poll { now, total, stopped ->
+                at = now
+                length = total
+                paused = stopped
             }
             visible = paused || dragging != null || System.currentTimeMillis() - shownAt < 3000
             kotlinx.coroutines.delay(300)
@@ -233,7 +377,7 @@ private fun TrailerControls(web: WebView?) {
     Box(
         Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) {
             // Hidden: the first tap only shows them. Shown: it plays or pauses.
-            if (visible) web?.evaluateJavascript(TOGGLE_SCRIPT, null)
+            if (visible) playback?.toggle()
             shownAt = System.currentTimeMillis()
             visible = true
         },
@@ -251,7 +395,10 @@ private fun TrailerControls(web: WebView?) {
                     (dragging ?: at).coerceIn(0f, length), length,
                     onDrag = { dragging = it; shownAt = System.currentTimeMillis() },
                     onDone = {
-                        dragging?.let { to -> web?.evaluateJavascript("(function(){var v=document.querySelector('video');if(v)v.currentTime=$to;})()", null); at = to }
+                        dragging?.let { to ->
+                            playback?.seek(to)
+                            at = to
+                        }
                         dragging = null
                     },
                     modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
@@ -345,7 +492,7 @@ private fun YouTubeView(id: String, zoom: Float) {
         modifier = Modifier.fillMaxSize(),
     )
     // Over the page: the taps are the app's, never YouTube's (its links out, its menus).
-    if (loaded) TrailerControls(web)
+    if (loaded) TrailerControls(remember(web) { web?.let(::WebPlayback) })
     if (!loaded) Column(horizontalAlignment = Alignment.CenterHorizontally) {
         com.torrentviewer.core.Spinner(size = 36.dp)
         if (slow) Text(
