@@ -457,6 +457,13 @@ object Meta {
 enum class Sort(val label: String) { POPULAR("Popular"), RATING("Top rated"), YEAR("Newest"), TITLE("A–Z") }
 
 /**
+ * Only what came out in the last [years] years, this one ([thisYear]) included: an addon's list runs back to 1902,
+ * and the viewer wants what's recent. A title with no year is left out too — there's no telling.
+ */
+fun fromLastYears(titles: List<Title>, years: Int, thisYear: Int): List<Title> =
+    titles.filter { t -> t.year?.take(4)?.toIntOrNull()?.let { it > thisYear - years } == true }
+
+/**
  * A title missing the field goes last, not as zero — unrated is unknown, not bad — in the catalogue's own order.
  * Newest is year by year, each year's best rated first, so one year is done before the one before it starts.
  */

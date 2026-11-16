@@ -495,6 +495,10 @@ class LibTest {
             Title("c", "movie", "C", year = "2013", rating = "8.5"), Title("d", "movie", "D", year = "2014"), Title("e", "movie", "E", year = "2014", rating = "8.4"),
         )
         assertEquals(listOf("e", "b", "d", "c", "a"), sortTitles(years, Sort.YEAR).map { it.imdb })
+        // The last ten years: 2017 to 2026 in 2026, a series by the year it began; no year, no place.
+        val span = listOf(Title("n", "movie", "N", year = "2026"), Title("o", "movie", "O", year = "2017"), Title("p", "movie", "P", year = "2016"),
+            Title("s", "tv", "S", year = "2018–2024"), Title("u", "movie", "U"))
+        assertEquals(listOf("n", "o", "s"), fromLastYears(span, 10, 2026).map { it.imdb })
     }
 
     @Test fun languages() {

@@ -112,6 +112,7 @@ import androidx.compose.foundation.border
 import com.torrentviewer.core.colorOf
 import com.torrentviewer.core.parseEpisode
 import com.torrentviewer.core.searchStreams
+import com.torrentviewer.core.fromLastYears
 import com.torrentviewer.core.sortTitles
 import com.torrentviewer.core.ADDON_SHELF
 import com.torrentviewer.core.TOP_SHELF
@@ -128,6 +129,9 @@ private val POSTER = PosterGrid
 private fun subOf(t: Title) = listOfNotNull(if (t.isSeries) "Series" else "Film", t.year?.take(4)).joinToString("  ·  ")
 
 /* -------------------------------------------------------------- catalog */
+
+/** How far back an addon's list shows in "See all": what's recent, not a century of film. */
+private const val RECENT_YEARS = 10
 
 /** How much of a list is read before its order shows: enough for the top of every year. */
 private const val FIRST_ORDER = 400
@@ -150,7 +154,13 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
     val source = if (sort == Sort.RATING && shelf.genre?.startsWith(ADDON_SHELF) != true) TOP_SHELF + shelf.genre.orEmpty() else shelf.genre
     var titles by remember(source) { mutableStateOf(Meta.peekCatalog(shelf.kind, source)) }
     LaunchedEffect(source) { if (titles.isNullOrEmpty()) titles = Meta.catalog(shelf.kind, source) }
-    val shown = remember(titles, sort) { sortTitles(Kids.only(titles.orEmpty()), sort) }
+    // An addon's list shows its last ten years only (the owner's choice: it runs back to silent films); the built-in
+    // shelves are this week's popular and IMDb's best, whatever their age.
+    val recentOnly = shelf.genre?.startsWith(ADDON_SHELF) == true
+    val thisYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+    val shown = remember(titles, sort) {
+        Kids.only(titles.orEmpty()).let { if (recentOnly) fromLastYears(it, RECENT_YEARS, thisYear) else it }.let { sortTitles(it, sort) }
+    }
     val grid = rememberLazyGridState()
     /** A longer list in, never a shorter one: a scroll's page and the ordering's can finish in either order. */
     fun grow(next: List<Title>?) {
@@ -232,7 +242,7 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
             if (!filling) items(shown, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
             // Read to its end: how many it held, so a short year is the list's, not the app's.
             if (!filling && !topping && !loading && sort != Sort.POPULAR && shown.isNotEmpty() && !Meta.pages(shelf.kind, source)) item(key = "~end~", span = { GridItemSpan(maxLineSpan) }) {
-                Text("All ${shown.size} titles in this list", Modifier.fillMaxWidth().padding(vertical = 16.dp), style = Type.meta, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text(if (recentOnly) "All ${shown.size} titles from the last $RECENT_YEARS years in this list" else "All ${shown.size} titles in this list", Modifier.fillMaxWidth().padding(vertical = 16.dp), style = Type.meta, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             if (loading) item(key = "~more~", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) { Spinner(size = 28.dp) } }
         }
