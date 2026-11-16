@@ -61,6 +61,14 @@ class LibTest {
         assertEquals("genre=Action", preset.preset)
         assertEquals("Action", preset.presetLabel)
         assertEquals(listOf("Action", "Drama"), preset.genres)
+        // Xperience's browse list: its genres (no "None"), kept off Home.
+        val browse = toAddon(
+            "https://a.example",
+            JSONObject("""{"name":"X","resources":["catalog"],"types":["movie"],"catalogs":[
+               {"type":"movie","id":"discover","name":"Movies","showInHome":false,"extra":[{"name":"genre","isRequired":true,"options":["None","Action","Drama"]}],"extraRequired":["genre"]}]}"""),
+        )!!.catalogs.single()
+        assertEquals(listOf("Action", "Drama"), browse.genres)
+        assertFalse(browse.showInHome)
         // The TV's QR link: sent only to a TV page on the home network.
         val tv = "http://192.168.1.5:40123/" + "ab".repeat(12)
         assertEquals(tv, tvDropUrl("watchly://tv-addons?to=" + java.net.URLEncoder.encode(tv, "UTF-8")))

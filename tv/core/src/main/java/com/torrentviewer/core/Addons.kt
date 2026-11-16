@@ -18,8 +18,10 @@ data class AddonCatalog(
     val preset: String? = null,
     /** [preset]'s choice, for the row's title ("Action"). */
     val presetLabel: String? = null,
-    /** The genres it can be filtered by (its "genre" extra's options), for Home's Genres row. */
+    /** The genres it can be filtered by (its "genre" extra's options, "None" left out), for Home's Genres row. */
     val genres: List<String> = emptyList(),
+    /** The addon's own say on a Home row: false (Xperience's "showInHome") keeps it to browsing and search. */
+    val showInHome: Boolean = true,
 )
 
 /** What a Genres-row key adds to a catalogue's key: the genre after it. */
@@ -129,8 +131,11 @@ fun toAddon(url: String, m: JSONObject, on: Boolean = true): Addon? {
         val preset = if (presettable) needs.joinToString("&") { "${it.optString("name")}=${enc(it.strings("options").first())}" } else null
         val required = (needs.isNotEmpty() && !presettable) || c.strings("extraRequired").isNotEmpty()
         val search = extra.any { it.optString("name") == "search" } || "search" in c.strings("extraSupported")
-        val genres = extra.firstOrNull { it.optString("name") == "genre" }?.strings("options").orEmpty()
-        AddonCatalog(type, id, c.str("name") ?: id, required, search, preset, if (presettable) needs.first().strings("options").first() else null, genres)
+        val genres = extra.firstOrNull { it.optString("name") == "genre" }?.strings("options").orEmpty().filter { !it.equals("None", true) }
+        AddonCatalog(
+            type, id, c.str("name") ?: id, required, search, preset, if (presettable) needs.first().strings("options").first() else null, genres,
+            showInHome = c.optBoolean("showInHome", true),
+        )
     }
     return if (resources.isEmpty() && catalogs.isEmpty()) null else Addon(url, name, resources, on, m.toString(), catalogs)
 }
@@ -250,7 +255,7 @@ object Addons {
 
     /** Every list that shows without a genre or search picked first, as (row title, kind, shelf key). */
     fun shelves(): List<Triple<String, String, String>> = _list.value.filter { it.on }.flatMap { a ->
-        a.catalogs.filter { !it.required }.map { c ->
+        a.catalogs.filter { !it.required && it.showInHome }.map { c ->
             Triple(listOfNotNull(c.name, c.presetLabel, typeLabel(c.type)).joinToString(" · "), kindOfType(c.type), a.shelfKey(c))
         }
     }
@@ -266,8 +271,11 @@ object Addons {
      * genre (a film list before a series one), and its genres, each with the key of that genre's list.
      */
     fun genres(): Pair<String, List<Pair<String, String>>>? {
+        // An addon's browse-by-genre list first (one that needs a genre, kept off Home — Xperience's "Movies"), a film
+        // one before a series one; else any list that can be narrowed by genre.
         val (a, c) = _list.value.filter { it.on }.flatMap { a -> a.catalogs.filter { it.genres.size >= 2 && !it.search }.map { a to it } }
-            .sortedBy { (_, c) -> if (c.type == "movie") 0 else 1 }.firstOrNull() ?: return null
+            .sortedWith(compareBy<Pair<Addon, AddonCatalog>> { (_, c) -> if (c.required || !c.showInHome) 0 else 1 }.thenBy { (_, c) -> if (c.type == "movie") 0 else 1 })
+            .firstOrNull() ?: return null
         return kindOfType(c.type) to c.genres.map { g -> g to a.shelfKey(c) + GENRE_SEP + g }
     }
 

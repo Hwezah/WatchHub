@@ -1214,7 +1214,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             settings.builtInHome,
         ) { set(settings.copy(builtInHome = it)) }
         val addons by Addons.list.collectAsState()
-        val withRows = addons.filter { a -> a.on && a.catalogs.any { !it.required } }
+        val withRows = addons.filter { a -> a.on && a.catalogs.any { !it.required && it.showInHome } }
         Section(
             "Addon catalogues on Home",
             if (withRows.isEmpty()) "None of your addons has a catalogue." else
@@ -1222,7 +1222,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         ) {
             withRows.forEach { a ->
                 Text(a.name, Modifier.padding(top = 6.dp, bottom = 4.dp), style = Type.overline.copy(color = Ink.faint))
-                a.catalogs.filter { !it.required }.forEach { c ->
+                a.catalogs.filter { !it.required && it.showInHome }.forEach { c ->
                     val key = a.shelfKey(c)
                     val shown = key !in settings.hiddenShelves
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
