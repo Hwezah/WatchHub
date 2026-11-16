@@ -41,4 +41,22 @@ class LinkProbeTest {
         val light = described(link("Moviesmod Driveseed [326MB]", 326L shl 20), "Show.S01E02.720p.x265.mkv", null)
         assertEquals(light, preferredPick(listOf(heavy, light), DownloadPrefs()))
     }
+
+    @Test fun aBareLinkIsReadByItsSize() {
+        val g = guessed(link("Moviesmod Driveseed [326MB]", 326L shl 20))
+        assertEquals("720p", g.quality)
+        assertEquals("MKV", traitsOf(g).format)
+        assertEquals("480p", guessed(link("Bare", 150L shl 20)).quality)
+        assertEquals("1080p", guessed(link("Bare", 2L shl 30)).quality)
+        // No size, or a labelled link: left as it is.
+        assertNull(guessed(link("Bare")).quality)
+        val labelled = link("Show 1080p .mkv", 300L shl 20, "1080p")
+        assertEquals(labelled, guessed(labelled))
+    }
+
+    @Test fun aBareLightLinkBeatsAHeavyLabelledOne() {
+        val heavy = link("Show S01E03 1080p x264 .mkv", 11L shl 30, "1080p", "https://a.example/1")
+        val light = guessed(link("Moviesmod Driveseed [504MB]", 504L shl 20))
+        assertEquals(light, preferredPick(listOf(heavy, light), DownloadPrefs()))
+    }
 }

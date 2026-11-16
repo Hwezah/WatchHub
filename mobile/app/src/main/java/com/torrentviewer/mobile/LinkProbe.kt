@@ -61,6 +61,28 @@ fun described(hit: Hit, fileName: String?, contentType: String?, length: Long = 
     )
 }
 
+private const val MB = 1024L * 1024
+
+/**
+ * A link still unlabelled after its server was asked (it gave no name), read by its size instead — the owner's
+ * rule is the lightest 720p MKV, and these bare links from file hosts (Driveseed, HubCloud, Pixeldrain) are the
+ * light MKVs it means: left unread, an 11 GB labelled 1080p was taken over a 326 MB file. A guess, by what
+ * such encodes weigh: an episode of 200 MB–1 GB is 720p, under that 480p, up to 4 GB 1080p (a film: 2.5 times
+ * each). A file that says nothing of its format is taken for MKV, which these hosts' files are. Above the top
+ * size, or with no size, nothing is guessed.
+ */
+fun guessed(hit: Hit): Hit {
+    if (!unlabelled(hit) || hit.size <= 0) return hit
+    val scale = if (hit.kind == "movie") 2.5 else 1.0
+    val quality = hit.quality ?: when {
+        hit.size < 200 * MB * scale -> "480p"
+        hit.size <= 1024 * MB * scale -> "720p"
+        hit.size <= 4096 * MB * scale -> "1080p"
+        else -> return hit
+    }
+    return hit.copy(quality = quality, release = if (traitsOf(hit).format == UNKNOWN) "${hit.release} .mkv" else hit.release)
+}
+
 object LinkProbe {
     /** Links asked at once, and how long one may take: a dead host mustn't hold a season up. */
     private const val AT_ONCE = 6
@@ -85,7 +107,8 @@ object LinkProbe {
                 ask.map { h -> async { gate.withPermit { withTimeoutOrNull(EACH_MS) { runCatching { probe(h) }.getOrNull() }?.let { known[h.uri] = it } } } }.awaitAll()
             }
         }
-        return hits.map { known[it.uri]?.takeIf { k -> k.name == it.name } ?: it }
+        // What its server said; failing that, what its size says ([guessed]).
+        return hits.map { guessed(known[it.uri]?.takeIf { k -> k.name == it.name } ?: it) }
     }
 
     /** One byte asked for, redirects followed by hand (these hosts hop between http and https): the headers say the rest. */
