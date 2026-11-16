@@ -394,22 +394,24 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 Text(
                     "${episodeTag(ep.season, ep.episode)}  " + if (hit == null) (if (ep.id in scan.finished) "—" else "searching…") else
                         listOfNotNull(hit.quality, t?.codec?.takeIf { it != UNKNOWN }?.let(::codecLabel), t?.format?.takeIf { it != UNKNOWN }, bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null })
-                            .joinToString(" · ") + when {
-                            // Said, so a 1080p in the list isn't a mystery: every source was asked, and nothing nearer exists.
-                            // Not final yet: a better file may still come from a slower source.
-                            ep.id !in scan.finished -> " · still looking"
-                            // Its server never said how big it is: unconfirmed, so said — untick it to leave it out.
-                            hit.size <= 0L -> " · size unknown"
-                            // For another app: the 720p MKVs there are need the headers their site sends, which a shared
-                            // link can't carry — they're the internal downloader's.
-                            external && filter == BatchFilter() && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) &&
-                                onTarget(scan.found[ep.id].orEmpty(), prefs, ::seasonPick) -> " · ${prefs.quality} ${prefs.format} only in the app's downloader"
-                            filter == BatchFilter() && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) -> " · no ${prefs.quality} ${prefs.format} found"
-                            else -> ""
-                        },
+                            .joinToString(" · "),
                     Modifier.padding(start = 4.dp), style = Type.meta.copy(color = if (on) Ink.muted else Ink.faint), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 }
+                // Why this pick, on a line of its own (at the end of the row it was cut off): still looking, its size
+                // unconfirmed, or why it isn't the preferred 720p MKV.
+                val note = if (hit == null) null else when {
+                    ep.id !in scan.finished -> "still looking"
+                    filter == BatchFilter() && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) ->
+                        // For another app: 720p MKVs that need their site's headers, which a shared link can't carry.
+                        if (external && onTarget(scan.found[ep.id].orEmpty(), prefs, ::seasonPick)) "its ${prefs.quality} ${prefs.format} files need the app's own downloader"
+                        else "no ${prefs.quality} ${prefs.format} found"
+                    hit.size <= 0L -> "size unknown"
+                    else -> null
+                }
+                if (note != null) Text(
+                    note, Modifier.padding(start = 38.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
 
             val many = "${picks.size} episode${if (picks.size == 1) "" else "s"}"
