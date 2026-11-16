@@ -69,6 +69,20 @@ class LibTest {
         )!!.catalogs.single()
         assertEquals(listOf("Action", "Drama"), browse.genres)
         assertFalse(browse.showInHome)
+        assertFalse(browse.pages)
+        // A list that pages, in either shape: its row keeps going past the first answer.
+        val paged = toAddon(
+            "https://a.example",
+            JSONObject("""{"name":"X","resources":["catalog"],"types":["movie"],"catalogs":[
+               {"type":"movie","id":"new","name":"New","extra":[{"name":"genre","options":["Action"]},{"name":"skip"}]},
+               {"type":"series","id":"old","name":"Old","extraSupported":["skip"]}]}"""),
+        )!!.catalogs
+        assertTrue(paged.all { it.pages })
+        // Requests in the protocol's shape: extras joined by "&", the page as "skip".
+        assertEquals("https://a.example/catalog/movie/new.json", catalogUrl("https://a.example", "movie", "new"))
+        assertEquals("https://a.example/catalog/movie/new/skip=20.json", catalogUrl("https://a.example", "movie", "new", skip = 20))
+        assertEquals("https://a.example/catalog/movie/new/genre=Sci-Fi&skip=40.json", catalogUrl("https://a.example", "movie", "new", "genre=Sci-Fi", 40))
+        assertEquals("https://a.example/catalog/series/a%20b/genre=Drama.json", catalogUrl("https://a.example", "series", "a b", "genre=Drama"))
         // The TV's QR link: sent only to a TV page on the home network.
         val tv = "http://192.168.1.5:40123/" + "ab".repeat(12)
         assertEquals(tv, tvDropUrl("watchly://tv-addons?to=" + java.net.URLEncoder.encode(tv, "UTF-8")))

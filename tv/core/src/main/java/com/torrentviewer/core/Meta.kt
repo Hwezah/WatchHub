@@ -4,7 +4,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -104,6 +106,15 @@ val GENRES = listOf(
 
 fun kindOfGenre(genre: String) = if (genre == ANIME_GENRE) "tv" else "movie"
 
+/**
+ * A catalogue request in the Stremio protocol's one shape: `/catalog/{type}/{id}.json`, or with extras
+ * `/catalog/{type}/{id}/genre=Action&skip=40.json`. [extra] comes already encoded; [skip] past 0 asks for a later page.
+ */
+fun catalogUrl(base: String, type: String, id: String, extra: String? = null, skip: Int = 0): String {
+    val extras = listOfNotNull(extra?.takeIf { it.isNotEmpty() }, if (skip > 0) "skip=$skip" else null).joinToString("&")
+    return "$base/catalog/$type/${enc(id)}${if (extras.isEmpty()) "" else "/$extras"}.json"
+}
+
 object Meta {
     private const val BASE = "https://v3-cinemeta.strem.io/meta"
     /** Popularity shelves, asked for directly to save a redirect per rail. */
@@ -165,19 +176,79 @@ object Meta {
                 val (addon, list) = Addons.shelf(genre) ?: error("addon gone")
                 // An addon that builds its lists on request (AIOMetadata, Xperience) can take a while on the first ask:
                 // given 40 seconds, and a second try, rather than a row silently missing.
-                // A Genres tile's list: the genre chosen; else the catalogue's own preset, if it needs one.
-                val extra = genre.substringAfter(GENRE_SEP, "").takeIf { it.isNotEmpty() }?.let { "genre=${enc(it)}" } ?: list.preset
-                val url = "${addon.url}/catalog/${list.type}/${enc(list.id)}${extra?.let { "/$it" }.orEmpty()}.json"
+                val url = catalogUrl(addon.url, list.type, list.id, addonExtra(genre, list))
                 val body = runCatching { Net.get(url, timeoutMs = 40_000, quiet = true) }.getOrElse { Net.get(url, timeoutMs = 40_000, quiet = true) }
                 val metas = JSONObject(body).optJSONArray("metas") ?: JSONArray()
+                fetched["shelf:$kind:$genre"] = metas.length()
                 return@remember toTitles(metas, kindOfType(list.type), anyId = true, type = list.type)
             }
             if (genre?.startsWith(TOP_SHELF) == true) return@remember topRated(kind, genre.removePrefix(TOP_SHELF).ifEmpty { null })
             val type = if (kind == "tv") "series" else "movie"
-            val url = if (genre == ANIME_GENRE) ANIME else "$CATALOG/$type/top${genre?.let { "/genre=${enc(it)}" }.orEmpty()}.json"
-            toTitles(JSONObject(Net.get(url)).optJSONArray("metas") ?: JSONArray(), kind)
+            val url = if (genre == ANIME_GENRE) ANIME else catalogUrl(CATALOG, type, "top", genre?.let { "genre=${enc(it)}" })
+            val metas = JSONObject(Net.get(url)).optJSONArray("metas") ?: JSONArray()
+            fetched["shelf:$kind:${genre.orEmpty()}"] = metas.length()
+            toTitles(metas, kind)
         }
     }.getOrDefault(emptyList())
+
+    /** A Genres tile's list: the genre chosen; else the catalogue's own preset, if it needs one. */
+    private fun addonExtra(key: String, list: AddonCatalog) = key.substringAfter(GENRE_SEP, "").takeIf { it.isNotEmpty() }?.let { "genre=${enc(it)}" } ?: list.preset
+
+    /** How many entries each list's pages have brought so far: where the next page starts ("skip"), duplicates and all. */
+    private val fetched = ConcurrentHashMap<String, Int>()
+    /** Lists whose last page came back with nothing new: asked no more this run. */
+    private val ended = ConcurrentHashMap.newKeySet<String>()
+    /** One page at a time per list, so a row and its "See all" don't both fetch the same one. */
+    private val paging = ConcurrentHashMap<String, Mutex>()
+
+    /**
+     * Whether a list goes on past its first page: an addon's that says it takes "skip", and Cinemeta's popular lists.
+     * Not the IMDb charts (already a ranking of many pages) or the anime list.
+     */
+    fun pages(kind: String, genre: String?): Boolean = when {
+        "shelf:$kind:${genre.orEmpty()}" in ended -> false
+        genre?.startsWith(ADDON_SHELF) == true -> Addons.shelf(genre)?.second?.pages == true
+        else -> genre?.startsWith(TOP_SHELF) != true && genre != ANIME_GENRE
+    }
+
+    /**
+     * The list with its next page added — newest first lists going further back in time — or null when there is
+     * no more (or the addon didn't answer: asked again on the next scroll). Kept in memory, so the row on Home and
+     * its "See all" grow together; the copy on disk stays the first page.
+     */
+    suspend fun more(kind: String, genre: String?): List<Title>? {
+        val key = "shelf:$kind:${genre.orEmpty()}"
+        if (!pages(kind, genre)) return null
+        return paging.getOrPut(key) { Mutex() }.withLock {
+            @Suppress("UNCHECKED_CAST")
+            val have = memory[key] as List<Title>? ?: return@withLock null
+            val skip = fetched[key] ?: have.size
+            val page = runCatching {
+                withContext(Dispatchers.Default) {
+                    if (genre?.startsWith(ADDON_SHELF) == true) {
+                        val (addon, list) = Addons.shelf(genre) ?: return@withContext null
+                        val metas = JSONObject(Net.get(catalogUrl(addon.url, list.type, list.id, addonExtra(genre, list), skip), timeoutMs = 40_000, quiet = true))
+                            .optJSONArray("metas") ?: JSONArray()
+                        metas.length() to toTitles(metas, kindOfType(list.type), anyId = true, type = list.type)
+                    } else {
+                        val type = if (kind == "tv") "series" else "movie"
+                        val metas = JSONObject(Net.get(catalogUrl(CATALOG, type, "top", genre?.let { "genre=${enc(it)}" }, skip), quiet = true))
+                            .optJSONArray("metas") ?: JSONArray()
+                        metas.length() to toTitles(metas, kind)
+                    }
+                }
+            }.getOrNull() ?: return@withLock null
+            val (count, titles) = page
+            val known = have.mapTo(HashSet()) { it.imdb }
+            val fresh = titles.filter { known.add(it.imdb) }
+            fetched[key] = skip + count
+            if (fresh.isEmpty()) {
+                ended += key
+                return@withLock null
+            }
+            (have + fresh).also { memory[key] = it }
+        }
+    }
 
     /**
      * IMDb's best of a genre. Cinemeta has no list by rating (its imdbRating catalogue is new releases), so

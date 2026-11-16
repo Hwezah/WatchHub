@@ -1,5 +1,7 @@
 package com.torrentviewer.core
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -22,6 +24,8 @@ data class AddonCatalog(
     val genres: List<String> = emptyList(),
     /** The addon's own say on a Home row: false (Xperience's "showInHome") keeps it to browsing and search. */
     val showInHome: Boolean = true,
+    /** Whether it pages ("skip" among its extras): a row then keeps going past its first answer, as Stremio's and Nuvio's do. */
+    val pages: Boolean = false,
 )
 
 /** What a Genres-row key adds to a catalogue's key: the genre after it. */
@@ -135,6 +139,7 @@ fun toAddon(url: String, m: JSONObject, on: Boolean = true): Addon? {
         AddonCatalog(
             type, id, c.str("name") ?: id, required, search, preset, if (presettable) needs.first().strings("options").first() else null, genres,
             showInHome = c.optBoolean("showInHome", true),
+            pages = extra.any { it.optString("name") == "skip" } || "skip" in c.strings("extraSupported"),
         )
     }
     return if (resources.isEmpty() && catalogs.isEmpty()) null else Addon(url, name, resources, on, m.toString(), catalogs)
@@ -189,6 +194,22 @@ object Addons {
         val now = _list.value
         save(if (now.any { it.url == base }) now.map { if (it.url == base) addon.copy(on = it.on) else it } else now + addon)
         return addon
+    }
+
+    /**
+     * Every addon's manifest read again, as Stremio and Nuvio do on launch: a catalogue addon set up on its own site
+     * (Xperience, AIOMetadata) changes its lists behind the same link, and the copy kept when it was added never
+     * learned of rows added since. Only a real change is kept (and so sent on to a Stremio account); one that doesn't
+     * answer keeps what it had.
+     */
+    suspend fun refresh() = kotlinx.coroutines.coroutineScope {
+        val read = _list.value.map { a ->
+            async { runCatching { toAddon(a.url, JSONObject(Net.get("${a.url}/manifest.json", 20_000, quiet = true)), a.on) }.getOrNull()?.let { a.url to it } }
+        }.awaitAll().filterNotNull().toMap()
+        val now = _list.value
+        // The manifest's text aside: some addons stamp it afresh on every answer.
+        val next = now.map { a -> read[a.url]?.takeIf { it.copy(manifest = "", on = a.on) != a.copy(manifest = "") }?.copy(on = a.on) ?: a }
+        if (next.indices.any { next[it] !== now[it] }) save(next)
     }
 
     /** The list as links only, for another device to fetch afresh: [importLinks] reads it. */
