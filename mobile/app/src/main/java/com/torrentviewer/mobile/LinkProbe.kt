@@ -87,8 +87,7 @@ fun guessed(hit: Hit): Hit {
 
 object LinkProbe {
     /** Links asked at once, and how long one may take: a dead host mustn't hold a season up. */
-    private const val AT_ONCE = 10
-    private const val EACH_MS = 7_000L
+    private const val EACH_MS = 10_000L
     /**
      * The most links asked for one episode. Every unlabelled one, in practice: an MKV whose name says nothing (a
      * Pixeldrain or Driveseed link) was left out when only the lightest few were asked, and a 1080p taken over it.
@@ -97,10 +96,21 @@ object LinkProbe {
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
 
     /** Links checked per episode with data saver on mobile data. */
-    private const val SAVING_MOST = 20
+    private const val SAVING_MOST = 40
+
+    /**
+     * Checks under way at once, across every episode being scanned: three episodes each asking a few dozen links at
+     * once crowded the phone's connection, checks timed out, and a 720p MKV that only failed to answer in time was
+     * taken for one that needs its headers — and passed over for a 1080p.
+     */
+    private val slots = Semaphore(12)
 
     /** Links being checked now: a second look at the same list (results arriving) doesn't ask them twice. */
     private val asking: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /** Links that gave no answer, and how often: asked again, but not for ever (each try costs data). */
+    private val failed = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private const val TRIES = 3
 
     /** What each link was found to be, kept for the session: a rescan or a second pick doesn't ask again. */
     private val known = java.util.concurrent.ConcurrentHashMap<String, Hit>()
@@ -114,23 +124,24 @@ object LinkProbe {
         val wanted = downloadPrefs().quality
         // Data saver on mobile data: only the preferred resolution's (and unlabelled) links, and fewer of them.
         val saving = Downloads.saving()
-        val ask = hits.filter { (unlabelled(it) || withHeaders(it)) && !known.containsKey(it.uri) && it.uri !in asking }
+        val ask = hits.filter { (unlabelled(it) || withHeaders(it)) && !known.containsKey(it.uri) && it.uri !in asking && (failed[it.uri] ?: 0) < TRIES }
             .filter { !saving || it.quality == null || it.quality == wanted }
             .sortedWith(compareBy<Hit> { if (it.quality == null || it.quality == wanted) 0 else 1 }.thenBy { if (it.size > 0) 0 else 1 }.thenBy { it.size })
             .take(if (saving) SAVING_MOST else MOST)
         asking.addAll(ask.map { it.uri })
         if (ask.isNotEmpty()) try {
-            val gate = Semaphore(AT_ONCE)
             coroutineScope {
                 ask.map { h ->
                     async {
-                        gate.withPermit {
-                            withTimeoutOrNull(EACH_MS * 2) {
-                                // A link that comes with headers (a Referer) is first tried without them: most don't need
-                                // them, and one that doesn't can be handed to another app, which can't send them.
-                                val bare = if (withHeaders(h)) runCatching { probe(h.copy(headers = emptyMap())) }.getOrNull() else null
-                                bare ?: runCatching { probe(h) }.getOrNull() ?: h
-                            }?.let { known[h.uri] = it }
+                        slots.withPermit {
+                            // A link that comes with headers (a Referer) is first tried without them: most don't need
+                            // them, and one that doesn't can be handed to another app, which can't send them. Each try
+                            // has its own time.
+                            val bare = if (withHeaders(h)) withTimeoutOrNull(EACH_MS) { runCatching { probe(h.copy(headers = emptyMap())) }.getOrNull() } else null
+                            val found = bare ?: withTimeoutOrNull(EACH_MS) { runCatching { probe(h) }.getOrNull() }
+                            // Only an answer is kept: a link that failed or was slow is asked again on the next look,
+                            // not written off for the session.
+                            if (found != null) known[h.uri] = found else failed.merge(h.uri, 1, Int::plus)
                         }
                     }
                 }.awaitAll()

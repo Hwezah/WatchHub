@@ -395,6 +395,10 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                             ep.id !in scan.finished -> " · still looking"
                             // Its server never said how big it is: unconfirmed, so said — untick it to leave it out.
                             hit.size <= 0L -> " · size unknown"
+                            // For another app: the 720p MKVs there are need the headers their site sends, which a shared
+                            // link can't carry — they're the internal downloader's.
+                            external && filter == BatchFilter() && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) &&
+                                onTarget(scan.found[ep.id].orEmpty(), prefs, ::seasonPick) -> " · ${prefs.quality} ${prefs.format} only in the app's downloader"
                             filter == BatchFilter() && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs, ::seasonPick) -> " · no ${prefs.quality} ${prefs.format} found"
                             else -> ""
                         },
