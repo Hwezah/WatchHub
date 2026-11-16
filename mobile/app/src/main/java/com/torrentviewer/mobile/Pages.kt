@@ -129,8 +129,15 @@ private fun subOf(t: Title) = listOfNotNull(if (t.isSeries) "Series" else "Film"
 
 /* -------------------------------------------------------------- catalog */
 
-/** How much of a list is read to put it in order: past this, later pages still come as the grid is scrolled. */
-private const val WHOLE_LIST = 400
+/** How much of a list is read before its order shows: enough for the top of every year. */
+private const val FIRST_ORDER = 400
+
+/**
+ * How much of a list is read to put it in order, the rest after [FIRST_ORDER] while the grid is up: a list ranked by
+ * rating across all years ("Highly Rated") holds only a few dozen of any one year in its first 400. Past this, later
+ * pages still come as the grid is scrolled. ponytail: a list of thousands is cut here; raise it if a year still runs short.
+ */
+private const val WHOLE_LIST = 2000
 
 /**
  * A whole shelf as a grid, with the phone's four orders. An addon's list opens newest first, a year at a time and each
@@ -149,23 +156,33 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
     fun grow(next: List<Title>?) {
         if (next != null && next.size > (titles?.size ?: 0)) titles = next
     }
-    // Put in an order of its own (by year, rating, name): the whole list first, a few pages at once, so a year isn't
-    // done before its later pages came — up to [WHOLE_LIST]. The catalogue's own order needs only what's scrolled to.
+    // Put in an order of its own (by year, rating, name): the list read first, a few pages at once, so a year isn't
+    // done before its later pages came. Hidden until [FIRST_ORDER] are in; then shown while the rest, up to
+    // [WHOLE_LIST], slots into place (the grid keeps its place by the card at the top). The catalogue's own order
+    // needs only what's scrolled to.
     var filling by remember(source) { mutableStateOf(false) }
+    var topping by remember(source) { mutableStateOf(false) }
     LaunchedEffect(source, sort, titles != null) {
         if (sort == Sort.POPULAR || titles == null) {
             filling = false
+            topping = false
             return@LaunchedEffect
         }
-        filling = true
+        filling = (titles?.size ?: 0) < FIRST_ORDER
+        topping = !filling
         try {
             while ((titles?.size ?: 0) < WHOLE_LIST && Meta.pages(shelf.kind, source)) {
                 val next = Meta.more(shelf.kind, source, batch = 4) ?: break
                 grow(next)
+                if (filling && (titles?.size ?: 0) >= FIRST_ORDER) {
+                    filling = false
+                    topping = true
+                }
             }
         } finally {
             // Also when another order is picked mid-way, which starts this afresh.
             filling = false
+            topping = false
         }
     }
     // Near the foot of the grid, the list's next page (an addon that pages, Cinemeta's lists): newest-first lists go on
@@ -174,7 +191,7 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
     LaunchedEffect(grid, source) {
         androidx.compose.runtime.snapshotFlow { grid.layoutInfo.let { i -> i.totalItemsCount > 1 && (i.visibleItemsInfo.lastOrNull()?.index ?: 0) >= i.totalItemsCount - 9 } }
             .collect { near ->
-                if (near && !loading && !filling && titles != null && Meta.pages(shelf.kind, source)) {
+                if (near && !loading && !filling && !topping && titles != null && Meta.pages(shelf.kind, source)) {
                     loading = true
                     grow(Meta.more(shelf.kind, source))
                     loading = false
@@ -196,6 +213,11 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Sort.entries.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
                     }
+                    // The rest of the list still coming in, each title to its year.
+                    if (topping) Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Spinner(size = 14.dp)
+                        Text("Adding the rest of the list · ${titles?.size ?: 0} titles", Modifier.padding(start = 8.dp), style = Type.meta)
+                    }
                 }
             }
             if (titles == null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.padding(top = 40.dp), contentAlignment = Alignment.Center) { Spinner(size = 36.dp) } }
@@ -208,6 +230,10 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
             }
             else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Note("Nothing on this shelf right now.") }
             if (!filling) items(shown, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
+            // Read to its end: how many it held, so a short year is the list's, not the app's.
+            if (!filling && !topping && !loading && sort != Sort.POPULAR && shown.isNotEmpty() && !Meta.pages(shelf.kind, source)) item(key = "~end~", span = { GridItemSpan(maxLineSpan) }) {
+                Text("All ${shown.size} titles in this list", Modifier.fillMaxWidth().padding(vertical = 16.dp), style = Type.meta, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
             if (loading) item(key = "~more~", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) { Spinner(size = 28.dp) } }
         }
         BackButton(onBack)
