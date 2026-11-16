@@ -776,8 +776,9 @@ private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: ()
                     maxLines = 1,
                 )
             }
-            Box(Modifier.size(38.dp).clip(CircleShape).background(Ink.accent), contentAlignment = Alignment.Center) {
-                Lc(L.drawable.lucide_ic_play, tint = Color.White, size = 18.dp)
+            // A bare ▷, no disc behind it (the owner's choice), as on the downloading cards.
+            Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                Lc(L.drawable.lucide_ic_play, tint = Ink.text, size = 22.dp)
             }
             // Tall tap room above and below, little beside: the card's edge is right there.
             Tap(onMore, shape = RoundedCornerShape(8.dp)) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(start = 6.dp, top = 12.dp, bottom = 12.dp), tint = Ink.muted, size = 20.dp) }
