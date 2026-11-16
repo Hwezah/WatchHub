@@ -903,6 +903,17 @@ object Downloads {
         update(uri) { it.copy(job = it.job.copy(files = wanted), state = if (job.paused) DlState.PAUSED else DlState.DOWNLOADING) }
     }
 
+    /**
+     * Data saver (Settings → Downloads): on mobile data, a season scan checks fewer links and stops an episode once it
+     * has a confirmed pick as preferred, rather than waiting on every site. On Wi-Fi it changes nothing.
+     */
+    var dataSaver: Boolean
+        get() = prefs().getBoolean("dataSaver", true)
+        set(v) = prefs().edit().putBoolean("dataSaver", v).apply()
+
+    /** On mobile data with [dataSaver] on: the scan's lighter mode. */
+    fun saving(): Boolean = ::app.isInitialized && dataSaver && onMetered()
+
     private fun onMetered(): Boolean {
         val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
         return runCatching { cm.isActiveNetworkMetered }.getOrDefault(false)

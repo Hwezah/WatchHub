@@ -70,10 +70,10 @@ data class SeasonScan(
  */
 object SeasonBatch {
     /**
-     * Episodes asked about at once. Each fans out to every plugin's sites: three at a time made those sites slow down or
-     * refuse; one at a time took too long. Two is the balance.
+     * Episodes asked about at once. Each fans out to every plugin's sites — but each site's page for the show is now
+     * searched and loaded once for the whole season ([CsStreams]), so three at a time asks them less than two did.
      */
-    private const val AT_ONCE = 2
+    private const val AT_ONCE = 3
 
     private val _scan = MutableStateFlow<SeasonScan?>(null)
     val scan: StateFlow<SeasonScan?> = _scan
@@ -92,13 +92,74 @@ object SeasonBatch {
      * An episode's sources, as the title page finds them — but not waited on to the end ([gather]). Waiting on
      * every plugin (up to minutes each, per episode) made a season take many minutes for links nobody needed.
      */
-    suspend fun sources(title: Title, ep: Episode, onPartial: (List<Hit>) -> Unit = {}): List<Hit> =
-        // Then the links that don't say what they are, asked for their file names ([LinkProbe]): the light 720p MKVs
-        // among them are what a pick is after.
+    suspend fun sources(title: Title, ep: Episode, onPartial: (List<Hit>) -> Unit = {}): List<Hit> = kotlinx.coroutines.coroutineScope {
+        // Links are checked as they arrive, not all at the end: by the time the last site answers, most are known.
+        var checking: Job? = null
+        var lastCheck = 0L
+        val search: suspend (com.torrentviewer.core.OnHits) -> List<Hit> = { onHits ->
+            CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) }
+        }
+        val watch: (List<Hit>) -> Unit = { partial ->
+            onPartial(partial)
+            val t = System.currentTimeMillis()
+            if (checking?.isActive != true && t - lastCheck > 3000) {
+                lastCheck = t
+                checking = launch { runCatching { LinkProbe.describe(partial) } }
+            }
+        }
         // Every source, the slow sites too (the owner's rule): the light 720p MKV links are often the last to answer.
-        LinkProbe.describe(
-            gatherAll(EPISODE_CAP_MS, onPartial) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } },
-        )
+        // With data saver on mobile data, an episode stops once it holds a confirmed pick as preferred ([confirmed]).
+        val all = if (Downloads.saving()) gatherUntil(EPISODE_CAP_MS, watch, search) else gatherAll(EPISODE_CAP_MS, watch, search)
+        // The checks under way finish (they're most of the work), then whatever came after them is checked.
+        checking?.join()
+        // Then whatever is left unchecked, asked for its file name ([LinkProbe]): the light 720p MKVs are what a pick is after.
+        LinkProbe.describe(all)
+    }
+
+    /**
+     * A pick that needs nothing more: the preferred resolution and format, a direct file whose size is known. With data
+     * saver on, an episode that has one stops asking the slower sites.
+     */
+    private fun confirmed(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
+        val pick = seasonPick(hits, prefs) ?: return false
+        return pick.direct && !isPlaylist(pick) && pick.size > 0 && onTarget(listOf(pick), prefs, ::seasonPick)
+    }
+
+    /** [gatherAll], but done as soon as what has come holds a [confirmed] pick (after a short floor for the quick sources). */
+    private suspend fun gatherUntil(capMs: Long, onPartial: (List<Hit>) -> Unit, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
+        val prefs = downloadPrefs()
+        val started = System.currentTimeMillis()
+        val latest = java.util.concurrent.atomic.AtomicReference<List<Hit>>(emptyList())
+        val enough = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var told = 0L
+        val job = AppScope.async(kotlinx.coroutines.Dispatchers.Default) {
+            search { now ->
+                latest.set(now)
+                val t = System.currentTimeMillis()
+                if (t - told >= 1000) {
+                    told = t
+                    val seen = allowedHits(now).map(::guessed)
+                    runCatching { onPartial(seen) }
+                    if (t - started > SAVING_FLOOR_MS && confirmed(seen, prefs)) enough.complete(Unit)
+                }
+            }
+        }
+        try {
+            allowedHits(
+                withTimeoutOrNull(capMs) {
+                    kotlinx.coroutines.selects.select<List<Hit>?> {
+                        job.onAwait { it }
+                        enough.onAwait { null }
+                    }
+                } ?: latest.get(),
+            )
+        } finally {
+            job.cancel()
+        }
+    }.getOrDefault(emptyList())
+
+    /** Even with data saver, an episode is asked about this long: the quick sources' light files come in by then. */
+    private const val SAVING_FLOOR_MS = 20_000L
 
     /** The longest one episode's sources are waited on: only a plugin that hangs is ever cut short. */
     private const val EPISODE_CAP_MS = 300_000L

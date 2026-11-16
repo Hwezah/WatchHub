@@ -102,6 +102,7 @@ object CsPlugins {
      */
     suspend fun forgetPages() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         runCatching { app.baseClient.cache?.evictAll() }
+        CsStreams.forgetPages()
         Unit
     }
 

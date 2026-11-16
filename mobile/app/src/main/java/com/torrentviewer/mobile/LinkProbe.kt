@@ -96,6 +96,12 @@ object LinkProbe {
     private const val MOST = 120
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
 
+    /** Links checked per episode with data saver on mobile data. */
+    private const val SAVING_MOST = 20
+
+    /** Links being checked now: a second look at the same list (results arriving) doesn't ask them twice. */
+    private val asking: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     /** What each link was found to be, kept for the session: a rescan or a second pick doesn't ask again. */
     private val known = java.util.concurrent.ConcurrentHashMap<String, Hit>()
 
@@ -106,9 +112,14 @@ object LinkProbe {
     suspend fun describe(hits: List<Hit>): List<Hit> {
         // The preferred resolution's first, then the lightest: those are the ones a pick might take.
         val wanted = downloadPrefs().quality
-        val ask = hits.filter { (unlabelled(it) || withHeaders(it)) && !known.containsKey(it.uri) }
-            .sortedWith(compareBy<Hit> { if (it.quality == null || it.quality == wanted) 0 else 1 }.thenBy { if (it.size > 0) 0 else 1 }.thenBy { it.size }).take(MOST)
-        if (ask.isNotEmpty()) {
+        // Data saver on mobile data: only the preferred resolution's (and unlabelled) links, and fewer of them.
+        val saving = Downloads.saving()
+        val ask = hits.filter { (unlabelled(it) || withHeaders(it)) && !known.containsKey(it.uri) && it.uri !in asking }
+            .filter { !saving || it.quality == null || it.quality == wanted }
+            .sortedWith(compareBy<Hit> { if (it.quality == null || it.quality == wanted) 0 else 1 }.thenBy { if (it.size > 0) 0 else 1 }.thenBy { it.size })
+            .take(if (saving) SAVING_MOST else MOST)
+        asking.addAll(ask.map { it.uri })
+        if (ask.isNotEmpty()) try {
             val gate = Semaphore(AT_ONCE)
             coroutineScope {
                 ask.map { h ->
@@ -124,6 +135,9 @@ object LinkProbe {
                     }
                 }.awaitAll()
             }
+        } finally {
+            // Also when cancelled: an unfinished check is asked again next time, not skipped for ever.
+            asking.removeAll(ask.map { it.uri }.toSet())
         }
         // What its server said; failing that, what its size says ([guessed]).
         return hits.map { guessed(known[it.uri]?.takeIf { k -> k.name == it.name } ?: it) }

@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.AnimeLoadResponse
 import com.lagradost.cloudstream3.AnimeSearchResponse
 import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.LiveStreamLoadResponse
+import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MovieLoadResponse
 import com.lagradost.cloudstream3.MovieSearchResponse
@@ -34,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
@@ -171,11 +173,8 @@ object CsStreams {
     /** One provider: its page for the title, the episode on it, and every link found there. Null, or why nothing came. */
     private suspend fun one(p: MainAPI, title: Title, ep: Episode?, absolute: Int?, emit: (Hit) -> Unit): String? {
         val series = ep != null
-        val url = when (val at = loadUrl(p, title, series)) {
-            is Found.Url -> at.url
-            is Found.Not -> return at.why
-        }
-        val load = p.load(url) ?: return "its page didn't load"
+        val page = pageOf(p, title, series)
+        val load = page.load ?: return page.why
         // A plugin that knows the title's IMDb id and gives another found a different title.
         val said = load.syncData["imdb"]?.takeIf { it.startsWith("tt") }
         if (said != null && title.imdb.startsWith("tt") && said != title.imdb) return "found a different title"
@@ -207,6 +206,36 @@ object CsStreams {
             )
         }
         return null
+    }
+
+    /** A provider's loaded page for a title, or why there is none. */
+    private class Page(val load: LoadResponse?, val why: String?, val at: Long = System.currentTimeMillis())
+
+    /** Pages kept by provider and title: a season's eight episodes search and load each site once, not eight times. */
+    private val pages = ConcurrentHashMap<String, Page>()
+    private val pageLocks = ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+
+    /** A page is trusted this long: past it the site is asked again (its episode list may have grown). */
+    private const val PAGE_MS = 30 * 60 * 1000L
+
+    /**
+     * The provider's page for [title]: searched and loaded once, then shared by every episode asked about while it is
+     * fresh — two episodes asking at once wait for the one load. Only a page that loaded is kept.
+     */
+    private suspend fun pageOf(p: MainAPI, title: Title, series: Boolean): Page {
+        val key = "${p.name}|${title.imdb.ifEmpty { title.title }}|$series"
+        return pageLocks.getOrPut(key) { kotlinx.coroutines.sync.Mutex() }.withLock {
+            pages[key]?.takeIf { System.currentTimeMillis() - it.at < PAGE_MS }
+                ?: when (val at = loadUrl(p, title, series)) {
+                    is Found.Not -> Page(null, at.why)
+                    is Found.Url -> p.load(at.url)?.let { Page(it, null).also { page -> pages[key] = page } } ?: Page(null, "its page didn't load")
+                }
+        }
+    }
+
+    /** Pages forgotten: a reload, or a fresh link, asks the sites themselves. */
+    fun forgetPages() {
+        pages.clear()
     }
 
     /** Where a provider's page for a title is, or why it isn't. */
