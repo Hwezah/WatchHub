@@ -103,7 +103,7 @@ object LinkProbe {
      * once crowded the phone's connection, checks timed out, and a 720p MKV that only failed to answer in time was
      * taken for one that needs its headers — and passed over for a 1080p.
      */
-    private val slots = Semaphore(12)
+    private val slots = Semaphore(8)
 
     /** Links being checked now: a second look at the same list (results arriving) doesn't ask them twice. */
     private val asking: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()

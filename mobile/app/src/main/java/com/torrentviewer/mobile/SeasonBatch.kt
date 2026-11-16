@@ -73,10 +73,11 @@ data class SeasonScan(
  */
 object SeasonBatch {
     /**
-     * Episodes asked about at once. Each fans out to every plugin's sites — but each site's page for the show is now
-     * searched and loaded once for the whole season ([CsStreams]), so three at a time asks them less than two did.
+     * Episodes asked about at once: two, as when the light Moviesmod files reliably came in. Three (with link checks
+     * running alongside) crowded the plugins' ten slots and the phone's connection, and StreamPlay — whose extractors
+     * hop through several sites per link — ran out of time before reaching them, leaving 1 GB picks.
      */
-    private const val AT_ONCE = 3
+    private const val AT_ONCE = 2
 
     private val _scan = MutableStateFlow<SeasonScan?>(null)
     val scan: StateFlow<SeasonScan?> = _scan
