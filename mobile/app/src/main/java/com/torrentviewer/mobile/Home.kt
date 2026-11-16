@@ -422,8 +422,8 @@ fun ReleasesSheet(all: List<Item>, watch: Watch, onDismiss: () -> Unit) {
 }
 
 /**
- * One genre as a wide picture tile: a backdrop from the genre's list, darkened at the foot, its name in capitals over
- * it. The list is fetched when the tile first shows, and kept as Home's rows are. Each tile takes the first picture
+ * One genre as a wide picture tile: a backdrop from the genre's list, darkened at the foot, its name over it.
+ * The list is fetched when the tile first shows, and kept as Home's rows are. Each tile takes the first picture
  * no other tile has ([taken], kept while Home is): a big film sits in half the genres, and every tile wore its face.
  */
 @Composable
@@ -442,13 +442,18 @@ private fun GenreTile(name: String, kind: String, key: String, taken: MutableMap
             art?.let { Artwork(it, name, Modifier.fillMaxSize()) }
             Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.75f))))
             Text(
-                name.uppercase(), Modifier.align(Alignment.BottomStart).padding(12.dp),
-                // The weight of the app's own headings, not heavier.
-                style = Type.label.copy(color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                sentenceCase(name), Modifier.align(Alignment.BottomStart).padding(12.dp),
+                // The app's own type, as its rows' names are: no capitals all through, no spacing out, not heavy.
+                style = Type.label.copy(color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
     }
 }
+
+/** "Science Fiction" → "Science fiction": a capital to start with only. A short word in capitals ("TV") stays so. */
+private fun sentenceCase(name: String) = name.trim().split(' ')
+    .joinToString(" ") { w -> if (w.length <= 3 && w.all { it.isUpperCase() }) w else w.lowercase() }
+    .replaceFirstChar { it.uppercase() }
 
 @Composable
 private fun Rail(heading: String, onMore: (() -> Unit)? = null, content: @Composable () -> Unit) {
