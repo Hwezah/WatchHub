@@ -18,7 +18,12 @@ data class AddonCatalog(
     val preset: String? = null,
     /** [preset]'s choice, for the row's title ("Action"). */
     val presetLabel: String? = null,
+    /** The genres it can be filtered by (its "genre" extra's options), for Home's Genres row. */
+    val genres: List<String> = emptyList(),
 )
+
+/** What a Genres-row key adds to a catalogue's key: the genre after it. */
+const val GENRE_SEP = "~g~"
 
 /** Watchly's own kind for a Stremio type: "movie" plays the id itself — films, and live "tv" channels — the rest hold videos. */
 fun kindOfType(type: String) = if (type == "movie" || type == "tv") "movie" else "tv"
@@ -124,7 +129,8 @@ fun toAddon(url: String, m: JSONObject, on: Boolean = true): Addon? {
         val preset = if (presettable) needs.joinToString("&") { "${it.optString("name")}=${enc(it.strings("options").first())}" } else null
         val required = (needs.isNotEmpty() && !presettable) || c.strings("extraRequired").isNotEmpty()
         val search = extra.any { it.optString("name") == "search" } || "search" in c.strings("extraSupported")
-        AddonCatalog(type, id, c.str("name") ?: id, required, search, preset, if (presettable) needs.first().strings("options").first() else null)
+        val genres = extra.firstOrNull { it.optString("name") == "genre" }?.strings("options").orEmpty()
+        AddonCatalog(type, id, c.str("name") ?: id, required, search, preset, if (presettable) needs.first().strings("options").first() else null, genres)
     }
     return if (resources.isEmpty() && catalogs.isEmpty()) null else Addon(url, name, resources, on, m.toString(), catalogs)
 }
@@ -249,9 +255,21 @@ object Addons {
         }
     }
 
-    /** The addon and catalogue behind a home row's key. */
-    fun shelf(key: String): Pair<Addon, AddonCatalog>? =
-        _list.value.firstNotNullOfOrNull { a -> a.catalogs.find { a.shelfKey(it) == key }?.let { a to it } }
+    /** The addon and catalogue behind a home row's key (a Genres tile's key: the catalogue's, before its genre). */
+    fun shelf(key: String): Pair<Addon, AddonCatalog>? {
+        val base = key.substringBefore(GENRE_SEP)
+        return _list.value.firstNotNullOfOrNull { a -> a.catalogs.find { a.shelfKey(it) == base }?.let { a to it } }
+    }
+
+    /**
+     * Home's Genres row, as Nuvio draws it from a catalogue addon: the first enabled catalogue that can be filtered by
+     * genre (a film list before a series one), and its genres, each with the key of that genre's list.
+     */
+    fun genres(): Pair<String, List<Pair<String, String>>>? {
+        val (a, c) = _list.value.filter { it.on }.flatMap { a -> a.catalogs.filter { it.genres.size >= 2 && !it.search }.map { a to it } }
+            .sortedBy { (_, c) -> if (c.type == "movie") 0 else 1 }.firstOrNull() ?: return null
+        return kindOfType(c.type) to c.genres.map { g -> g to a.shelfKey(c) + GENRE_SEP + g }
+    }
 
     /** Catalogues that take a search query. */
     fun searchable(): List<Pair<Addon, AddonCatalog>> = _list.value.filter { it.on }.flatMap { a -> a.catalogs.filter { it.search }.map { a to it } }

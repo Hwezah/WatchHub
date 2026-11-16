@@ -165,7 +165,9 @@ object Meta {
                 val (addon, list) = Addons.shelf(genre) ?: error("addon gone")
                 // An addon that builds its lists on request (AIOMetadata, Xperience) can take a while on the first ask:
                 // given 40 seconds, and a second try, rather than a row silently missing.
-                val url = "${addon.url}/catalog/${list.type}/${enc(list.id)}${list.preset?.let { "/$it" }.orEmpty()}.json"
+                // A Genres tile's list: the genre chosen; else the catalogue's own preset, if it needs one.
+                val extra = genre.substringAfter(GENRE_SEP, "").takeIf { it.isNotEmpty() }?.let { "genre=${enc(it)}" } ?: list.preset
+                val url = "${addon.url}/catalog/${list.type}/${enc(list.id)}${extra?.let { "/$it" }.orEmpty()}.json"
                 val body = runCatching { Net.get(url, timeoutMs = 40_000, quiet = true) }.getOrElse { Net.get(url, timeoutMs = 40_000, quiet = true) }
                 val metas = JSONObject(body).optJSONArray("metas") ?: JSONArray()
                 return@remember toTitles(metas, kindOfType(list.type), anyId = true, type = list.type)

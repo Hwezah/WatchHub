@@ -256,6 +256,8 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
     charts.forEach { (_, _, titles) -> titles.mapTo(seen) { it.imdb } }
     val rows = shelves.associate { s -> s.key to state.loaded[s.key].orEmpty().filter { seen.add(it.imdb) } }
     val visible = shelves.filter { state.loaded[it.key].isNullOrEmpty() || rows[it.key].orEmpty().isNotEmpty() }
+    /** An addon's genres for the Genres row, while the shelves come from addons and none is hidden in Settings. */
+    val genreTiles = remember(addons, kids.on) { if (kids.on) null else com.torrentviewer.core.Addons.genres() }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(state = state.list, contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
@@ -290,6 +292,16 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                                 }
                                 Text(p.title, Modifier.padding(top = 6.dp), style = Type.label.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
+                        }
+                    }
+                }
+            }
+            // An addon's genres (Xperience, AIOMetadata…) as picture tiles, as Nuvio shows them: a tap opens that genre's list.
+            genreTiles?.let { (kind, genres) ->
+                item(key = "genres") {
+                    Rail("Genres") {
+                        LazyRow(state = state.row("genres"), contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(genres, key = { it.second }) { (name, key) -> GenreTile(name, kind, key) { onShelf(Shelf(name, kind, key)) } }
                         }
                     }
                 }
@@ -386,6 +398,28 @@ fun ReleasesSheet(all: List<Item>, watch: Watch, onDismiss: () -> Unit) {
         },
         onDismiss = onDismiss,
     )
+}
+
+@Composable
+/**
+ * One genre as a wide picture tile: the backdrop of the genre's first title, darkened at the foot, its name in
+ * capitals over it. The list is fetched when the tile first shows, and kept as Home's rows are.
+ */
+@Composable
+private fun GenreTile(name: String, kind: String, key: String, onOpen: () -> Unit) {
+    val art by produceState(Meta.peekCatalog(kind, key)?.firstNotNullOfOrNull { it.backdrop ?: it.poster }, key) {
+        if (value == null) value = Meta.catalog(kind, key).firstNotNullOfOrNull { it.backdrop ?: it.poster }
+    }
+    Tap(onOpen, Modifier.width(220.dp).aspectRatio(16f / 9f), RoundedCornerShape(10.dp)) {
+        Box(Modifier.fillMaxSize().background(Ink.surface)) {
+            art?.let { Artwork(it, name, Modifier.fillMaxSize()) }
+            Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.75f))))
+            Text(
+                name.uppercase(), Modifier.align(Alignment.BottomStart).padding(12.dp),
+                style = Type.label.copy(color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 @Composable

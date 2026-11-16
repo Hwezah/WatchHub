@@ -60,6 +60,7 @@ class LibTest {
         assertFalse(preset.required)
         assertEquals("genre=Action", preset.preset)
         assertEquals("Action", preset.presetLabel)
+        assertEquals(listOf("Action", "Drama"), preset.genres)
         // The TV's QR link: sent only to a TV page on the home network.
         val tv = "http://192.168.1.5:40123/" + "ab".repeat(12)
         assertEquals(tv, tvDropUrl("watchly://tv-addons?to=" + java.net.URLEncoder.encode(tv, "UTF-8")))
