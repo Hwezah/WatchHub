@@ -82,4 +82,12 @@ class LinkProbeTest {
         val d = described(link("FrameX [720p | English]", 0, "720p"), "index.m3u8", "application/vnd.apple.mpegurl")
         assertEquals("HLS", traitsOf(d).format)
     }
+
+    @Test fun chipsCountEpisodesNotReleases() {
+        val ep1 = listOf(link("Show 720p x265 .mkv", 300L shl 20, "720p", "https://a/1"), link("Show 720p x265 .mkv", 310L shl 20, "720p", "https://a/2"))
+        val ep2 = listOf(link("Show 1080p .mkv", 2L shl 30, "1080p", "https://a/3"))
+        val q = episodeOptions(listOf(ep1, ep2), BatchFilter()) { it.quality }.toMap()
+        assertEquals(1, q["720p"])
+        assertEquals(1, q["1080p"])
+    }
 }

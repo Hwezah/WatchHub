@@ -310,6 +310,8 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 }
                 return@Column
             }
+            /** What the plan may take from an episode's releases: for another app, the links that need no headers when there are any. */
+            fun usableFor(hits: List<Hit>) = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
             // What a pick may take: the chips count only that, thin torrents left out as in the lists.
             val all = prefs.usable(scan.found.values.flatten())
             if (!scan.done) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -324,13 +326,16 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
 
             // Each row offers what the others leave possible; tapping the chosen value again clears it.
             // The rows' choices are counted when the scan or the chips change, not on every redraw.
-            val options = remember(scan, filter) {
+            // Counted in episodes, from what the plan itself may take (for another app, only links that need no headers):
+            // the number on a chip is how many episodes choosing it can fill.
+            val options = remember(scan, filter, external) {
+                val eps = scan.found.values.map { hits -> usableFor(prefs.usable(hits)) }
                 listOf(
-                    filterOptions(all, filter.copy(quality = null)) { it.quality },
-                    filterOptions(all, filter.copy(codec = null)) { it.codec },
-                    filterOptions(all, filter.copy(format = null)) { it.format },
-                    filterOptions(all, filter.copy(subsOnly = false)) { if (it.subs) "With subs" else null },
-                    filterOptions(all, filter.copy(source = null)) { it.source },
+                    episodeOptions(eps, filter.copy(quality = null)) { it.quality },
+                    episodeOptions(eps, filter.copy(codec = null)) { it.codec },
+                    episodeOptions(eps, filter.copy(format = null)) { it.format },
+                    episodeOptions(eps, filter.copy(subsOnly = false)) { if (it.subs) "With subs" else null },
+                    episodeOptions(eps, filter.copy(source = null)) { it.source },
                 )
             }
             FilterRow("Resolution", options[0], filter.quality) { filter = filter.copy(quality = it) }
@@ -345,7 +350,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 // Every episode, from the start: its pick so far, swapped for a better one as its sources answer.
                 scan.episodes.map { ep ->
                     val hits = scan.found[ep.id].orEmpty()
-                    val from = if (external) hits.filter { it.headers.isEmpty() }.ifEmpty { hits } else hits
+                    val from = usableFor(hits)
                     ep to if (filter == BatchFilter()) seasonPick(from, prefs) else batchPick(from, filter, prefs.direct, prefs)
                 }
             }

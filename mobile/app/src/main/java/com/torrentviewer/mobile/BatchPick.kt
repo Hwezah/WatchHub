@@ -154,6 +154,16 @@ fun filterOptions(all: List<Hit>, filter: BatchFilter, only: (Hit) -> Boolean = 
         .groupingBy { it }.eachCount().toList()
         .sortedWith(compareBy<Pair<String, Int>> { it.first == UNKNOWN }.thenByDescending { qualityRank(it.first) }.thenByDescending { it.second })
 
+/**
+ * [filterOptions] for a season: each value with how many episodes have at least one release with it (the others'
+ * filters applied), not how many releases — "720p · 8" is eight episodes that can get a 720p, so choosing it never
+ * promises more episodes than the plan then finds.
+ */
+fun episodeOptions(episodes: Collection<List<Hit>>, filter: BatchFilter, only: (Hit) -> Boolean = ::batchable, of: (Traits) -> String?): List<Pair<String, Int>> =
+    episodes.flatMap { hits -> hits.filter(only).map(::traitsOf).filter(filter::accepts).mapNotNull(of).distinct() }
+        .groupingBy { it }.eachCount().toList()
+        .sortedWith(compareBy<Pair<String, Int>> { it.first == UNKNOWN }.thenByDescending { qualityRank(it.first) }.thenByDescending { it.second })
+
 /** For each episode, its pick under [filter], or null where nothing matches. */
 fun <K> batchPlan(byEpisode: Map<K, List<Hit>>, filter: BatchFilter): Map<K, Hit?> = byEpisode.mapValues { (_, hits) -> batchPick(hits, filter) }
 
