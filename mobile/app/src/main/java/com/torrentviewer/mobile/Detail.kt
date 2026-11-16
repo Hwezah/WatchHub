@@ -217,6 +217,9 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var seasonPacks by remember(title.imdb) { mutableStateOf<Pair<Int, List<Hit>?>?>(null) }
     /** The trailer playing in its card, over the page: its YouTube id. */
     var trailerId by remember(title.imdb) { mutableStateOf<String?>(null) }
+    /** The scene-by-scene story open: the film's, or [storyEp]'s. */
+    var storyOpen by remember(title.imdb) { mutableStateOf(false) }
+    var storyEp by remember(title.imdb) { mutableStateOf<Episode?>(null) }
     /** The batch download sheet's season, while it is open. */
     var batchFor by remember(title.imdb) { mutableStateOf<Int?>(null) }
     /** A source's ⬇ asked: where to download it (this app or another), for that source and its episode. */
@@ -475,6 +478,13 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             Text(plot,style = Type.body.copy(color = Ink.text.copy(alpha = 0.85f)), maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
                         }
                     }
+                    // The whole story, scene by scene with times, ending held back: a film's here, an episode's on its row.
+                    if (!title.isSeries) Tap({ storyEp = null; storyOpen = true }, Modifier.padding(top = 8.dp), RoundedCornerShape(6.dp)) {
+                        Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Lc(L.drawable.lucide_ic_info, tint = Ink.accent, size = 18.dp)
+                            Text("  Scene by Scene", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
+                        }
+                    }
                     if (title.directors.isNotEmpty()) Crew(if (title.isSeries) "Creators" else "Director", title.directors.take(2), tmdb?.directors.orEmpty(), onPerson.takeUnless { com.torrentviewer.core.Kids.on })
                     // However many actions there are, they share the width evenly.
                     Row(Modifier.fillMaxWidth().padding(top = 14.dp)) {
@@ -538,6 +548,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             sheet = true
                         },
                         onDownload = { downloadEpisode(ep) },
+                        onStory = { storyEp = ep; storyOpen = true },
                     )
                 }
             } else if (title.isSeries && seasons.isNotEmpty()) {
@@ -588,6 +599,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             sheet = true
                         },
                         onDownload = { downloadEpisode(ep) },
+                        onStory = { storyEp = ep; storyOpen = true },
                     )
                 }
                 if (!allEpisodes && episodes.size > FIRST_EPISODES) item(key = "all-episodes") {
@@ -648,6 +660,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
 
     // The trailer plays here, in a card over the page, rather than in YouTube.
     trailerId?.let { id -> TrailerSheet(id, title.title) { trailerId = null } }
+    if (storyOpen) StorySheet(title, storyEp) { storyOpen = false }
 
     batchFor?.let { s -> BatchSheet(title, s, say = { watch.notes.tryEmit(it) }, onDismiss = { batchFor = null }, external = batchExternal, sendTo = batchTo) }
 
@@ -930,7 +943,7 @@ private fun Pill(text: String, tint: Color) {
 
 /** Netflix's phone episode row: still on the left, number and name beside it, the synopsis under both. */
 @Composable
-private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?, busy: Boolean, selected: Boolean, seen: Double, modifier: Modifier, onPlay: () -> Unit, onSources: () -> Unit, onDownload: () -> Unit) {
+private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?, busy: Boolean, selected: Boolean, seen: Double, modifier: Modifier, onPlay: () -> Unit, onSources: () -> Unit, onDownload: () -> Unit, onStory: () -> Unit) {
     Column(modifier.padding(horizontal = EDGE, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Tap(onPlay, Modifier.width(132.dp).aspectRatio(16f / 9f), RoundedCornerShape(6.dp)) {
@@ -958,6 +971,8 @@ private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?,
                     ep.released?.take(10)?.let { Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp)) }
                 }
             }
+            // The episode's story, scene by scene ([StorySheet]).
+            Tap(onStory, shape = CircleShape) { Lc(L.drawable.lucide_ic_info, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
             // Every release for this episode, to pick one by hand.
             Tap(onSources, shape = CircleShape) { Lc(L.drawable.lucide_ic_list_video, Modifier.padding(10.dp), tint = Ink.muted, size = 22.dp) }
             // No ⬇ of its own (the owner's choice): the sources' list has one on every release, and the season its Download.
