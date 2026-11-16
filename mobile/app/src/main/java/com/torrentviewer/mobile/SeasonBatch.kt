@@ -117,13 +117,18 @@ object SeasonBatch {
     }
 
     /**
-     * A pick that needs nothing more: the preferred resolution and format, a direct file whose size is known. With data
-     * saver on, an episode that has one stops asking the slower sites.
+     * A pick that needs nothing more: the preferred resolution and format, a direct file whose size is known and light.
+     * With data saver on, an episode that has one stops asking the slower sites.
      */
     private fun confirmed(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
         val pick = seasonPick(hits, prefs) ?: return false
-        return pick.direct && !isPlaylist(pick) && pick.size > 0 && onTarget(listOf(pick), prefs, ::seasonPick)
+        // Light too: a 1 GB 720p from a quick site stopped the scan before the slow sites' 300 MB ones came in.
+        val light = (LIGHT_EPISODE_BYTES * if (pick.kind == "movie") 2.5 else 1.0).toLong()
+        return pick.direct && !isPlaylist(pick) && pick.size in 1..light && onTarget(listOf(pick), prefs, ::seasonPick)
     }
+
+    /** With data saver, an episode stops only on a confirmed pick this light (a film: 2.5 times): a typical 720p encode. */
+    private const val LIGHT_EPISODE_BYTES = 600L * 1024 * 1024
 
     /** [gatherAll], but done as soon as what has come holds a [confirmed] pick (after a short floor for the quick sources). */
     private suspend fun gatherUntil(capMs: Long, onPartial: (List<Hit>) -> Unit, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
