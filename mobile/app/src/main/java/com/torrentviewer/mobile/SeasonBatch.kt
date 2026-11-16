@@ -89,7 +89,22 @@ object SeasonBatch {
      * every plugin (up to minutes each, per episode) made a season take many minutes for links nobody needed.
      */
     suspend fun sources(title: Title, ep: Episode): List<Hit> =
-        gather(EPISODE_MS, EPISODE_MIN_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } }
+        // Then the links that don't say what they are, asked for their file names ([LinkProbe]): the light 720p MKVs
+        // among them are what a pick is after.
+        LinkProbe.describe(
+            gather(EPISODE_MS, EPISODE_MIN_MS, EPISODE_MORE_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } },
+        )
+
+    /**
+     * Longer still for an episode with nothing worth taking yet — no pick as preferred, and no light link that may
+     * turn out to be one: the slow sites (Moviesmod and the like, through StreamPlay) are where the small files are,
+     * and stopping before they answered left that episode with an 11 GB 1080p.
+     */
+    private const val EPISODE_MORE_MS = 75_000L
+
+    /** A light link that doesn't say what it is: likely the small 720p a pick wants, once [LinkProbe] has asked. */
+    private fun promising(hits: List<Hit>) = hits.any { unlabelled(it) && batchable(it) && it.size in 1..LIGHT_BYTES }
+    private const val LIGHT_BYTES = 1_500L * 1024 * 1024
 
     /**
      * What [search] finds, for a download pick: it stops once what's in already holds a pick as preferred
@@ -97,7 +112,7 @@ object SeasonBatch {
      * a plugin stuck in a slow request is cancelled and left behind, not waited for — waiting on it is what made
      * a time limit here mean nothing.
      */
-    suspend fun gather(limitMs: Long, minMs: Long = 0, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
+    suspend fun gather(limitMs: Long, minMs: Long = 0, moreMs: Long = 0, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
         val started = System.currentTimeMillis()
         val prefs = downloadPrefs()
         val latest = java.util.concurrent.atomic.AtomicReference<List<Hit>>(emptyList())
@@ -117,7 +132,13 @@ object SeasonBatch {
             }
             // Good enough early: still given the rest of [minMs], for the slower sources' (often smaller) files.
             val left = minMs - (System.currentTimeMillis() - started)
-            val more = if (all == null && left > 0) withTimeoutOrNull(left) { job.await() } else null
+            var more = if (all == null && left > 0) withTimeoutOrNull(left) { job.await() } else null
+            // Out of time with nothing worth taking: the slow sources get [moreMs] more, a look every two seconds.
+            if (all == null && more == null && moreMs > 0 && !enough.isCompleted) {
+                val until = System.currentTimeMillis() + moreMs
+                while (System.currentTimeMillis() < until && !job.isCompleted && !enough.isCompleted && !promising(allowedHits(latest.get()))) kotlinx.coroutines.delay(2000)
+                if (job.isCompleted) more = runCatching { job.await() }.getOrNull()
+            }
             allowedHits(all ?: more ?: latest.get())
         } finally {
             job.cancel()

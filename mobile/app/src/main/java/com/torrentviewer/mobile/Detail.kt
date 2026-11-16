@@ -297,7 +297,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     else searchStreams(title.title, title.imdb, title.year?.take(4), onHits = fromAddons, type = title.type)
                 }
             }
-            val pick = preferredPick(allowedHits(all), prefs)
+            // Links that don't say what they are, asked for their file names first: a light 720p MKV among them wins.
+            val pick = preferredPick(LinkProbe.describe(allowedHits(all)), prefs)
             if (pick == null) watch.notes.tryEmit("Nothing that can be saved was found for $what.")
             else if (external) {
                 ExternalDownloaders.note(openInDownloader(context, pick, what, to), many = false)?.let { watch.notes.tryEmit(it) }

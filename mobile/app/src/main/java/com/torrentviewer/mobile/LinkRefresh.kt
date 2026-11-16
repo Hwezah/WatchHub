@@ -77,8 +77,9 @@ object LinkRefresh {
                             else searchStreams(title.title, title.imdb, title.year?.take(4), type = title.type, onHits = onHits)
                         }
                     }.getOrDefault(latest)
-                    latest = all
-                    early.complete(pick(all))
+                    // Unlabelled links asked for their file names, so a fresh link is judged by what it really is.
+                    latest = LinkProbe.describe(all)
+                    early.complete(pick(latest))
                 }
                 early.await().also { search.cancel() }
             }
