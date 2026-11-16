@@ -233,6 +233,15 @@ fun goodEnough(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
         (prefs.format.isEmpty() || traitsOf(pick).format == prefs.format)
 }
 
+/**
+ * Whether what [preferredPick] takes from [hits] is what was asked for: the preferred resolution and format (720p MKV).
+ * Unlike [goodEnough], a slow torrent still counts: this is about which file, not how fast.
+ */
+fun onTarget(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
+    val pick = preferredPick(hits, prefs) ?: return false
+    return pick.quality != null && resolutionDistance(pick.quality, prefs.quality) == 0 && (prefs.format.isEmpty() || traitsOf(pick).format == prefs.format)
+}
+
 /** What a pick was, for the one-line message: "720p · x265 · MKV · 412 MB · HdHub". */
 fun describePick(hit: Hit): String {
     val t = traitsOf(hit)

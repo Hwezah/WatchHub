@@ -59,4 +59,11 @@ class LinkProbeTest {
         val light = guessed(link("Moviesmod Driveseed [504MB]", 504L shl 20))
         assertEquals(light, preferredPick(listOf(heavy, light), DownloadPrefs()))
     }
+
+    @Test fun onTargetIsThePreferredResolutionAndFormat() {
+        val p = DownloadPrefs()
+        assertTrue(onTarget(listOf(link("Show 720p x265 .mkv", 400L shl 20, "720p")), p))
+        assertEquals(false, onTarget(listOf(link("Show 1080p x265 .mkv", 3L shl 30, "1080p")), p))
+        assertEquals(false, onTarget(emptyList(), p))
+    }
 }

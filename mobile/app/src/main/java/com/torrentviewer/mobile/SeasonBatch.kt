@@ -53,6 +53,8 @@ data class SeasonScan(
     val found: Map<String, List<Hit>> = emptyMap(),
     /** When the scan started: its links are at least this old, and renewed before they start if too old. */
     val at: Long = System.currentTimeMillis(),
+    /** Episodes asked a second time because their pick missed the preference ([onTarget]): their ids. */
+    val refilling: Set<String> = emptySet(),
 ) {
     val checked get() = found.size
     val done get() = found.size >= episodes.size
@@ -158,15 +160,40 @@ object SeasonBatch {
         // Off the main thread: ranking and filtering hundreds of releases per episode there made the app stutter.
         job = AppScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             if (again) com.torrentviewer.mobile.cs.CsPlugins.forgetPages()
-            for (ep in episodes) launch {
-                val hits = gate.withPermit { sources(title, ep) }
+            kotlinx.coroutines.coroutineScope {
+                for (ep in episodes) launch {
+                    val hits = gate.withPermit { sources(title, ep) }
+                    synchronized(this@SeasonBatch) {
+                        _scan.value = _scan.value?.takeIf { it.titleImdb == title.imdb && it.season == season }
+                            ?.let { it.copy(found = it.found + (ep.id to hits)) }
+                    }
+                }
+            }
+            // The owner's check, done for them: every episode whose pick misses the preference (720p MKV) is asked once
+            // more, for longer — the slow sites answer late, and often hold exactly the file that was missing — and what
+            // comes is added to what it had. The plan then picks again from the lot.
+            val prefs = downloadPrefs()
+            val misses = episodes.filter { !onTarget(_scan.value?.found?.get(it.id).orEmpty(), prefs) }
+            if (misses.isEmpty()) return@launch
+            synchronized(this@SeasonBatch) { _scan.value = _scan.value?.copy(refilling = misses.mapTo(HashSet()) { it.id }) }
+            for (ep in misses) launch {
+                val more = runCatching { gate.withPermit { refill(title, ep) } }.getOrDefault(emptyList())
                 synchronized(this@SeasonBatch) {
-                    _scan.value = _scan.value?.takeIf { it.titleImdb == title.imdb && it.season == season }
-                        ?.let { it.copy(found = it.found + (ep.id to hits)) }
+                    _scan.value = _scan.value?.takeIf { it.titleImdb == title.imdb && it.season == season }?.let {
+                        it.copy(found = it.found + (ep.id to (it.found[ep.id].orEmpty() + more).distinctBy { h -> h.id }), refilling = it.refilling - ep.id)
+                    }
                 }
             }
         }
     }
+
+    /** The second look at an episode that missed: longer, stopping only on a pick that is on target. */
+    private suspend fun refill(title: Title, ep: Episode): List<Hit> = LinkProbe.describe(
+        gather(REFILL_MS, REFILL_MIN_MS) { onHits -> CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) } },
+    )
+
+    private const val REFILL_MS = 150_000L
+    private const val REFILL_MIN_MS = 60_000L
 
     /** Queues every picked release; how many went. */
     fun download(title: Title, picks: List<Pair<Episode, Hit>>): Int {
@@ -214,6 +241,13 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             if (!scan.done) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spinner(size = 20.dp)
                 Text("   Checking episodes · ${scan.checked} of ${scan.episodes.size}", style = Type.meta.copy(color = Ink.muted))
+            }
+            if (scan.done && scan.refilling.isNotEmpty()) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Spinner(size = 20.dp)
+                Text(
+                    "   Looking again for ${prefs.quality.ifEmpty { "better" }} ${prefs.format} · ${scan.refilling.size} episode${if (scan.refilling.size == 1) "" else "s"}",
+                    style = Type.meta.copy(color = Ink.muted),
+                )
             }
             if (scan.done && all.none(::batchable)) {
                 Note("Nothing downloadable was found for this season's episodes.")
@@ -277,7 +311,12 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 Text(
                     "${episodeTag(ep.season, ep.episode)}  " + if (hit == null) "—" else
                         listOfNotNull(hit.quality, t?.codec?.takeIf { it != UNKNOWN }?.let(::codecLabel), t?.format?.takeIf { it != UNKNOWN }, bytes(hit.size).takeIf { hit.size > 0 }, hit.addon.ifEmpty { null })
-                            .joinToString(" · "),
+                            .joinToString(" · ") + when {
+                            // Said, so a 1080p in the list isn't a mystery: still looking, or nothing nearer exists.
+                            ep.id in scan.refilling -> " · looking again…"
+                            filter == BatchFilter() && scan.done && prefs.quality.isNotEmpty() && !onTarget(listOf(hit), prefs) -> " · no ${prefs.quality} ${prefs.format} found"
+                            else -> ""
+                        },
                     Modifier.padding(top = 6.dp), style = Type.meta.copy(color = if (hit == null) Ink.faint else Ink.muted), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
