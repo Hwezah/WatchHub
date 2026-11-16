@@ -752,6 +752,7 @@ Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
 }
 
 /** The releases: a heading, the quality pills, then one row each. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun LazyListScope.sources(
     title: Title,
     episode: Episode?,
@@ -775,8 +776,10 @@ private fun LazyListScope.sources(
     onPlay: (Hit) -> Unit,
 ) {
     val qualities = hits.orEmpty().mapNotNull { it.quality }.distinct().sortedBy { QUALITY_ORDER.indexOf(it).let { i -> if (i < 0) 9 else i } }
-    item(key = "sources-head") {
-        Column(modifier.padding(start = EDGE, end = EDGE, top = if (heading) 26.dp else 4.dp)) {
+    // In the episode sheet the pills and the count stay put at the top, on the sheet's own colour, and only the
+    // releases scroll under them; on the page they scroll with it.
+    val head: @Composable () -> Unit = {
+        Column(modifier.then(if (heading) Modifier else Modifier.fillMaxWidth().background(Ink.surface)).padding(start = EDGE, end = EDGE, top = if (heading) 26.dp else 4.dp)) {
             // The heading, and at its far right a green reload: these links' tokens expire within minutes.
             if (heading) Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Sources", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
@@ -826,6 +829,7 @@ private fun LazyListScope.sources(
             }
         }
     }
+    if (heading) item(key = "sources-head") { head() } else stickyHeader(key = "sources-head") { head() }
     items(shown.take(MAX_SOURCES), key = { "src-" + it.id }) { hit ->
         Source(hit, modifier.padding(start = EDGE, end = EDGE, bottom = 8.dp), runtimeSeconds(title.runtime), onDownload = { onDownload(hit) }, onMore = onMore?.let { more -> { more(hit) } }) { onPlay(hit) }
     }
