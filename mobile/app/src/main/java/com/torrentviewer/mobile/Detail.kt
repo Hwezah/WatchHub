@@ -923,7 +923,7 @@ private fun AwardsCard(text: String) {
     // An upright phone: the trophy and the words spaced around the card's middle; elsewhere side by side from the start.
     val spread = isPortraitPhone()
     Row(
-        Modifier.padding(top = 18.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Ink.surface).grain().padding(14.dp),
+        Modifier.padding(top = 18.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).frosted(RoundedCornerShape(10.dp)).padding(14.dp),
         horizontalArrangement = if (spread) Arrangement.SpaceAround else Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -771,3 +771,11 @@ fun ReloadArrow(busy: Boolean, tint: Color, size: Dp, modifier: Modifier = Modif
     if (busy) Spinner(modifier, size = size)
     else Lc(com.composables.icons.lucide.R.drawable.lucide_ic_rotate_cw, modifier, tint = tint, size = size)
 }
+
+/**
+ * A card's face, frosted as Grabber's are (the owner's choice, for every card of a list — downloads, addons, settings,
+ * plugins): the surface with the app's grain over it and a faint light rim round [shape].
+ */
+fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape): Modifier =
+    background(Ink.surface).grain().border(1.dp, Color.White.copy(alpha = 0.06f), shape)
+

@@ -81,7 +81,7 @@ fun PluginsSection(watch: Watch) {
         Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
     )
     Text("Add a repository", Modifier.padding(start = 4.dp, top = 6.dp, bottom = 10.dp), style = Type.overline.copy(color = Ink.faint))
-    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(CARD)) {
+    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).frosted(RoundedCornerShape(14.dp)).padding(CARD)) {
         Field(link, { link = it.trim() }, "Shortcode or https://…/repo.json", Modifier.fillMaxWidth(), onSubmit = ::add, leading = L.drawable.lucide_ic_link)
         Button(if (adding) "Adding…" else "Add repository", ::add, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_plus, primary = true)
         Text(
@@ -123,7 +123,7 @@ private fun RepoCard(repo: RepositoryData, installed: List<PluginData>, changes:
         }
     }
     // Thin inside padding: the plugin list gets the width.
-    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(horizontal = 10.dp, vertical = 14.dp)) {
+    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).frosted(RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
                 Lc(L.drawable.lucide_ic_puzzle, tint = Ink.muted, size = 22.dp)
@@ -285,7 +285,7 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
         }
     }
     // The words take the card's full width; the buttons sit on a row of their own under them, one at each end.
-    Column(Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(horizontal = 14.dp, vertical = 10.dp)) {
+    Column(Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).frosted(RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 10.dp)) {
         Column(Modifier.fillMaxWidth()) {
             Text("${p.internalName}  ·  v${p.version}", style = Type.body.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
             // A failure in full: the missing class it names is what tells what to add.

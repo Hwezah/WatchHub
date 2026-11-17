@@ -777,7 +777,7 @@ private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
     val paused = com.torrentviewer.core.Stremio.library.collectAsState().value.paused.find { it.imdb == s.imdb }
     Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) { pressed ->
         // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card); 2 dp on the right.
-        Row(Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row((if (pressed) Modifier.background(Ink.surface2) else Modifier.frosted(RoundedCornerShape(10.dp))).padding(end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(88.dp).height(96.dp)) {
                 Artwork("https://images.metahub.space/poster/medium/${s.imdb}/img", s.title, Modifier.fillMaxSize())
                 paused?.let { ProgressLine((it.progress / 100).toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp) }
@@ -1709,7 +1709,7 @@ fun AddonsScreen(watch: Watch) {
 private fun AddonCard(a: com.torrentviewer.core.Addon, first: Boolean, last: Boolean, onRemoved: () -> Unit) {
     val m = remember(a.manifest) { runCatching { org.json.JSONObject(a.manifest) }.getOrNull() }
     val types = remember(a) { (a.resources.flatMap { it.types } + a.catalogs.map { it.type }).distinct().joinToString(", ") { com.torrentviewer.core.typeLabel(it) } }
-    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(CARD)) {
+    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).frosted(RoundedCornerShape(14.dp)).padding(CARD)) {
         Row(verticalAlignment = Alignment.Top) {
             Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
                 Lc(L.drawable.lucide_ic_puzzle, tint = Ink.muted, size = 24.dp)
@@ -1757,7 +1757,7 @@ private fun Group(title: String, content: @Composable () -> Unit) {
 /** The card itself. */
 @Composable
 private fun Panel(content: @Composable () -> Unit) {
-    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(start = CARD, end = CARD, top = CARD + 2.dp)) { content() }
+    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).frosted(RoundedCornerShape(14.dp)).padding(start = CARD, end = CARD, top = CARD + 2.dp)) { content() }
 }
 
 /** One line of the settings list; [words] are what else it answers to in the search. */
@@ -1772,7 +1772,7 @@ private fun SettingsList(groups: List<List<Entry>>, query: String) {
     val shown = if (q.isEmpty()) groups else listOf(groups.flatten().filter { it.matches(q) }).filter { it.isNotEmpty() }
     if (shown.isEmpty()) Text("No settings match", Modifier.padding(start = 4.dp, bottom = 12.dp), style = Type.meta.copy(color = Ink.faint))
     shown.forEach { group ->
-        Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Ink.surface).padding(vertical = 4.dp)) {
+        Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).frosted(RoundedCornerShape(18.dp)).padding(vertical = 4.dp)) {
             group.forEach { e ->
                 Tap(e.onClick, Modifier.fillMaxWidth(), RoundedCornerShape(12.dp)) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
