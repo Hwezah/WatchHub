@@ -422,8 +422,7 @@ object Meta {
                 listOf(async { search(q, "movie") }, async { search(q, "tv") }) + if (addons) listOf(async { searchAddons(q) }) else emptyList()
             }.awaitAll().flatten().forEach { found.putIfAbsent(it.imdb, it) }
         }
-        fun ranked() = found.values.map { it to fuzzyScore(it.title, query, it.year?.take(4)) }
-            .filter { it.second >= FUZZY_SHOW }.sortedByDescending { it.second }.map { it.first }
+        fun ranked() = tidySearch(found.values.map { it to fuzzyScore(it.title, query, it.year?.take(4)) }.filter { it.second >= FUZZY_SHOW })
         val variants = searchVariants(query)
         // The addons are asked as typed only: there are many of them, and they're slower.
         ask(variants, addons = false)
@@ -452,6 +451,25 @@ object Meta {
         val titles = seen.map { (imdb, kind) -> async { title(imdb, kind) } }.awaitAll().filterNotNull()
         topGenres(titles, limit)
     }
+}
+
+/**
+ * Search results made fit to show, from (title, how well its name fits) pairs. The same film found by several sources
+ * (Cinemeta's tt id, an addon's tmdb: one) shows once, the IMDb one kept. Entries with neither a poster nor a year
+ * (IMDb's "Untitled … sequel" placeholders) are left out. Real releases lead: a poster, a year and a rating each
+ * count, so the film itself comes before a fan upload or compilation that merely shares its name.
+ */
+fun tidySearch(scored: List<Pair<Title, Double>>): List<Title> {
+    fun key(t: Title) = t.title.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim() + "|" + t.year?.take(4).orEmpty() + "|" + t.kind
+    // A rating is the strongest sign of a real release: fan uploads and compilations have none, and the film's longer
+    // official name ("Fast & Furious Presents: Hobbs & Shaw") fits the words typed less closely than theirs.
+    fun weight(t: Title, fit: Double) = fit + (if (t.poster != null) 0.08 else -0.15) + (if (t.year != null) 0.0 else -0.06) +
+        (if (t.rating?.toDoubleOrNull()?.let { it > 0 } == true) 0.2 else 0.0)
+    return scored.filter { (t, _) -> t.poster != null || t.year != null }
+        .map { (t, fit) -> t to weight(t, fit) }
+        .groupBy { key(it.first) }.values
+        .map { same -> same.sortedWith(compareByDescending<Pair<Title, Double>> { it.first.imdb.startsWith("tt") }.thenByDescending { it.second }).first() }
+        .sortedByDescending { it.second }.map { it.first }
 }
 
 enum class Sort(val label: String) { POPULAR("Popular"), RATING("Top rated"), YEAR("Newest"), TITLE("A–Z") }

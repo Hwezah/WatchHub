@@ -508,6 +508,12 @@ class LibTest {
         // Cartoons and anime out, by any of their genres.
         val drawn = listOf(Title("a", "movie", "A", genres = listOf("Action", "Animation")), Title("b", "movie", "B", genres = listOf("Action")), Title("c", "tv", "C", genres = listOf("anime")))
         assertEquals(listOf("b"), withoutAnimation(drawn).map { it.imdb })
+        // Search: the film once (IMDb's id kept), placeholders gone, the real release ahead of a fan "series".
+        val film = Title("tt6806448", "movie", "Hobbs & Shaw", year = "2019", rating = "6.4", poster = "p")
+        val twin = Title("tmdb:384018", "movie", "Hobbs & Shaw", year = "2019", poster = "p")
+        val fan = Title("tt999", "tv", "Hobbs and Shaw", poster = "p")
+        val untitled = Title("tt111", "movie", "Untitled Hobbs & Shaw Sequel")
+        assertEquals(listOf("tt6806448", "tt999"), tidySearch(listOf(fan to 0.9, untitled to 0.8, twin to 0.8, film to 0.8)).map { it.imdb })
         // A season's download skips what hasn't aired yet.
         fun ep(n: Int, d: String?) = Episode("tt1:2:$n", 2, n, "E$n", null, null, d)
         assertEquals(listOf(1, 3), airedBy(listOf(ep(1, "2026-11-15T00:00:00.000Z"), ep(2, "2026-11-22"), ep(3, null)), "2026-11-17").map { it.episode })
