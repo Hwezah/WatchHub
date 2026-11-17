@@ -774,8 +774,9 @@ fun ReloadArrow(busy: Boolean, tint: Color, size: Dp, modifier: Modifier = Modif
 
 /**
  * A card's face, frosted as Grabber's are (the owner's choice, for every card of a list — downloads, addons, settings,
- * plugins): the surface with the app's grain over it and a faint light rim round [shape].
+ * plugins): the surface with the app's grain over it. [shape] is kept for the caller's clip.
  */
 fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape): Modifier =
-    background(Ink.surface).grain().border(1.dp, Color.White.copy(alpha = 0.06f), shape)
+    // Bare: no rim round it (the owner's choice).
+    background(Ink.surface).grain()
 

@@ -186,8 +186,8 @@ private val DL_CARD = RoundedCornerShape(22.dp)
 /** A download card's badge in place of a poster: a film strip on a faint red disc, as Grabber shows its files. */
 @Composable
 private fun FilmBadge() {
-    Box(Modifier.size(42.dp).clip(CircleShape).background(Ink.accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-        Lc(L.drawable.lucide_ic_film, tint = Ink.accent, size = 20.dp)
+    Box(Modifier.size(38.dp).clip(CircleShape).background(Ink.accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+        Lc(L.drawable.lucide_ic_film, tint = Ink.accent, size = 18.dp)
     }
 }
 
@@ -259,9 +259,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             FilmBadge()
             // Beside the poster: the words and buttons, and under them the progress line.
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // The buttons sit at the foot of the words, level with the status line (the owner's choice).
+            Row(verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 // A link being renewed says nothing (the owner's choice): the spinner beside it is enough.
                 val status = when (row.state) {
                         DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) }?.let { if (it.startsWith("Waiting for its turn")) "Queued — starts when one finishes" else it } else "Finding peers…"
@@ -280,24 +281,24 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 if (pack) Text("$savedCount of ${wanted.size} episodes saved", style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint), maxLines = 1)
             }
             when {
-                row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(8.dp), tint = Ink.text, size = 20.dp) }
+                row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 18.dp) }
                 // Failed: ↻ asks the sources again for the next fresh link at this resolution.
-                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(8.dp)) }
+                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 18.dp, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) }
                 // Queued behind the others: nothing is happening to it yet, so no spinner — it can be paused like a running one.
                 row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") == true ->
-                    Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(8.dp), tint = Ink.text, size = 20.dp) }
+                    Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 18.dp) }
                 // Looking for a fresh link: a small spinner where the button was.
-                row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(8.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
+                row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) { com.torrentviewer.core.Spinner(size = 18.dp) }
                 row.state == DlState.WIFI -> Unit
-                else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(8.dp), tint = Ink.text, size = 20.dp) }
+                else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 18.dp) }
             }
             // Inside the card's padding (the owner's choice: a notch of room from the edge).
-            Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Ink.muted, size = 24.dp) }
+            Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 20.dp) }
             }
             }
         }
-        // Grabber's bar: across the whole card under the badge and words, thicker, rounded, light on a dark track.
-        ProgressLine(row.ratio, Modifier.padding(top = 12.dp, end = 8.dp, bottom = 4.dp).fillMaxWidth().clip(CircleShape), height = 4.dp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f))
+        // Grabber's bar: across the whole card under the badge and words, thin, rounded, light on a dark track.
+        ProgressLine(row.ratio, Modifier.padding(top = 10.dp, end = 8.dp, bottom = 2.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f))
         if (row.state == DlState.WIFI || pack) Column {
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
