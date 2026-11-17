@@ -251,7 +251,8 @@ object SeasonBatch {
     fun begin(title: Title, season: Int, again: Boolean = false) {
         val now = _scan.value
         if (!again && now != null && now.titleImdb == title.imdb && now.season == season) return
-        val episodes = title.episodes.filter { it.season == season }.sortedBy { it.episode }
+        // Only what has aired: an episode still to come has no release, and the sites answer with something else.
+        val episodes = com.torrentviewer.core.airedBy(title.episodes.filter { it.season == season }).sortedBy { it.episode }
         job?.cancel()
         // Asked again: from the sites themselves, not answers or pages kept from the last scan.
         if (again) com.torrentviewer.core.forgetStreams()

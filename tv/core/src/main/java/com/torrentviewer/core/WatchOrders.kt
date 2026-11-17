@@ -160,7 +160,11 @@ object Tmdb {
                 val tv = kind == "tv"
                 val id = JSONObject(get("/find/$imdb?external_source=imdb_id"))
                     .optJSONArray(if (tv) "tv_results" else "movie_results")?.optJSONObject(0)?.optInt("id") ?: return@withContext null
-                pickTrailer(get(if (tv) "/tv/$id/videos" else "/movie/$id/videos"))?.also { trailers[imdb] = it }
+                // A series' trailers usually hang on its seasons, not the show: the newest season's, then the first's.
+                val seasons = if (tv) parseTmdbSeasons(get("/tv/$id")).let { listOfNotNull(it.maxOrNull(), it.minOrNull()).distinct() } else emptyList()
+                (pickTrailer(get(if (tv) "/tv/$id/videos?include_video_language=en,null" else "/movie/$id/videos?include_video_language=en,null"))
+                    ?: seasons.firstNotNullOfOrNull { s -> runCatching { pickTrailer(get("/tv/$id/season/$s/videos?include_video_language=en,null")) }.getOrNull() })
+                    ?.also { trailers[imdb] = it }
             }.getOrNull()
         }
     }

@@ -502,7 +502,9 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             val known = title.trailer
                             if (known != null) trailerId = known
                             else scope.launch {
+                                // Cinemeta's, else TMDB's, else YouTube's own search ("<name> <year> official trailer").
                                 val found = com.torrentviewer.core.Tmdb.trailer(title.imdb, title.kind)
+                                    ?: runCatching { Trailers.search(title.title, title.year?.take(4), title.isSeries) }.getOrNull()
                                 if (found != null) trailerId = found else watch.notes.tryEmit("No trailer found for ${title.title}")
                             }
                         }, modifier = share)

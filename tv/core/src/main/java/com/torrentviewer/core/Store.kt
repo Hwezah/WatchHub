@@ -676,6 +676,14 @@ fun isWatched(progress: Double) = progress >= WATCHED_AT
  * Every episode of [season] that is out [today] (yyyy-MM-dd) has been watched through: the tick on a
  * season in a list. One not out yet doesn't hold it back, and a season with nothing out has none.
  */
+/**
+ * The episodes already out by [today] ("2026-11-17"): one with a later date is announced, not aired, and a season's
+ * download must not go looking for it — the sites answer with a pack or another episode's file instead.
+ * One with no date counts as out.
+ */
+fun airedBy(episodes: List<Episode>, today: String = isoNow().take(10)): List<Episode> =
+    episodes.filter { it.released.isNullOrBlank() || it.released.take(10) <= today }
+
 fun seasonWatched(episodes: List<Episode>, season: Int, seen: Map<Ep, Double>, today: String = isoNow().take(10)): Boolean {
     val out = episodes.filter { it.season == season && (it.released.isNullOrBlank() || it.released.take(10) <= today) }
     return out.isNotEmpty() && out.all { isWatched(seen[Ep(it.season, it.episode)] ?: 0.0) }

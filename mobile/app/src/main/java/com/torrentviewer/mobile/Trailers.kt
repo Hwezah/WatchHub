@@ -58,6 +58,22 @@ object Trailers {
     }
 
     /**
+     * A trailer found the way a person would: YouTube's own search for "<name> <year> official trailer", the first
+     * video calling itself a trailer (else the first video), as its id. For titles TMDB lists none for.
+     */
+    suspend fun search(name: String, year: String?, series: Boolean): String? = withContext(Dispatchers.IO) {
+        init()
+        val yt = org.schabi.newpipe.extractor.ServiceList.YouTube
+        val query = listOfNotNull(name, year, if (series) "series" else null, "official trailer").joinToString(" ")
+        val handler = yt.searchQHFactory.fromQuery(query, listOf("videos"), "")
+        val videos = org.schabi.newpipe.extractor.search.SearchInfo.getInfo(yt, handler).relatedItems
+            .filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>()
+        val pick = videos.take(8).firstOrNull { it.name.contains("trailer", true) && it.name.contains(name.substringBefore(':'), true) }
+            ?: videos.firstOrNull { it.name.contains("trailer", true) } ?: return@withContext null
+        Regex("""[?&]v=([\w-]{11})""").find(pick.url)?.groupValues?.get(1)
+    }
+
+    /**
      * The User-Agent a stream's link expects: YouTube hands out links for the client NewPipe asked as ("c=ANDROID",
      * "c=IOS" in the link), and serves them only to that client.
      */
