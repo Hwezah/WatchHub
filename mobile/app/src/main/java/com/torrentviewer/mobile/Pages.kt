@@ -619,7 +619,9 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
     var stremioLater by remember(me.id) { mutableStateOf(me.isGuest || Kv.get(STREMIO_LATER) != null) }
     val history by History.items.collectAsState()
     val saved by SavedStore.items.collectAsState()
-    var shelf by rememberSaveable { mutableStateOf(Shelfs.HISTORY) }
+    // History's chip is gone (the owner's choice: Home's Continue Watching row has what's part-watched); its list is
+    // kept here in code, unreached. ponytail: finished titles and "From Stremio" have no list now; revisit if missed.
+    var shelf by rememberSaveable(key = "library-shelf") { mutableStateOf(Shelfs.LATER) }
     var menu by remember { mutableStateOf<Item?>(null) }
     var clearing by remember { mutableStateOf(false) }
     var releases by remember { mutableStateOf<List<Item>?>(null) }
@@ -656,7 +658,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
                 if (stremio) Text("✓ Signed in to Stremio — your library and where you stopped are below", Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint))
                 // End to end, like the other pill rows.
                 SpreadRow(Modifier.padding(bottom = 6.dp)) {
-                    Shelfs.entries.forEach { s -> Chip(s.label, s == shelf, onClick = { shelf = s }) }
+                    Shelfs.entries.filter { it != Shelfs.HISTORY }.forEach { s -> Chip(s.label, s == shelf, onClick = { shelf = s }) }
                 }
             }
         }
