@@ -149,14 +149,21 @@ private const val WHOLE_LIST = 2000
  */
 @Composable
 fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
-    var sort by rememberSaveable { mutableStateOf(if (shelf.genre?.startsWith(ADDON_SHELF) == true) Sort.YEAR else Sort.POPULAR) }
+    // A Genres tile's list: Movies and Shows tabs, each kind's own browse list in that genre (Xperience keeps them apart).
+    val kinds = remember(shelf.genre) { shelf.genre?.let { com.torrentviewer.core.Addons.genreKinds(it) } }
+    var tab by rememberSaveable(shelf.genre) { mutableStateOf(shelf.kind) }
+    val kind = if (kinds != null) tab else shelf.kind
+    val genreKey = if (kinds != null) kinds[tab] else shelf.genre
+    /** A tab with no list of that genre (no "Horror" among series): nothing to fetch, rather than every show there is. */
+    val missing = kinds != null && genreKey == null
+    var sort by rememberSaveable { mutableStateOf(if (genreKey?.startsWith(ADDON_SHELF) == true) Sort.YEAR else Sort.POPULAR) }
     // Top rated is the genre's real best, not just its fifty most popular reordered. An addon's list is only itself.
-    val source = if (sort == Sort.RATING && shelf.genre?.startsWith(ADDON_SHELF) != true) TOP_SHELF + shelf.genre.orEmpty() else shelf.genre
-    var titles by remember(source) { mutableStateOf(Meta.peekCatalog(shelf.kind, source)) }
-    LaunchedEffect(source) { if (titles.isNullOrEmpty()) titles = Meta.catalog(shelf.kind, source) }
+    val source = if (sort == Sort.RATING && genreKey?.startsWith(ADDON_SHELF) != true) TOP_SHELF + genreKey.orEmpty() else genreKey
+    var titles by remember(source, kind) { mutableStateOf(if (missing) emptyList() else Meta.peekCatalog(kind, source)) }
+    LaunchedEffect(source, kind) { if (!missing && titles.isNullOrEmpty()) titles = Meta.catalog(kind, source) }
     // An addon's list shows its last ten years only (the owner's choice: it runs back to silent films); the built-in
     // shelves are this week's popular and IMDb's best, whatever their age.
-    val recentOnly = shelf.genre?.startsWith(ADDON_SHELF) == true
+    val recentOnly = genreKey?.startsWith(ADDON_SHELF) == true
     val thisYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
     val shown = remember(titles, sort) {
         Kids.only(titles.orEmpty()).let { if (recentOnly) fromLastYears(it, RECENT_YEARS, thisYear) else it }.let { sortTitles(it, sort) }
@@ -173,7 +180,7 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
     var filling by remember(source) { mutableStateOf(false) }
     var topping by remember(source) { mutableStateOf(false) }
     LaunchedEffect(source, sort, titles != null) {
-        if (sort == Sort.POPULAR || titles == null) {
+        if (sort == Sort.POPULAR || titles == null || missing) {
             filling = false
             topping = false
             return@LaunchedEffect
@@ -181,8 +188,8 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
         filling = (titles?.size ?: 0) < FIRST_ORDER
         topping = !filling
         try {
-            while ((titles?.size ?: 0) < WHOLE_LIST && Meta.pages(shelf.kind, source)) {
-                val next = Meta.more(shelf.kind, source, batch = 4) ?: break
+            while ((titles?.size ?: 0) < WHOLE_LIST && Meta.pages(kind, source)) {
+                val next = Meta.more(kind, source, batch = 4) ?: break
                 grow(next)
                 if (filling && (titles?.size ?: 0) >= FIRST_ORDER) {
                     filling = false
@@ -201,9 +208,9 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
     LaunchedEffect(grid, source) {
         androidx.compose.runtime.snapshotFlow { grid.layoutInfo.let { i -> i.totalItemsCount > 1 && (i.visibleItemsInfo.lastOrNull()?.index ?: 0) >= i.totalItemsCount - 9 } }
             .collect { near ->
-                if (near && !loading && !filling && !topping && titles != null && Meta.pages(shelf.kind, source)) {
+                if (near && !missing && !loading && !filling && !topping && titles != null && Meta.pages(kind, source)) {
                     loading = true
-                    grow(Meta.more(shelf.kind, source))
+                    grow(Meta.more(kind, source))
                     loading = false
                 }
             }
@@ -220,6 +227,7 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
                     Heading(shelf.title, Modifier.padding(start = 48.dp))
+                    if (kinds != null) TextTabs(listOf("Movies", "Shows"), if (tab == "tv") 1 else 0) { tab = if (it == 1) "tv" else "movie" }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Sort.entries.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
                     }
@@ -238,10 +246,12 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                     Text("Putting the list in order · ${titles?.size ?: 0} titles", Modifier.padding(top = 12.dp), style = Type.meta)
                 }
             }
-            else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Note("Nothing on this shelf right now.") }
+            else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                Note(if (kinds != null && genreKey == null) "No ${if (tab == "tv") "shows" else "films"} in this genre." else "Nothing on this shelf right now.")
+            }
             if (!filling) items(shown, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
             // Read to its end: how many it held, so a short year is the list's, not the app's.
-            if (!filling && !topping && !loading && sort != Sort.POPULAR && shown.isNotEmpty() && !Meta.pages(shelf.kind, source)) item(key = "~end~", span = { GridItemSpan(maxLineSpan) }) {
+            if (!filling && !topping && !loading && sort != Sort.POPULAR && shown.isNotEmpty() && !Meta.pages(kind, source)) item(key = "~end~", span = { GridItemSpan(maxLineSpan) }) {
                 Text(if (recentOnly) "All ${shown.size} titles from the last $RECENT_YEARS years in this list" else "All ${shown.size} titles in this list", Modifier.fillMaxWidth().padding(vertical = 16.dp), style = Type.meta, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             if (loading) item(key = "~more~", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) { Spinner(size = 28.dp) } }
@@ -575,20 +585,28 @@ private enum class LibrarySection(val label: String) { WISHLIST("Wishlist"), DOW
  * (a little below the word, as wide as it); a red dot by Downloads while one is running.
  */
 @Composable
-private fun LibraryTabs(on: LibrarySection, running: Boolean, onPick: (LibrarySection) -> Unit) {
+private fun LibraryTabs(on: LibrarySection, running: Boolean, onPick: (LibrarySection) -> Unit) =
+    TextTabs(LibrarySection.entries.map { it.label }, on.ordinal, dotAt = if (running) LibrarySection.DOWNLOADS.ordinal else null) { onPick(LibrarySection.entries[it]) }
+
+/**
+ * Tabs as plain words spread across the width, the chosen one bright with a red line under it as wide as the word;
+ * a red dot beside the one at [dotAt]. The Library's Wishlist / Downloads, a genre's Movies / Shows.
+ */
+@Composable
+fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, onPick: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-        LibrarySection.entries.forEach { s ->
-            val chosen = s == on
+        labels.forEachIndexed { i, label ->
+            val on = i == chosen
             Column(
                 Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Max).clip(RoundedCornerShape(6.dp))
-                    .then(Modifier.clickable { onPick(s) }).padding(horizontal = 6.dp, vertical = 4.dp),
+                    .then(Modifier.clickable { onPick(i) }).padding(horizontal = 6.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(s.label, style = Type.title.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium, color = if (chosen) Ink.text else Ink.muted))
-                    if (s == LibrarySection.DOWNLOADS && running) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.accent))
+                    Text(label, style = Type.title.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) Ink.text else Ink.muted))
+                    if (i == dotAt) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.accent))
                 }
-                Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (chosen) Ink.accent else Color.Transparent))
+                Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (on) Ink.accent else Color.Transparent))
             }
         }
     }

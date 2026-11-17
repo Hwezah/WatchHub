@@ -70,6 +70,12 @@ class LibTest {
         assertEquals(listOf("Action", "Drama"), browse.genres)
         assertFalse(browse.showInHome)
         assertFalse(browse.pages)
+        // A film genre's series twin, by name.
+        val tvGenres = listOf("Action & Adventure", "Comedy", "Sci-Fi & Fantasy", "War & Politics")
+        assertEquals("Sci-Fi & Fantasy", matchGenre("Science Fiction", tvGenres))
+        assertEquals("Action & Adventure", matchGenre("Action", tvGenres))
+        assertEquals("Comedy", matchGenre("comedy", tvGenres))
+        assertNull(matchGenre("Horror", tvGenres))
         // A list that pages, in either shape: its row keeps going past the first answer.
         val paged = toAddon(
             "https://a.example",

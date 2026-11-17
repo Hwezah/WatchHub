@@ -28,6 +28,17 @@ data class AddonCatalog(
     val pages: Boolean = false,
 )
 
+/**
+ * The genre among [options] that is [name]: the same name, else the one sharing most words with it ("Science Fiction"
+ * is "Sci-Fi & Fantasy", "Action" is "Action & Adventure"); null when none shares any.
+ */
+fun matchGenre(name: String, options: List<String>): String? {
+    options.firstOrNull { it.equals(name, true) }?.let { return it }
+    fun words(s: String) = s.lowercase().replace("sci-fi", "science fiction").split(Regex("[^a-z]+")).filter { it.length > 2 && it != "and" }.toSet()
+    val want = words(name)
+    return options.map { it to (words(it) intersect want).size }.filter { it.second > 0 }.maxByOrNull { it.second }?.first
+}
+
 /** What a Genres-row key adds to a catalogue's key: the genre after it. */
 const val GENRE_SEP = "~g~"
 
@@ -298,6 +309,23 @@ object Addons {
             .sortedWith(compareBy<Pair<Addon, AddonCatalog>> { (_, c) -> if (c.required || !c.showInHome) 0 else 1 }.thenBy { (_, c) -> if (c.type == "movie") 0 else 1 })
             .firstOrNull() ?: return null
         return kindOfType(c.type) to c.genres.map { g -> g to a.shelfKey(c) + GENRE_SEP + g }
+    }
+
+    /**
+     * A Genres tile's list for films and for series ("movie"/"tv" to its key): each kind's browse-by-genre list, the
+     * genre found by name there ([matchGenre] — a series list says "Sci-Fi & Fantasy" where films say "Science
+     * Fiction"). A kind whose list has no such genre is left out. Null for a key that isn't a Genres tile's.
+     */
+    fun genreKinds(key: String): Map<String, String>? {
+        if (GENRE_SEP !in key) return null
+        val genre = key.substringAfter(GENRE_SEP)
+        val browse = _list.value.filter { it.on }.flatMap { a -> a.catalogs.filter { it.genres.size >= 2 && !it.search }.map { a to it } }
+            .sortedBy { (_, c) -> if (c.required || !c.showInHome) 0 else 1 }
+        return listOf("movie", "series").mapNotNull { type ->
+            browse.filter { it.second.type == type }
+                .firstNotNullOfOrNull { (a, c) -> matchGenre(genre, c.genres)?.let { a.shelfKey(c) + GENRE_SEP + it } }
+                ?.let { kindOfType(type) to it }
+        }.toMap()
     }
 
     /** Catalogues that take a search query. */
