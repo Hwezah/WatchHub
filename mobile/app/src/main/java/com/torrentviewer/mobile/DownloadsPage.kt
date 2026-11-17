@@ -299,11 +299,11 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 row.state == DlState.WIFI -> Unit
                 else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(8.dp), tint = Ink.text, size = 20.dp) }
             }
-            // Its tap area reaches into the card's padding, so the ✕ sits as far from the right edge as the poster from the left.
-            Tap(onCancel, Modifier.offset(x = 10.dp), CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Ink.muted, size = 24.dp) }
+            // Inside the card's padding (the owner's choice: a notch of room from the edge).
+            Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Ink.muted, size = 24.dp) }
             }
             // A thin green line filling as the bytes arrive: right under the words, from the poster's edge to the ✕'s end.
-            ProgressLine(row.ratio, Modifier.padding(top = 4.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
+            ProgressLine(row.ratio, Modifier.padding(top = 4.dp, end = 8.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
             }
         }
         if (row.state == DlState.WIFI || pack) Column {
