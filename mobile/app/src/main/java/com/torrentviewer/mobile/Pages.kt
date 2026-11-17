@@ -587,14 +587,18 @@ private enum class LibrarySection(val label: String) { WISHLIST("Wishlist"), DOW
  */
 @Composable
 private fun LibraryTabs(on: LibrarySection, running: Boolean, onPick: (LibrarySection) -> Unit) =
-    TextTabs(LibrarySection.entries.map { it.label }, on.ordinal, dotAt = if (running) LibrarySection.DOWNLOADS.ordinal else null) { onPick(LibrarySection.entries[it]) }
+    // The chosen tab's red dot, no line under (the owner's choice); a download running shows green by Downloads.
+    TextTabs(
+        LibrarySection.entries.map { it.label }, on.ordinal, dotAt = on.ordinal, underline = false,
+        busyAt = if (running) LibrarySection.DOWNLOADS.ordinal else null,
+    ) { onPick(LibrarySection.entries[it]) }
 
 /**
  * Tabs as plain words spread across the width, the chosen one bright with a red line under it as wide as the word;
  * a red dot beside the one at [dotAt]. The Library's Wishlist / Downloads, a genre's Movies / Shows.
  */
 @Composable
-fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, underline: Boolean = true, onPick: (Int) -> Unit) {
+fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, underline: Boolean = true, busyAt: Int? = null, onPick: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         labels.forEachIndexed { i, label ->
             val on = i == chosen
@@ -606,6 +610,8 @@ fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, underline: B
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(label, style = Type.title.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) Ink.text else Ink.muted))
                     if (i == dotAt) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.accent))
+                    // Something going on behind a tab not chosen (a download running): a green dot.
+                    else if (i == busyAt) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.download))
                 }
                 if (underline) Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (on) Ink.accent else Color.Transparent))
             }
