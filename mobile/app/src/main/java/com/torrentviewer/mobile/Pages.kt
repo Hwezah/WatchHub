@@ -130,7 +130,7 @@ private fun subOf(t: Title) = listOfNotNull(if (t.isSeries) "Series" else "Film"
 
 /* -------------------------------------------------------------- catalog */
 
-/** App-wide: whether "See all" lists leave out cartoons and anime. */
+/** App-wide: whether "See all" lists leave out cartoons and anime (Settings → No Animation Results). */
 private const val NO_ANIMATION = "noAnimation"
 
 /** How far back an addon's list shows in "See all": what's recent, not a century of film. */
@@ -168,9 +168,9 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
     // shelves are this week's popular and IMDb's best, whatever their age.
     val recentOnly = genreKey?.startsWith(ADDON_SHELF) == true
     val thisYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
-    // Cartoons and anime hidden when asked (a chip beside the orders; kept app-wide) — not in a list that is them.
+    // Cartoons and anime hidden when asked (Settings → No Animation Results) — not in a list that is them.
     val drawnList = shelf.title.contains("Anim", true) || genreKey.orEmpty().contains("Anim", true)
-    var noAnimation by remember { mutableStateOf(com.torrentviewer.core.Kv.global(NO_ANIMATION) == "1") }
+    val noAnimation = remember { com.torrentviewer.core.Kv.global(NO_ANIMATION) == "1" }
     val shown = remember(titles, sort, noAnimation) {
         Kids.only(titles.orEmpty()).let { if (recentOnly) fromLastYears(it, RECENT_YEARS, thisYear) else it }
             .let { if (noAnimation && !drawnList) com.torrentviewer.core.withoutAnimation(it) else it }.let { sortTitles(it, sort) }
@@ -237,11 +237,8 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                     // No line under these (the owner's choice): the chosen one has the red dot beside it instead.
                     if (kinds != null) TextTabs(listOf("Movies", "Shows"), if (tab == "tv") 1 else 0, dotAt = if (tab == "tv") 1 else 0, underline = false) { tab = if (it == 1) "tv" else "movie" }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Sort.entries.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
-                        if (!drawnList) Chip("No Animation", noAnimation, onClick = {
-                            noAnimation = !noAnimation
-                            com.torrentviewer.core.Kv.setGlobal(NO_ANIMATION, if (noAnimation) "1" else null)
-                        })
+                        // No A–Z here (the owner's choice); No Animation is a switch in Settings.
+                        Sort.entries.filter { it != Sort.TITLE }.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
                     }
                     // The rest of the list still coming in, each title to its year.
                     if (topping) Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1406,6 +1403,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     })
                 }
             }
+        }
+        // Read by the lists opened from Home (a genre's, a row's "See all"); kept app-wide, as the phone's taste.
+        var noAnimation by remember { mutableStateOf(com.torrentviewer.core.Kv.global(NO_ANIMATION) == "1") }
+        ToggleSection("No Animation Results", "Cartoons and anime are left out of the genre lists and every row's See all. Animation's own list still shows them.", noAnimation) {
+            noAnimation = it
+            com.torrentviewer.core.Kv.setGlobal(NO_ANIMATION, if (it) "1" else null)
         }
         }
 
