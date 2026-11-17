@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -175,11 +176,27 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     }
 }
 
+/** Every download card's shape: well rounded, as Grabber's list is (the owner's choice). */
+private val DL_CARD = RoundedCornerShape(22.dp)
+
+/** A download card's badge in place of a poster: a film strip on a faint red disc, as Grabber shows its files. */
+@Composable
+private fun FilmBadge() {
+    Box(Modifier.size(48.dp).clip(CircleShape).background(Ink.accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+        Lc(L.drawable.lucide_ic_film, tint = Ink.accent, size = 22.dp)
+    }
+}
+
+/** A saved file: a card of its own ([card]), or a plain line inside its show's card. */
 @Composable
 private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -> Unit, onDelete: () -> Unit) {
-    Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), RoundedCornerShape(8.dp), onLongClick = onDelete) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (poster) Artwork(f.poster, f.label, Modifier.width(60.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
+    val card = poster
+    Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), if (card) DL_CARD else RoundedCornerShape(8.dp), onLongClick = onDelete) {
+        Row(
+            (if (card) Modifier.background(Ink.surface).padding(start = 16.dp, end = 6.dp, top = 14.dp, bottom = 14.dp) else Modifier),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (card) FilmBadge()
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(name, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text("${bytes(f.size)}  ·  ${ago(f.at)}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
@@ -195,10 +212,10 @@ private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -
 private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onDelete: (Finished) -> Unit) {
     val first = episodes.first()
     var open by rememberSaveable(first.imdb ?: first.label) { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(DL_CARD).background(Ink.surface).padding(start = 16.dp, end = 6.dp, top = 14.dp, bottom = 14.dp)) {
         Tap({ open = !open }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Artwork(first.poster, first.label, Modifier.width(60.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)))
+                FilmBadge()
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(first.label.substringBefore(" · "), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("${episodes.size} episodes  ·  ${bytes(episodes.sumOf { it.size })}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
@@ -232,11 +249,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     var openSeasons by remember(row.job.uri) {
         mutableStateOf(setOf(row.files.firstOrNull { it.wanted && !it.saved }?.let { parseEpisode(it.name)?.season }))
     }
-    // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card); the card's own
-    // padding stays on the right, and under the poster for whatever folds out below it.
-    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.surface).padding(end = CARD - 2.dp)) {
+    // Grabber's look (the owner's choice): a well-rounded card, a film badge where the poster was.
+    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(DL_CARD).background(Ink.surface).padding(start = 16.dp, end = CARD - 2.dp, top = 14.dp, bottom = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Artwork(row.job.poster, row.job.label, Modifier.width(88.dp).height(96.dp))
+            FilmBadge()
             // Beside the poster: the words and buttons, and under them the progress line.
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -286,7 +302,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             ProgressLine(row.ratio, Modifier.padding(top = 6.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
             }
         }
-        if (row.state == DlState.WIFI || pack) Column(Modifier.padding(start = CARD - 2.dp, bottom = CARD - 2.dp)) {
+        if (row.state == DlState.WIFI || pack) Column {
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
         // Fastest / In order live in Settings → Downloads now, for every download, not on each card.
