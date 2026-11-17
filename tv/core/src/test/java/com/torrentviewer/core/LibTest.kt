@@ -514,6 +514,10 @@ class LibTest {
         val fan = Title("tt999", "tv", "Hobbs and Shaw", poster = "p")
         val untitled = Title("tt111", "movie", "Untitled Hobbs & Shaw Sequel")
         assertEquals(listOf("tt6806448", "tt999"), tidySearch(listOf(fan to 0.9, untitled to 0.8, twin to 0.8, film to 0.8)).map { it.imdb })
+        assertEquals(emptyList<String>(), tidySearch(listOf(Title("tt2", "movie", "Untitled Hobbs Sequel", poster = "p") to 0.9)).map { it.imdb })
+        // An addon's series search answering with a film: a film it stays.
+        val answer = JSONArray("""[{"id":"tt6806448","type":"movie","name":"Hobbs & Shaw"},{"id":"tt1","type":"series","name":"S"},{"id":"tt3","name":"N"}]""")
+        assertEquals(listOf("movie", "tv", "tv"), addonSearchTitles(answer, "series").sortedBy { it.imdb }.let { l -> listOf(l.first { it.imdb == "tt6806448" }.kind, l.first { it.imdb == "tt1" }.kind, l.first { it.imdb == "tt3" }.kind) })
         // A season's download skips what hasn't aired yet.
         fun ep(n: Int, d: String?) = Episode("tt1:2:$n", 2, n, "E$n", null, null, d)
         assertEquals(listOf(1, 3), airedBy(listOf(ep(1, "2026-11-15T00:00:00.000Z"), ep(2, "2026-11-22"), ep(3, null)), "2026-11-17").map { it.episode })

@@ -352,7 +352,7 @@ object Meta {
             async {
                 runCatching {
                     val metas = JSONObject(Net.get("${a.url}/catalog/${c.type}/${enc(c.id)}/search=${enc(query)}.json", quiet = true)).optJSONArray("metas")
-                    toTitles(metas ?: JSONArray(), kindOfType(c.type), anyId = true, type = c.type)
+                    addonSearchTitles(metas ?: JSONArray(), c.type)
                 }.getOrDefault(emptyList())
             }
         }.awaitAll().flatten()
@@ -454,6 +454,16 @@ object Meta {
 }
 
 /**
+ * An addon's search answer as titles, each a film or a series by its own "type": a search list for series can answer
+ * with films (Xperience's does), and one labelled by the list showed Hobbs & Shaw as a series. [listType] stands in
+ * for an entry that names none.
+ */
+fun addonSearchTitles(metas: JSONArray, listType: String): List<Title> =
+    metas.objects().groupBy { it.str("type") ?: listType }.flatMap { (type, group) ->
+        toTitles(JSONArray(group), kindOfType(type), anyId = true, type = type)
+    }
+
+/**
  * Search results made fit to show, from (title, how well its name fits) pairs. The same film found by several sources
  * (Cinemeta's tt id, an addon's tmdb: one) shows once, the IMDb one kept. Entries with neither a poster nor a year
  * (IMDb's "Untitled … sequel" placeholders) are left out. Real releases lead: a poster, a year and a rating each
@@ -465,7 +475,8 @@ fun tidySearch(scored: List<Pair<Title, Double>>): List<Title> {
     // official name ("Fast & Furious Presents: Hobbs & Shaw") fits the words typed less closely than theirs.
     fun weight(t: Title, fit: Double) = fit + (if (t.poster != null) 0.08 else -0.15) + (if (t.year != null) 0.0 else -0.06) +
         (if (t.rating?.toDoubleOrNull()?.let { it > 0 } == true) 0.2 else 0.0)
-    return scored.filter { (t, _) -> t.poster != null || t.year != null }
+    // An "Untitled …" entry with no year is a sequel IMDb only announced, whatever picture it claims.
+    return scored.filter { (t, _) -> (t.poster != null || t.year != null) && !(t.year == null && t.title.startsWith("Untitled", true)) }
         .map { (t, fit) -> t to weight(t, fit) }
         .groupBy { key(it.first) }.values
         .map { same -> same.sortedWith(compareByDescending<Pair<Title, Double>> { it.first.imdb.startsWith("tt") }.thenByDescending { it.second }).first() }
