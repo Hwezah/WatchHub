@@ -186,8 +186,8 @@ private val DL_CARD = RoundedCornerShape(22.dp)
 /** A download card's badge in place of a poster: a film strip on a faint red disc, as Grabber shows its files. */
 @Composable
 private fun FilmBadge() {
-    Box(Modifier.size(48.dp).clip(CircleShape).background(Ink.accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-        Lc(L.drawable.lucide_ic_film, tint = Ink.accent, size = 22.dp)
+    Box(Modifier.size(42.dp).clip(CircleShape).background(Ink.accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+        Lc(L.drawable.lucide_ic_film, tint = Ink.accent, size = 20.dp)
     }
 }
 
@@ -197,7 +197,7 @@ private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -
     val card = poster
     Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), if (card) DL_CARD else RoundedCornerShape(8.dp), onLongClick = onDelete) {
         Row(
-            (if (card) Modifier.frosted(DL_CARD).padding(start = 16.dp, end = 6.dp, top = 14.dp, bottom = 14.dp) else Modifier),
+            (if (card) Modifier.frosted(DL_CARD).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp) else Modifier),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (card) FilmBadge()
@@ -216,7 +216,7 @@ private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -
 private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onDelete: (Finished) -> Unit) {
     val first = episodes.first()
     var open by rememberSaveable(first.imdb ?: first.label) { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD).padding(start = 16.dp, end = 6.dp, top = 14.dp, bottom = 14.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
         Tap({ open = !open }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FilmBadge()
@@ -254,7 +254,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
         mutableStateOf(setOf(row.files.firstOrNull { it.wanted && !it.saved }?.let { parseEpisode(it.name)?.season }))
     }
     // Grabber's look (the owner's choice): a well-rounded card, a film badge where the poster was.
-    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 12.dp).clip(DL_CARD).frosted(DL_CARD).padding(start = 16.dp, end = CARD - 2.dp, top = 14.dp, bottom = 14.dp)) {
+    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD).padding(start = 16.dp, end = CARD - 2.dp, top = 10.dp, bottom = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             FilmBadge()
             // Beside the poster: the words and buttons, and under them the progress line.
@@ -272,7 +272,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                     }
                 if (status != null) Text(
                     status,
-                    Modifier.padding(top = 2.dp),
+                    Modifier.padding(top = 1.dp),
                     style = Type.meta.copy(fontSize = 12.sp, color = if (row.state == DlState.FAILED) Ink.danger else Ink.muted),
                     maxLines = 2,
                 )
@@ -288,22 +288,22 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 )
             }
             when {
-                row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
+                row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(8.dp), tint = Ink.text, size = 20.dp) }
                 // Failed: ↻ asks the sources again for the next fresh link at this resolution.
-                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(10.dp)) }
+                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(8.dp)) }
                 // Queued behind the others: nothing is happening to it yet, so no spinner — it can be paused like a running one.
                 row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") == true ->
-                    Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
+                    Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(8.dp), tint = Ink.text, size = 20.dp) }
                 // Looking for a fresh link: a small spinner where the button was.
-                row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(10.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
+                row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(8.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
                 row.state == DlState.WIFI -> Unit
-                else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
+                else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(8.dp), tint = Ink.text, size = 20.dp) }
             }
             // Its tap area reaches into the card's padding, so the ✕ sits as far from the right edge as the poster from the left.
-            Tap(onCancel, Modifier.offset(x = 10.dp), CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 24.dp) }
+            Tap(onCancel, Modifier.offset(x = 10.dp), CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Ink.muted, size = 24.dp) }
             }
             // A thin green line filling as the bytes arrive: right under the words, from the poster's edge to the ✕'s end.
-            ProgressLine(row.ratio, Modifier.padding(top = 6.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
+            ProgressLine(row.ratio, Modifier.padding(top = 4.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
             }
         }
         if (row.state == DlState.WIFI || pack) Column {
