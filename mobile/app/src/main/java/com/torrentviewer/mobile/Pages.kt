@@ -236,8 +236,8 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                     Heading(shelf.title, Modifier.padding(start = 48.dp))
                     // No line under these (the owner's choice): the chosen one has the red dot beside it instead.
                     if (kinds != null) TextTabs(listOf("Movies", "Shows"), if (tab == "tv") 1 else 0, dotAt = if (tab == "tv") 1 else 0, underline = false) { tab = if (it == 1) "tv" else "movie" }
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // No A–Z here (the owner's choice); No Animation is a switch in Settings.
+                    // End to end, like the app's other pill rows. No A–Z here (the owner's choice); No Animation is in Settings.
+                    SpreadRow {
                         Sort.entries.filter { it != Sort.TITLE }.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
                     }
                     // The rest of the list still coming in, each title to its year.
