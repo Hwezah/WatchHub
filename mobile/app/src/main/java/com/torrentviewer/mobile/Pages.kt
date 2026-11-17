@@ -227,7 +227,8 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
                     Heading(shelf.title, Modifier.padding(start = 48.dp))
-                    if (kinds != null) TextTabs(listOf("Movies", "Shows"), if (tab == "tv") 1 else 0) { tab = if (it == 1) "tv" else "movie" }
+                    // No line under these (the owner's choice): the chosen one has the red dot beside it instead.
+                    if (kinds != null) TextTabs(listOf("Movies", "Shows"), if (tab == "tv") 1 else 0, dotAt = if (tab == "tv") 1 else 0, underline = false) { tab = if (it == 1) "tv" else "movie" }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Sort.entries.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
                     }
@@ -593,7 +594,7 @@ private fun LibraryTabs(on: LibrarySection, running: Boolean, onPick: (LibrarySe
  * a red dot beside the one at [dotAt]. The Library's Wishlist / Downloads, a genre's Movies / Shows.
  */
 @Composable
-fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, onPick: (Int) -> Unit) {
+fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, underline: Boolean = true, onPick: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         labels.forEachIndexed { i, label ->
             val on = i == chosen
@@ -606,7 +607,7 @@ fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, onPick: (Int
                     Text(label, style = Type.title.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) Ink.text else Ink.muted))
                     if (i == dotAt) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.accent))
                 }
-                Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (on) Ink.accent else Color.Transparent))
+                if (underline) Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (on) Ink.accent else Color.Transparent))
             }
         }
     }
