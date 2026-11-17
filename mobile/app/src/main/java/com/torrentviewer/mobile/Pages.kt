@@ -130,6 +130,9 @@ private fun subOf(t: Title) = listOfNotNull(if (t.isSeries) "Series" else "Film"
 
 /* -------------------------------------------------------------- catalog */
 
+/** App-wide: whether "See all" lists leave out cartoons and anime. */
+private const val NO_ANIMATION = "noAnimation"
+
 /** How far back an addon's list shows in "See all": what's recent, not a century of film. */
 private const val RECENT_YEARS = 10
 
@@ -165,8 +168,12 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
     // shelves are this week's popular and IMDb's best, whatever their age.
     val recentOnly = genreKey?.startsWith(ADDON_SHELF) == true
     val thisYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
-    val shown = remember(titles, sort) {
-        Kids.only(titles.orEmpty()).let { if (recentOnly) fromLastYears(it, RECENT_YEARS, thisYear) else it }.let { sortTitles(it, sort) }
+    // Cartoons and anime hidden when asked (a chip beside the orders; kept app-wide) — not in a list that is them.
+    val drawnList = shelf.title.contains("Anim", true) || genreKey.orEmpty().contains("Anim", true)
+    var noAnimation by remember { mutableStateOf(com.torrentviewer.core.Kv.global(NO_ANIMATION) == "1") }
+    val shown = remember(titles, sort, noAnimation) {
+        Kids.only(titles.orEmpty()).let { if (recentOnly) fromLastYears(it, RECENT_YEARS, thisYear) else it }
+            .let { if (noAnimation && !drawnList) com.torrentviewer.core.withoutAnimation(it) else it }.let { sortTitles(it, sort) }
     }
     val grid = rememberLazyGridState()
     /** A longer list in, never a shorter one: a scroll's page and the ordering's can finish in either order. */
@@ -231,6 +238,10 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                     if (kinds != null) TextTabs(listOf("Movies", "Shows"), if (tab == "tv") 1 else 0, dotAt = if (tab == "tv") 1 else 0, underline = false) { tab = if (it == 1) "tv" else "movie" }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Sort.entries.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
+                        if (!drawnList) Chip("No Animation", noAnimation, onClick = {
+                            noAnimation = !noAnimation
+                            com.torrentviewer.core.Kv.setGlobal(NO_ANIMATION, if (noAnimation) "1" else null)
+                        })
                     }
                     // The rest of the list still coming in, each title to its year.
                     if (topping) Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {

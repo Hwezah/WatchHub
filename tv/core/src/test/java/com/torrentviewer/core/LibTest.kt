@@ -505,6 +505,9 @@ class LibTest {
         val span = listOf(Title("n", "movie", "N", year = "2026"), Title("o", "movie", "O", year = "2017"), Title("p", "movie", "P", year = "2016"),
             Title("s", "tv", "S", year = "2018–2024"), Title("u", "movie", "U"))
         assertEquals(listOf("n", "o", "s"), fromLastYears(span, 10, 2026).map { it.imdb })
+        // Cartoons and anime out, by any of their genres.
+        val drawn = listOf(Title("a", "movie", "A", genres = listOf("Action", "Animation")), Title("b", "movie", "B", genres = listOf("Action")), Title("c", "tv", "C", genres = listOf("anime")))
+        assertEquals(listOf("b"), withoutAnimation(drawn).map { it.imdb })
         // A season's download skips what hasn't aired yet.
         fun ep(n: Int, d: String?) = Episode("tt1:2:$n", 2, n, "E$n", null, null, d)
         assertEquals(listOf(1, 3), airedBy(listOf(ep(1, "2026-11-15T00:00:00.000Z"), ep(2, "2026-11-22"), ep(3, null)), "2026-11-17").map { it.episode })

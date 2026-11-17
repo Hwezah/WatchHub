@@ -457,6 +457,13 @@ object Meta {
 enum class Sort(val label: String) { POPULAR("Popular"), RATING("Top rated"), YEAR("Newest"), TITLE("A–Z") }
 
 /**
+ * Cartoons and anime left out: a title any of whose genres is Animation or Anime. A genre's list is full of them
+ * (an animated film is often "Action" and "Science Fiction" too), and the viewer can choose not to see them.
+ */
+fun withoutAnimation(titles: List<Title>): List<Title> =
+    titles.filter { t -> t.genres.none { it.equals("Animation", true) || it.equals("Anime", true) } }
+
+/**
  * Only what came out in the last [years] years, this one ([thisYear]) included: an addon's list runs back to 1902,
  * and the viewer wants what's recent. A title with no year is left out too — there's no telling.
  */
@@ -536,7 +543,7 @@ fun toTitles(metas: JSONArray, kind: String, withEpisodes: Boolean = false, anyI
             // A series' releaseInfo is a range ("2020–2023"); the leading year matters.
             year = m.str("year") ?: m.str("releaseInfo") ?: m.str("released")?.take(4),
             rating = m.str("imdbRating"),
-            genres = (m.optJSONArray("genre") ?: m.optJSONArray("genres"))?.let { g -> (0 until minOf(3, g.length())).map { g.optString(it) } }.orEmpty(),
+            genres = (m.optJSONArray("genre") ?: m.optJSONArray("genres"))?.let { g -> (0 until minOf(6, g.length())).map { g.optString(it) } }.orEmpty(),
             poster = m.str("poster"),
             plot = m.str("description"),
             cast = m.strings("cast"),
