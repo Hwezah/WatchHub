@@ -265,9 +265,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 // A link being renewed says nothing (the owner's choice): the spinner beside it is enough.
                 val status = when (row.state) {
                         DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) }?.let { if (it.startsWith("Waiting for its turn")) "Queued — starts when one finishes" else it } else "Finding peers…"
-                        DlState.DOWNLOADING -> listOfNotNull("$pct%", speed(row.speed), "${row.peers} peers".takeIf { !row.job.link }).joinToString("  ·  ")
-                        DlState.PAUSED -> "Paused  ·  $pct%"
-                        DlState.WIFI -> "Waiting for Wi-Fi  ·  $pct%"
+                        // As Grabber words it: what it's doing, then how much of how much (and the rate while it runs).
+                        DlState.DOWNLOADING -> listOfNotNull(if (row.speed > 0) speed(row.speed) else "$pct%", sizes(row), "${row.peers} peers".takeIf { !row.job.link && row.total == 0L }).joinToString(" · ")
+                        DlState.PAUSED -> listOfNotNull("Paused", sizes(row) ?: "$pct%").joinToString(" · ")
+                        DlState.WIFI -> listOfNotNull("Waiting for Wi-Fi", sizes(row) ?: "$pct%").joinToString(" · ")
                         DlState.FAILED -> row.error ?: "Failed"
                     }
                 if (status != null) Text(
@@ -276,16 +277,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                     style = Type.meta.copy(fontSize = 12.sp, color = if (row.state == DlState.FAILED) Ink.danger else Ink.muted),
                     maxLines = 2,
                 )
-                if (row.total > 0) Text(
-                    listOfNotNull(
-                        if (pack) "$savedCount of ${wanted.size} episodes saved" else null,
-                        "${bytes(row.done)} of ${bytes(row.total)}",
-                        // At the rate it is going now: it moves with the swarm, and is only said while there is a rate.
-                        if (row.state == DlState.DOWNLOADING && row.speed > 0) left((row.total - row.done).toDouble() / row.speed) else null,
-                    ).joinToString("  ·  "),
-                    style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint),
-                    maxLines = 1,
-                )
+                if (pack) Text("$savedCount of ${wanted.size} episodes saved", style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint), maxLines = 1)
             }
             when {
                 row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(8.dp), tint = Ink.text, size = 20.dp) }
@@ -302,10 +294,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             // Inside the card's padding (the owner's choice: a notch of room from the edge).
             Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Ink.muted, size = 24.dp) }
             }
-            // A thin green line filling as the bytes arrive: right under the words, from the poster's edge to the ✕'s end.
-            ProgressLine(row.ratio, Modifier.padding(top = 4.dp, end = 8.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = Ink.download)
             }
         }
+        // Grabber's bar: across the whole card under the badge and words, thicker, rounded, light on a dark track.
+        ProgressLine(row.ratio, Modifier.padding(top = 12.dp, end = 8.dp, bottom = 4.dp).fillMaxWidth().clip(CircleShape), height = 4.dp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f))
         if (row.state == DlState.WIFI || pack) Column {
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
@@ -429,3 +421,6 @@ private fun EpisodeLine(f: DlFile, isNext: Boolean, onToggle: () -> Unit) {
         )
     }
 }
+
+/** "20.1 MB of 718 MB", as Grabber says it; null before the size is known. */
+private fun sizes(row: LiveDownload): String? = if (row.total > 0) "${bytes(row.done)} of ${bytes(row.total)}" else null
