@@ -413,7 +413,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 // the logo, facts and certificate on its foot.
                 val clean = !wide && !HeaderEdge.fade
                 if (clean) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(0.8f)) {
+                    Box(Modifier.fillMaxWidth().aspectRatio(0.88f)) {
                         Artwork(title.wide, title.title, Modifier.fillMaxSize(), fill = false)
                         Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             TitleMark(title, Modifier.widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
@@ -422,7 +422,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         }
                     }
                 } else if (!wide) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+                    Box(Modifier.fillMaxWidth().aspectRatio(1.1f)) {
                         Artwork(title.wide, title.title, Modifier.fillMaxSize().bottomScrim(0.6f), fill = false)
                         // Centred under the art, which is cropped from its centre.
                         TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)

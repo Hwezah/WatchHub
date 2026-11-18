@@ -283,7 +283,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(state = state.list, contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
             item(key = "hero") {
-                if (heroes.isEmpty()) Box(Modifier.fillMaxWidth().height(if (isWide()) 320.dp else 420.dp))
+                if (heroes.isEmpty()) Box(Modifier.fillMaxWidth().height(if (isWide()) 320.dp else 390.dp))
                 else Hero(state.hero, heroes, onOpen)
             }
             if (resumable.isNotEmpty() || fromStremio.isNotEmpty()) item(key = "resume") {
@@ -516,7 +516,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
     // Clean line, upright: the facts and buttons sit under the picture, so the hero grows by their room and the
     // picture keeps its full height (the owner's choice: a tall poster area).
     val height = if (wide) (LocalConfiguration.current.screenHeightDp * 0.82f).dp
-    else (LocalConfiguration.current.screenWidthDp * 1.12f).dp + if (HeaderEdge.fade) 0.dp else 100.dp
+    else (LocalConfiguration.current.screenWidthDp * 1.02f).dp + if (HeaderEdge.fade) 0.dp else 100.dp
     Box(Modifier.fillMaxWidth().height(height)) {
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { titles.getOrNull(it)?.imdb ?: it }) { page ->
             val start = titles.getOrNull(page) ?: return@HorizontalPager
