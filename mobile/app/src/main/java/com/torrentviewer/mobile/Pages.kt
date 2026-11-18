@@ -1066,11 +1066,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
 
         if (page == "Playback") Panel {
-        Section("Skip intro", "Where an episode's intro is known, jump past it by itself instead of showing the Skip intro button. Once per episode — seek back to watch it.") {
-            SpreadRow {
-                Chip("Automatically", settings.autoSkipIntro, onClick = { set(settings.copy(autoSkipIntro = true)) })
-                Chip("Show the button", !settings.autoSkipIntro, onClick = { set(settings.copy(autoSkipIntro = false)) })
-            }
+        // Two-way choices are switches here, as Grabber's settings are (the owner's choice); three or more stay chips.
+        ToggleSection("Skip intros automatically", "Where an episode's intro is known, jump past it by itself; off shows a Skip intro button instead. Once per episode — seek back to watch it.", settings.autoSkipIntro) {
+            set(settings.copy(autoSkipIntro = it))
         }
 
         Section("Languages", "A matching track comes on by itself when a video opens; picking one yourself wins. Online subtitle search looks in the subtitle language.") {
@@ -1085,12 +1083,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SUB_SIZES.keys.forEach { s -> Chip(s.replaceFirstChar(Char::uppercase), style.size == s, onClick = { set(settings.copy(subtitles = style.copy(size = s))) }) }
             }
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("White", !style.yellow, onClick = { set(settings.copy(subtitles = style.copy(yellow = false))) })
-                Chip("Yellow", style.yellow, onClick = { set(settings.copy(subtitles = style.copy(yellow = true))) })
-                Chip("Box behind", style.box, onClick = { set(settings.copy(subtitles = style.copy(box = !style.box))) })
-            }
         }
+        ToggleSection("Yellow subtitles", "Off for white.", settings.subtitles.yellow) { set(settings.copy(subtitles = settings.subtitles.copy(yellow = it))) }
+        ToggleSection("Box behind subtitles", "A dark band behind the words, for bright scenes.", settings.subtitles.box) { set(settings.copy(subtitles = settings.subtitles.copy(box = it))) }
         }
 
         if (page == "Services") Panel {
@@ -1152,18 +1147,18 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         Section("Network", "Wi-Fi only holds a download on mobile data — it waits, and carries on when Wi-Fi is back. Use mobile data on a waiting download to let that one through.") {
             var wifiOnly by remember { mutableStateOf(Downloads.wifiOnly) }
             var sdCard by remember { mutableStateOf(Downloads.sdCard) }
-            SpreadRow {
-                Chip("Wi-Fi only", wifiOnly, onClick = { wifiOnly = true; Downloads.wifiOnly = true })
-                Chip("Any network", !wifiOnly, onClick = { wifiOnly = false; Downloads.wifiOnly = false })
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Wi-Fi only", Modifier.weight(1f), style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Toggle(wifiOnly, { wifiOnly = it; Downloads.wifiOnly = it })
             }
             var sequential by remember { mutableStateOf(Downloads.sequential) }
             Text(
                 "Fastest takes pieces from wherever the swarm has them. In order fills each file from the start, so you can watch it while it downloads — but it is slower.",
                 Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
             )
-            SpreadRow {
-                Chip("Fastest", !sequential, onClick = { sequential = false; Downloads.sequential = false })
-                Chip("In order", sequential, onClick = { sequential = true; Downloads.sequential = true })
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Download in order", Modifier.weight(1f), style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Toggle(sequential, { sequential = it; Downloads.sequential = it })
             }
             // Data saver: on mobile data, season scans check fewer links and stop an episode once its pick is confirmed.
             var saver by remember { mutableStateOf(Downloads.dataSaver) }
@@ -1172,9 +1167,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     "fewer of them. Every site is still waited for. Wi-Fi isn't affected.",
                 Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
             )
-            SpreadRow {
-                Chip("Data saver on", saver, onClick = { saver = true; Downloads.dataSaver = true })
-                Chip("Check every link", !saver, onClick = { saver = false; Downloads.dataSaver = false })
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Data saver", Modifier.weight(1f), style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Toggle(saver, { saver = it; Downloads.dataSaver = it })
             }
             // Direct links: how many connections at once, as 1DM's threads.
             var connections by remember { mutableStateOf(Downloads.connections) }
@@ -1360,12 +1355,11 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
 
         if (page == "Appearance") Panel {
-        Section("Theme", "Light or dark pages, or whichever the phone is set to. The player stays dark either way.") {
-            SpreadRow {
-                listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (mode, label) ->
-                    Chip(label, settings.themeMode == mode, onClick = { set(settings.copy(themeMode = mode)) })
-                }
-            }
+        ToggleSection("Follow the phone's theme", "Light or dark as the phone is set. The player stays dark either way.", settings.themeMode == "system") {
+            set(settings.copy(themeMode = if (it) "system" else if (Ink.isDark) "dark" else "light"))
+        }
+        if (settings.themeMode != "system") ToggleSection("Dark theme", "Near-black pages; off for warm paper.", settings.themeMode == "dark") {
+            set(settings.copy(themeMode = if (it) "dark" else "light"))
         }
 
         Section("Button Colour", "Play, Watch and the app's other main buttons and highlights: ${settings.accent}.") {
@@ -1386,19 +1380,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
-        Section("Navigation", "The tabs along the bottom edge, or a pill floating over the page.") {
-            SpreadRow {
-                listOf("bar" to "Bar", "pill" to "Pill").forEach { (style, label) ->
-                    Chip(label, settings.navStyle == style, onClick = { set(settings.copy(navStyle = style)) })
-                }
-            }
+        ToggleSection("Floating tab bar", "A pill that hides as you scroll; off for a bar along the bottom.", settings.navStyle == "pill") {
+            set(settings.copy(navStyle = if (it) "pill" else "bar"))
         }
 
-        Section("Header edge", "How the big pictures at the top of Home and of a title's page end: fading into the page, or a clean straight line.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Clean line", !HeaderEdge.fade, onClick = { HeaderEdge.choose(false) })
-                Chip("Fade", HeaderEdge.fade, onClick = { HeaderEdge.choose(true) })
-            }
+        ToggleSection("Fade header pictures", "The big pictures at the top of Home and of a title's page fade into the page; off for a clean straight line.", HeaderEdge.fade) {
+            HeaderEdge.choose(it)
         }
 
         // "Genres on the home screen" is gone from here (the owner's choice); the choice already made still stands.
