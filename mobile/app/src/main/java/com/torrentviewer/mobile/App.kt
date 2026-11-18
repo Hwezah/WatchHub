@@ -546,7 +546,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             Box(Modifier.fillMaxSize().nestedScroll(watchScroll)) {
                 body()
                 AnimatedVisibility(
-                    pillShown, Modifier.align(Alignment.BottomCenter),
+                    pillShown && OpenSheets.count == 0, Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
                 ) { PillBar(tab, choose) }
             }

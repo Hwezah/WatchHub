@@ -482,6 +482,10 @@ fun <T> Sheet(
 @Composable
 fun BottomSheet(title: String, onDismiss: () -> Unit, trailing: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) {
     BackHandler(LocalShown.current, onDismiss)
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        OpenSheets.count++
+        onDispose { OpenSheets.count-- }
+    }
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.8f).dp
@@ -843,7 +847,13 @@ val QUIET_FILL: Color
 
 /** Sheets' face: the tab bar's colour — a shade lighter than the page in the dark theme, a near-white tint in the light. */
 val SHEET_FACE: Color
-    get() = if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else androidx.compose.ui.graphics.lerp(Ink.bg, Color.White, 0.9f)
+    // A shade apart from the tab bar's (the owner's choice: the two must read apart), still frosted.
+    get() = if (Ink.isDark) Ink.surface else androidx.compose.ui.graphics.lerp(Ink.bg, Color.White, 0.9f)
+
+/** How many sheets are up: the floating tab bar steps aside while any is, so it never sits on one. */
+object OpenSheets {
+    var count by androidx.compose.runtime.mutableIntStateOf(0)
+}
 
 val SECTION_FACE: Color
     get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.75f)
