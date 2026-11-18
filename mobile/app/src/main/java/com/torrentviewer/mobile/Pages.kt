@@ -587,7 +587,7 @@ private fun headingStyle(text: String) =
 
 private enum class Shelfs(val label: String) { HISTORY("History"), LATER("My Listing"), FAVORITE("Favourites") }
 
-private enum class LibrarySection(val label: String) { WISHLIST("Wishlist"), DOWNLOADS("Downloads") }
+private enum class LibrarySection(val label: String) { WISHLIST("My Wishlist"), DOWNLOADS("Downloads") }
 
 /**
  * The Library's two tabs, spread across the width: plain words, the chosen one bright with a line under it
