@@ -243,7 +243,8 @@ fun BrowserScreen() {
                 Browser.found.toList().forEach { s ->
                     Tap({ picking = false; Browser.offer(s) }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
                         Row(Modifier.padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(36.dp).clip(CircleShape).background(Ink.download.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+                            // A bare icon in green, no disc behind it (the owner's choice).
+                            Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
                                 Lc(
                                     when {
                                         "Stream" in s.kind || s.kind == "Video" -> L.drawable.lucide_ic_film
@@ -251,7 +252,7 @@ fun BrowserScreen() {
                                         s.kind == "Torrent" -> L.drawable.lucide_ic_magnet
                                         else -> L.drawable.lucide_ic_file_text
                                     },
-                                    tint = Ink.download, size = 18.dp,
+                                    tint = Ink.download, size = 24.dp,
                                 )
                             }
                             Spacer(Modifier.width(10.dp))

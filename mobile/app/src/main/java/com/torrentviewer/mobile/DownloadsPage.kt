@@ -189,8 +189,9 @@ private val DL_CARD = RoundedCornerShape(18.dp)
 /** A download card's badge in place of a poster: a film strip on a faint red disc, as Grabber shows its files. */
 @Composable
 private fun FilmBadge() {
-    Box(Modifier.size(38.dp).clip(CircleShape).background(Ink.accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-        Lc(L.drawable.lucide_ic_film, tint = Ink.accent, size = 18.dp)
+    // A bare icon in the accent, no disc behind it (the owner's choice), a notch bigger.
+    Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+        Lc(L.drawable.lucide_ic_film, tint = Ink.accent, size = 26.dp)
     }
 }
 
