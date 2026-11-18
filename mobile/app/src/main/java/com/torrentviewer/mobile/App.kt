@@ -236,6 +236,8 @@ private fun open(profile: Profile) {
     Kv.useProfile(profile.id, profile.isGuest)
     com.torrentviewer.core.SettingsStore.load()
     History.load()
+    // The Tube tab's subscriptions, history and Watch Later are this profile's own.
+    Tube.load()
     // Older builds' downloads into the Grabber! folders, once — after History, so Continue Watching follows them.
     Downloads.moveOldDownloads()
     SavedStore.load()
@@ -468,7 +470,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                                     Tab.LIBRARY -> LibraryScreen(watch, me, onOpen = openTitle, onDownloads = { pages.add(Page.Downloads) })
                                     Tab.SETTINGS -> SettingsScreen(watch, me, onSwitchProfile = { switching = true })
                                     Tab.FILES -> FilesScreen(watch)
-                                    Tab.YOUTUBE, Tab.BROWSER -> ComingSoon(t)
+                                    Tab.YOUTUBE -> TubeScreen(watch)
+                                    Tab.BROWSER -> ComingSoon(t)
                                 }
                             }
                         }

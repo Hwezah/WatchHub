@@ -204,10 +204,10 @@ if(v.readyState===0||!v.currentSrc){var b=document.querySelector('.ytp-large-pla
 if(v.paused)v.play();else v.pause();})();
 """
 
-private fun clock(seconds: Float): String = seconds.toInt().let { "%d:%02d".format(it / 60, it % 60) }
+internal fun clock(seconds: Float): String = seconds.toInt().let { if (it >= 3600) "%d:%02d:%02d".format(it / 3600, it / 60 % 60, it % 60) else "%d:%02d".format(it / 60, it % 60) }
 
 /** What the controls drive: the app's own player, or YouTube's page as the fallback. */
-private interface TrailerPlayback {
+internal interface TrailerPlayback {
     /** Where it is, handed to [onState] as (seconds, length, paused); a page answers later. */
     fun poll(onState: (Float, Float, Boolean) -> Unit)
     fun toggle()
@@ -228,7 +228,7 @@ private class WebPlayback(private val web: WebView) : TrailerPlayback {
 }
 
 /** The app's own player. */
-private class ExoPlayback(private val player: androidx.media3.exoplayer.ExoPlayer) : TrailerPlayback {
+internal class ExoPlayback(private val player: androidx.media3.exoplayer.ExoPlayer) : TrailerPlayback {
     override fun poll(onState: (Float, Float, Boolean) -> Unit) {
         val length = player.duration.takeIf { it != androidx.media3.common.C.TIME_UNSET && it > 0 } ?: 0L
         onState(player.currentPosition / 1000f, length / 1000f, !player.playWhenReady)
@@ -356,7 +356,7 @@ private fun NativeTrailer(ways: List<TrailerStream>, zoom: Float, onGiveUp: () -
  * scrub, with the time. Gone again a few seconds into playing.
  */
 @Composable
-private fun TrailerControls(playback: TrailerPlayback?) {
+internal fun TrailerControls(playback: TrailerPlayback?) {
     var at by remember { mutableStateOf(0f) }
     var length by remember { mutableStateOf(0f) }
     var paused by remember { mutableStateOf(false) }

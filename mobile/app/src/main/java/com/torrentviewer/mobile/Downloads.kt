@@ -549,6 +549,98 @@ object Downloads {
         writeFinished(_finished.value.filter { it.path != f.path })
     }
 
+    /* ---------------------------------------------------------- YouTube */
+
+    /** A YouTube video downloaded from the Tube tab: saved to Grabber!/YouTube. */
+    const val TUBE_KIND = "youtube"
+
+    /** A YouTube video's sound alone: saved to Grabber!/Audio. */
+    const val TUBE_AUDIO = "youtube-audio"
+
+    /** [v] downloaded at [height] (720 when null), or its sound alone ([audio]). Asked again, it's the same download. */
+    fun addTube(v: com.torrentviewer.core.TubeVideo, height: Int?, audio: Boolean) = add(
+        DownloadJob(
+            uri = v.url + if (audio) "#audio" else "#${height ?: 720}p", title = v.title, titleName = v.title, poster = v.thumb,
+            kind = if (audio) TUBE_AUDIO else TUBE_KIND, link = true, quality = if (audio) "audio" else "${height ?: 720}p",
+        ),
+    )
+
+    /**
+     * [runLink] for YouTube: the streams read fresh (YouTube's links last hours, so one kept since yesterday is dead),
+     * the picture-only MP4 and the M4A sound fetched by [LinkFetch] (resumable, many connections), then joined into one
+     * MP4 by Android's own muxer — no re-encoding.
+     *
+     * ponytail: YouTube's MP4 tops out at 1080p (1440p and 4K are VP9/AV1 WebM, which would need a WebM muxer).
+     */
+    private suspend fun saveTube(job: DownloadJob) {
+        val id = com.torrentviewer.core.youtubeId(job.uri) ?: throw LinkDownloadException("Not a YouTube link")
+        val audioOnly = job.kind == TUBE_AUDIO
+        update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Reading YouTube…", speed = 0) }
+        val (picture, sound) = Tube.downloadParts(id, job.quality?.removeSuffix("p")?.toIntOrNull(), audioOnly)
+        if (sound == null || (!audioOnly && picture == null)) throw LinkDownloadException("YouTube offered no file to save")
+        update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null) }
+        val work = linkWork(job.uri)
+        var before = 0L
+        suspend fun fetch(url: String, part: String): LinkFetch.Result {
+            val headers = mapOf("User-Agent" to Trailers.userAgent(url))
+            return LinkFetch.download(url, headers, null, false, File(work, part), connections) { done, total, rate ->
+                update(job.uri) { it.copy(state = DlState.DOWNLOADING, files = listOf(DlFile(0, job.label, before + maxOf(total, done), before + done, false)), speed = rate) }
+                notifyProgress()
+            }
+        }
+        val video = picture?.let { fetch(it, "v").also { r -> before = r.file.length() } }
+        val audio = fetch(sound, "a")
+        val dest = if (video == null) File(File(keepDir(), "Audio"), safe(job.label) + ".m4a")
+        else File(File(keepDir(), "YouTube"), safe(job.label) + ".mp4")
+        dest.parentFile?.mkdirs()
+        if (video == null) {
+            if (!audio.file.renameTo(dest)) audio.file.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
+        } else {
+            update(job.uri) { it.copy(error = "Joining picture and sound…", speed = 0) }
+            kotlinx.coroutines.withContext(Dispatchers.IO) { muxTube(video.file, audio.file, dest) }
+        }
+        work.deleteRecursively()
+        writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, job.poster, job.label, null, job.kind)) + _finished.value.filter { it.path != dest.path })
+        synchronized(lock) {
+            _live.value = _live.value.filter { it.job.uri != job.uri }
+            writeQueue(jobs())
+        }
+    }
+
+    /** One picture track and one sound track copied, sample by sample in time order, into one MP4 at [out]. */
+    private fun muxTube(video: File, audio: File, out: File) {
+        val tmp = File(out.path + ".part")
+        val muxer = android.media.MediaMuxer(tmp.path, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        val sources = listOf(video to "video/", audio to "audio/").map { (f, kind) ->
+            val ex = android.media.MediaExtractor().apply { setDataSource(f.path) }
+            val track = (0 until ex.trackCount).first { ex.getTrackFormat(it).getString(android.media.MediaFormat.KEY_MIME).orEmpty().startsWith(kind) }
+            ex.selectTrack(track)
+            ex to muxer.addTrack(ex.getTrackFormat(track))
+        }
+        try {
+            muxer.start()
+            val buffer = java.nio.ByteBuffer.allocateDirect(8 shl 20)
+            val info = android.media.MediaCodec.BufferInfo()
+            val done = BooleanArray(sources.size)
+            while (!done.all { it }) {
+                // The track whose next sample comes first: picture and sound stay interleaved, as players expect.
+                val i = sources.indices.filter { !done[it] }.minBy { sources[it].first.sampleTime }
+                val (ex, track) = sources[i]
+                val size = ex.readSampleData(buffer, 0)
+                if (size < 0) { done[i] = true; continue }
+                val key = ex.sampleFlags and android.media.MediaExtractor.SAMPLE_FLAG_SYNC != 0
+                info.set(0, size, ex.sampleTime, if (key) android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME else 0)
+                muxer.writeSampleData(track, buffer, info)
+                if (!ex.advance()) done[i] = true
+            }
+            muxer.stop()
+        } finally {
+            runCatching { muxer.release() }
+            sources.forEach { runCatching { it.first.release() } }
+        }
+        if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true); tmp.delete() }
+    }
+
     /* ---------------------------------------------------------- direct links */
 
     /** Where a link's segments and progress are kept until it is done. */
@@ -592,6 +684,11 @@ object Downloads {
 
     private suspend fun runLink(job: DownloadJob) {
             try {
+                // A YouTube video: its links read fresh from YouTube, picture and sound fetched apart and joined.
+                if (job.kind == TUBE_KIND || job.kind == TUBE_AUDIO) {
+                    saveTube(job)
+                    return
+                }
                 // Found a while ago (a season's batch waiting its turn, a pause, a restart): the link it has is asked first — a quick
                 // look, seconds — and only a link that no longer answers sends the sources off for a fresh one, which takes a while.
                 val stale = job.imdb != null && job.fetchedAt > 0 && System.currentTimeMillis() - job.fetchedAt > LINK_FRESH_MS
