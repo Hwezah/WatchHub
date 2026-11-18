@@ -280,7 +280,7 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
         ) {
             if (icon != null) {
                 Lc(icon, tint = fg, size = 16.dp)
-                Spacer(Modifier.width(if (compact) 5.dp else 6.dp))
+                Spacer(Modifier.width(if (compact) 3.dp else 6.dp))
             }
             Text(label, style = Type.label.copy(fontSize = if (compact) 13.sp else 14.sp, color = fg, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium),
                 maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
