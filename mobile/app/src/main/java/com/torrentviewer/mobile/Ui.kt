@@ -213,13 +213,16 @@ fun Button(
             },
             Motion.effects(), label = "bg",
         )
-        val fg = if (glass && !primary) Color.Black else if (primary && fill == null) Ink.onAccent else if (fill != null) Color.White else tint
+        // The second glass button (My Listing): near-white with black words on the dark theme, near-black with white
+        // words on the light one (the owner's choice).
+        val glassFill = if (Ink.isDark) GLASS_LIGHT else Color(0xFF161616)
+        val fg = if (glass && !primary) (if (Ink.isDark) Color.Black else Color.White) else if (primary && fill == null) Ink.onAccent else if (fill != null) Color.White else tint
         Row(
             // The primary one — Play, Watch — a flat grainy red, a shade deeper while pressed; the rest a flat tint.
             (when {
                 // Opaque, one flat colour under the app's grain, no rim: red for the main one, near-white for the other.
                 // A notch quieter than full strength (the owner's choice): a little black in every fill.
-                glass -> Modifier.background(lerp(if (primary) Ink.accent else GLASS_LIGHT, Color.Black, if (pressed) 0.28f else 0.12f)).grain()
+                glass -> Modifier.background(lerp(if (primary) Ink.accent else glassFill, Color.Black, if (pressed) 0.28f else 0.12f)).grain()
                 // No button carries a gradient (the owner's choice): the main action is one flat red under the grain.
                 primary && fill == null -> Modifier.background(lerp(Ink.accent, Color.Black, if (pressed) 0.28f else 0.12f)).grain()
                 // The download buttons' green as frosted glass: a deep, opaque green under the grain (the owner's choice).
