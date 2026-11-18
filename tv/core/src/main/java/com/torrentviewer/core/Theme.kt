@@ -315,8 +315,11 @@ fun ImdbBadge(rating: String) {
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun Facts(title: Title, modifier: Modifier = Modifier) {
-    androidx.compose.foundation.layout.FlowRow(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+fun Facts(title: Title, modifier: Modifier = Modifier, centred: Boolean = false) {
+    // [centred]: each line in the middle when it wraps (the phone's centred headers), rather than from the left.
+    androidx.compose.foundation.layout.FlowRow(
+        modifier, horizontalArrangement = if (centred) Arrangement.Center else Arrangement.Start, verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         title.rating?.let {
             Row(Modifier.align(Alignment.CenterVertically).padding(end = 14.dp)) { ImdbBadge(it) }
         }

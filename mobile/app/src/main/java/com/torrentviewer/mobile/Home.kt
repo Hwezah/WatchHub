@@ -550,7 +550,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                         }
                     }
                     // The facts on the page, under the picture's edge, not over the picture (the owner's choice).
-                    Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp))
+                    Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = true)
                     HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 14.dp, bottom = 22.dp))
                 }
             } else {
@@ -560,7 +560,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                         Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
                             TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
                         }
-                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp))
+                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp), centred = true)
                         HeroButtons(t, inList, onOpen, Modifier.padding(top = 16.dp))
                     }
                 }
