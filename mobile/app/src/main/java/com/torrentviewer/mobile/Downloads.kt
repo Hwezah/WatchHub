@@ -841,7 +841,7 @@ object Downloads {
                 val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
                 val wait = waitMinutes(round)
                 // Short (one line on the card): what's saved is always kept, so it isn't said.
-                errors[job.uri] = (if (dead && job.imdb != null) "No fresh link" else (e.message ?: "Couldn't save that link")) + " · retrying in $wait min"
+                errors[job.uri] = justTried(job.uri) + (if (dead && job.imdb != null) "No fresh link" else (e.message ?: "Couldn't save that link")) + " · retrying in $wait min"
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
                 wakeIn(wait)
                 scope.launch {
@@ -892,6 +892,12 @@ object Downloads {
      * the next fresh link at the same resolution — never one that already failed — takes over, from the start.
      * A torrent, or a link with no title to search: tried again as it is.
      */
+    /** When ↻ was last tapped on a download: a failure soon after says so, so the tap is seen to have done something. */
+    private val triedByHand = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /** "Tried again just now · " for a download whose ↻ was tapped in the last few minutes. */
+    private fun justTried(uri: String) = if (System.currentTimeMillis() - (triedByHand[uri] ?: 0) < 5 * 60_000L) "Tried again just now · " else ""
+
     fun retry(uri: String, byHand: Boolean = false) {
         val job = _live.value.find { it.job.uri == uri }?.job ?: return
         if (job.paused) return
@@ -901,6 +907,7 @@ object Downloads {
         if (byHand) {
             failedLinks.remove(job.label)
             autoRounds.remove(job.label)
+            triedByHand[uri] = System.currentTimeMillis()
         } else failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
         update(uri) { it.copy(state = DlState.RESOLVING, error = "Finding a fresh ${job.quality ?: ""} link…".replace("  ", " "), speed = 0) }
         scope.launch {
