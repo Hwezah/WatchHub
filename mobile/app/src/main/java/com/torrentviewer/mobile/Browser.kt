@@ -305,18 +305,23 @@ object Browser {
 
     private val expanded = java.util.Collections.synchronizedSet(HashSet<String>())
 
+    /** One HTTP client for the Browser's look-ups, short timeouts: a slow site never holds a thread for long. */
+    private val http by lazy {
+        okhttp3.OkHttpClient.Builder().connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS).readTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build()
+    }
+
     /** [url]'s text with the page's headers; null when it won't come. */
     private fun fetchText(url: String, headers: Map<String, String>): String? = runCatching {
         val b = okhttp3.Request.Builder().url(url)
         headers.forEach { (k, v) -> runCatching { b.header(k, v) } }
-        okhttp3.OkHttpClient().newCall(b.build()).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
+        http.newCall(b.build()).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
     }.getOrNull()
 
     /** [url]'s size by a HEAD request; -1 unknown. */
     private fun sizeOf(url: String, headers: Map<String, String>): Long = runCatching {
         val b = okhttp3.Request.Builder().url(url).head()
         headers.forEach { (k, v) -> runCatching { b.header(k, v) } }
-        okhttp3.OkHttpClient().newCall(b.build()).execute().use { r -> if (r.isSuccessful) r.header("Content-Length")?.toLongOrNull() ?: -1 else -1 }
+        http.newCall(b.build()).execute().use { r -> if (r.isSuccessful) r.header("Content-Length")?.toLongOrNull() ?: -1 else -1 }
     }.getOrDefault(-1)
 
     private fun lengthOf(sec: Double): String {
@@ -325,7 +330,9 @@ object Browser {
     }
 
     private fun replace(t0: BTab, url: String, rows: List<Sniffed>) = main.post {
-        val at = t0.found.indexOfFirst { it.url == url }.coerceAtLeast(0)
+        // Gone meanwhile (another page opened, the list cleared): nothing is put back.
+        val at = t0.found.indexOfFirst { it.url == url }
+        if (at < 0) return@post
         t0.found.removeAll { it.url == url || it.url in t0.children }
         t0.found.addAll(at.coerceAtMost(t0.found.size), rows)
     }
@@ -335,16 +342,25 @@ object Browser {
      * bitrate × length) and the quality playlists it names aren't listed again; a single quality gets its length.
      */
     private fun describeStream(t0: BTab, s: Sniffed) = kotlin.concurrent.thread(name = "browser-hls") {
+        // Whatever a site answers, a look-up never takes the app down: it just leaves the row as it was.
+        runCatching { describeStreamNow(t0, s) }
+    }
+
+    private fun describeStreamNow(t0: BTab, s: Sniffed) {
         val headers = headersFor(s, t0)
-        val text = fetchText(s.url, headers) ?: return@thread
+        val text = fetchText(s.url, headers) ?: return
         val durationOf = { body: String -> Regex("""#EXTINF:\s*([\d.]+)""").findAll(body).sumOf { it.groupValues[1].toDoubleOrNull() ?: 0.0 } }
         if (!isMasterPlaylist(text)) {
             val sec = durationOf(text)
             if (sec > 0) replace(t0, s.url, listOf(s.copy(detail = "One quality · " + lengthOf(sec))))
-            return@thread
+            return
         }
-        val variants = parseMaster(text, s.url).variants.sortedByDescending { it.height ?: (it.bandwidth / 1000).toInt() }
-        if (variants.isEmpty()) return@thread
+        val master = parseMaster(text, s.url)
+        val variants = master.variants.sortedByDescending { it.height ?: (it.bandwidth / 1000).toInt() }
+        // Sound in a track of its own: a quality's playlist alone is picture only. Said on its row; "Grab This
+        // Page's Video" (yt-dlp) joins the two.
+        val pictureOnly = master.separateAudio.isNotEmpty()
+        if (variants.isEmpty()) return
         t0.children.addAll(variants.map { it.uri })
         // Every quality runs as long: one measured, each sized by its bitrate.
         val sec = fetchText(variants.last().uri, headers)?.let(durationOf) ?: 0.0
@@ -352,17 +368,20 @@ object Browser {
             variants.map { v ->
                 val label = v.height?.let { "${it}p" } ?: "${v.bandwidth / 1000} kbps"
                 val size = if (sec > 0 && v.bandwidth > 0) "~" + com.torrentviewer.core.bytes((v.bandwidth * sec / 8).toLong()) else null
-                Sniffed(v.uri, "$label · HLS", s.page, s.title, s.headers, listOfNotNull(if (sec > 0) lengthOf(sec) else null, size).joinToString(" · "))
+                Sniffed(v.uri, "$label · HLS", s.page, s.title, s.headers, listOfNotNull(if (sec > 0) lengthOf(sec) else null, size, if (pictureOnly) "picture only — use Grab for sound" else null).joinToString(" · "))
             }
         replace(t0, s.url, rows)
     }
 
     /** A video file's size; a small one is said to be a preview clip (a thumbnail's hover video), not the film. */
     private fun describeFile(t0: BTab, s: Sniffed) = kotlin.concurrent.thread(name = "browser-size") {
-        val size = sizeOf(s.url, headersFor(s, t0))
-        if (size <= 0) return@thread
-        val detail = if (size < MIN_VIDEO_BYTES) "Preview clip · " + com.torrentviewer.core.bytes(size) else com.torrentviewer.core.bytes(size)
-        replace(t0, s.url, listOf(s.copy(detail = detail)))
+        runCatching {
+            val size = sizeOf(s.url, headersFor(s, t0))
+            if (size > 0) {
+                val detail = if (size < MIN_VIDEO_BYTES) "Preview clip · " + com.torrentviewer.core.bytes(size) else com.torrentviewer.core.bytes(size)
+                replace(t0, s.url, listOf(s.copy(detail = detail)))
+            }
+        }
     }
 
     /** The headers a download from this page needs: where it came from, the browser's identity, its cookies. */
