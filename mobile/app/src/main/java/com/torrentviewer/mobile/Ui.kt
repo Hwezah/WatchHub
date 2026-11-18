@@ -875,8 +875,8 @@ object NavActive {
             else -> Ink.text.copy(alpha = if (Ink.isDark) 0.14f else 0.11f)
         }
 
-    /** The icon on it. */
-    val tint: Color get() = if (style == "Accent") Ink.onAccent else Ink.text
+    /** The icon on it: its strokes in the accent (the owner's choice), white on the accent's own capsule. */
+    val tint: Color get() = if (style == "Accent") Ink.onAccent else Ink.accent
 }
 
 object HeaderEdge {
