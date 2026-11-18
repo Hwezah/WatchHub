@@ -516,7 +516,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
     // Clean line, upright: the facts and buttons sit under the picture, so the hero grows by their room and the
     // picture keeps its full height (the owner's choice: a tall poster area).
     val height = if (wide) (LocalConfiguration.current.screenHeightDp * 0.82f).dp
-    else (LocalConfiguration.current.screenWidthDp * 1.12f).dp + if (HeaderEdge.fade) 0.dp else 150.dp
+    else (LocalConfiguration.current.screenWidthDp * 1.12f).dp + if (HeaderEdge.fade) 0.dp else 100.dp
     Box(Modifier.fillMaxWidth().height(height)) {
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { titles.getOrNull(it)?.imdb ?: it }) { page ->
             val start = titles.getOrNull(page) ?: return@HorizontalPager
@@ -540,14 +540,17 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                 // Clean line (Settings → Appearance): as a title's page lays out — the picture with its logo at its foot,
                 // ending on a straight edge, and the facts and buttons below it on the page itself.
                 Column(open, horizontalAlignment = Alignment.CenterHorizontally) {
+                    // The picture runs down to where the buttons start: the logo and facts sit on its foot.
                     Box(Modifier.fillMaxWidth().weight(1f)) {
                         Artwork(t.wide, t.title, Modifier.fillMaxSize(), fill = false)
-                        Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 14.dp).widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
-                            TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
+                        Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
+                                TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
+                            }
+                            Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp))
                         }
                     }
-                    Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 18.dp, start = EDGE, end = EDGE))
-                    HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 14.dp, bottom = 22.dp))
+                    HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 16.dp, bottom = 22.dp))
                 }
             } else {
                 Box(open) {
