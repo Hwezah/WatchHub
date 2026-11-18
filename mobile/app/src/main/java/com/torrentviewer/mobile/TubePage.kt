@@ -169,8 +169,6 @@ fun TubeScreen(watch: Watch) {
             }
             TubeRoute.You -> Column(Modifier.fillMaxSize()) {
                 BackBar("You", onBack = { routes.removeAt(routes.lastIndex) })
-                // Who is signed in (or a way to sign in), then the parts.
-                YouTubeAccountCard(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp))
                 SectionRow(section) { section = it }
                 when (section) {
                     TubeSection.SUBS -> SubsFeed(open, { menu = it }, openChannel)

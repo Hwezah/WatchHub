@@ -233,7 +233,7 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
-                    Heading(shelf.title, Modifier.padding(start = 48.dp))
+                    Heading(shelf.title, Modifier.padding(start = 48.dp, end = if (isPortraitPhone()) 48.dp else 0.dp), centred = isPortraitPhone())
                     // No line under these (the owner's choice): the chosen one has the red dot beside it instead.
                     if (kinds != null) TextTabs(listOf("Movies", "Shows"), if (tab == "tv") 1 else 0, dotAt = if (tab == "tv") 1 else 0, underline = false) { tab = if (it == 1) "tv" else "movie" }
                     // End to end, like the app's other pill rows. No A–Z here (the owner's choice); No Animation is in Settings.

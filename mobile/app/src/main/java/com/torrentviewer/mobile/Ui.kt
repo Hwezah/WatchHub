@@ -666,10 +666,11 @@ fun LandscapeCard(art: String?, name: String, stamp: String? = null, progress: F
 
 /** A page heading under the status bar. */
 @Composable
-fun Heading(text: String, modifier: Modifier = Modifier, trailing: @Composable () -> Unit = {}) {
+fun Heading(text: String, modifier: Modifier = Modifier, centred: Boolean = false, trailing: @Composable () -> Unit = {}) {
     // Clear of the screen's top and sides, as Home's wordmark is: a little down and in.
     Row(modifier.statusBarsPadding().padding(start = 10.dp, end = 10.dp, top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, Modifier.weight(1f), style = Type.display)
+        // [centred]: a page with a back button, on an upright phone, has its title in the middle (the owner's choice).
+        Text(text, Modifier.weight(1f), style = Type.display, textAlign = if (centred) TextAlign.Center else TextAlign.Start, maxLines = 2, overflow = TextOverflow.Ellipsis)
         trailing()
     }
 }

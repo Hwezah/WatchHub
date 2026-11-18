@@ -175,7 +175,8 @@ private fun EntryRow(e: FileEntry, onOpen: () -> Unit, onDelete: () -> Unit) {
                 e.folder -> L.drawable.lucide_ic_folder
                 else -> kindOf(e.file).icon
             }
-            Box(Modifier.size(38.dp).clip(CircleShape).background(Ink.accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) { Lc(icon, tint = Ink.accent, size = 18.dp) }
+            // A coloured outline icon alone, no disc behind it (the owner's choice).
+            Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) { Lc(icon, tint = Ink.accent, size = 26.dp) }
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(e.file.name, Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
                 val meta = if (e.folder) (if (e.count == 1) "1 item" else "${e.count} items") else "${bytes(e.size)}  ·  ${ago(e.at)}"

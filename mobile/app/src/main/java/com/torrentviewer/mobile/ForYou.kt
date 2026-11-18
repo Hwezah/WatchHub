@@ -147,7 +147,7 @@ fun TopScreen(startKind: String, onOpen: (Title) -> Unit, onBack: () -> Unit) {
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Heading("Top on IMDb", Modifier.padding(start = 48.dp))
+                    Heading("Top on IMDb", Modifier.padding(start = 48.dp, end = if (isPortraitPhone()) 48.dp else 0.dp), centred = isPortraitPhone())
                     // Small enough for one line; wrapped, not scrolled, where it still doesn't fit: a menu opens
                     // under its chip, so none may sit off the screen's edge.
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

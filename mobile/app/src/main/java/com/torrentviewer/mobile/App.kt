@@ -695,7 +695,7 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
 @Composable
 private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier) {
     Column(
-        modifier.navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 10.dp).fillMaxWidth()
+        modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 10.dp).fillMaxWidth()
             .clip(RoundedCornerShape(26.dp))
             // Dark: a shade lighter than the page. Light: a tint — near-white on the paper page, edged faintly —
             // so the bar stands apart in both (the owner's choice: light plays with tints as dark with shades).
