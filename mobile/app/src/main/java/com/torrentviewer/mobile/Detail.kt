@@ -397,7 +397,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             item(key = "head") {
                 if (!wide) {
                     Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
-                        Artwork(title.wide, title.title, Modifier.fillMaxSize().bottomScrim(0.6f), fill = false)
+                        // A clean straight edge where the art ends (the owner's choice): no fade into the page, no border.
+                        Artwork(title.wide, title.title, Modifier.fillMaxSize(), fill = false)
                         // Centred under the art, which is cropped from its centre.
                         TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
                     }
