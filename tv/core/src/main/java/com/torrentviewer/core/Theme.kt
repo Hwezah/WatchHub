@@ -332,8 +332,8 @@ fun Facts(title: Title, modifier: Modifier = Modifier) {
 
 /** A thin bar for how far through something is. */
 @Composable
-fun ProgressLine(progress: Float, modifier: Modifier = Modifier, height: Dp = 3.dp, color: Color = Ink.accent) {
-    Box(modifier.fillMaxWidth().height(height).background(Color.White.copy(alpha = 0.25f))) {
+fun ProgressLine(progress: Float, modifier: Modifier = Modifier, height: Dp = 3.dp, color: Color = Ink.accent, track: Color = Color.White.copy(alpha = 0.25f)) {
+    Box(modifier.fillMaxWidth().height(height).background(track)) {
         // NaN (nothing known yet: 0 of 0 bytes) gets past coerceIn and crashes the layout: an empty line instead.
         Box(Modifier.fillMaxWidth(if (progress.isNaN()) 0f else progress.coerceIn(0f, 1f)).height(height).background(color))
     }
