@@ -50,7 +50,7 @@ import java.io.File
 import com.composables.icons.lucide.R as L
 
 /** One thing in a folder, read once per visit so scrolling never touches the disk. */
-private data class Entry(val file: File, val folder: Boolean, val size: Long, val at: Long, val count: Int)
+private data class FileEntry(val file: File, val folder: Boolean, val size: Long, val at: Long, val count: Int)
 
 /** What a file is, from its extension: picks its badge, and whether our player opens it. */
 private enum class Kind(val icon: Int) { VIDEO(L.drawable.lucide_ic_film), AUDIO(L.drawable.lucide_ic_music), IMAGE(L.drawable.lucide_ic_image), OTHER(L.drawable.lucide_ic_file_text) }
@@ -70,10 +70,10 @@ private fun kindOf(f: File): Kind = when (f.extension.lowercase()) {
 private val FILE_CARD = RoundedCornerShape(18.dp)
 
 /** A folder's contents: folders first (A–Z), then files newest first, hidden files and half-written ones left out. */
-private fun listEntries(dir: File): List<Entry> =
+private fun listEntries(dir: File): List<FileEntry> =
     dir.listFiles().orEmpty().filter { !it.name.startsWith(".") && !it.name.endsWith(".part") }
-        .map { Entry(it, it.isDirectory, if (it.isDirectory) 0L else it.length(), it.lastModified(), if (it.isDirectory) it.list()?.count { n -> !n.startsWith(".") } ?: 0 else 0) }
-        .sortedWith(compareByDescending<Entry> { it.folder }.thenBy { if (it.folder) it.file.name.lowercase() else "" }.thenByDescending { if (it.folder) 0L else it.at })
+        .map { FileEntry(it, it.isDirectory, if (it.isDirectory) 0L else it.length(), it.lastModified(), if (it.isDirectory) it.list()?.count { n -> !n.startsWith(".") } ?: 0 else 0) }
+        .sortedWith(compareByDescending<FileEntry> { it.folder }.thenBy { if (it.folder) it.file.name.lowercase() else "" }.thenByDescending { if (it.folder) 0L else it.at })
 
 /**
  * The Files tab: everything finished downloads left on the phone, as the folders they sit in — Grabber! at the
@@ -92,13 +92,13 @@ fun FilesScreen(watch: Watch) {
     val dir = trail.fold(root) { d, name -> File(d, name) }
     val finished by Downloads.finished.collectAsState()
     var bump by remember { mutableIntStateOf(0) }
-    var entries by remember { mutableStateOf<List<Entry>?>(null) }
+    var entries by remember { mutableStateOf<List<FileEntry>?>(null) }
     LaunchedEffect(dir.path, finished, bump) { entries = withContext(Dispatchers.IO) { runCatching { listEntries(dir) }.getOrDefault(emptyList()) } }
-    var deleting by remember { mutableStateOf<Entry?>(null) }
+    var deleting by remember { mutableStateOf<FileEntry?>(null) }
 
     BackHandler(LocalShown.current && trail.isNotEmpty()) { trail = trail.dropLast(1) }
 
-    fun open(e: Entry) {
+    fun open(e: FileEntry) {
         if (e.folder) { trail = trail + e.file.name; return }
         val saved = finished.firstOrNull { it.file.path == e.file.path }
         if (kindOf(e.file) == Kind.VIDEO) {
@@ -166,7 +166,7 @@ private fun remove(file: File) {
 
 /** One row: a folder (badge, name, how many inside) or a file (type badge, name, size and age). */
 @Composable
-private fun EntryRow(e: Entry, onOpen: () -> Unit, onDelete: () -> Unit) {
+private fun EntryRow(e: FileEntry, onOpen: () -> Unit, onDelete: () -> Unit) {
     Tap(onOpen, Modifier.fillMaxWidth().padding(bottom = 10.dp), FILE_CARD, onLongClick = onDelete) {
         Row(Modifier.frosted(FILE_CARD, CARD_FACE).padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             val icon = when {
