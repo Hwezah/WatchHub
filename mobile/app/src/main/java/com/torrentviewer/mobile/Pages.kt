@@ -892,6 +892,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_radio, "Streaming", "Storage, buffer and trackers", "cache magnet") { page = "Streaming" },
                         Entry(L.drawable.lucide_ic_play, "Playback", "Player, languages and subtitles", "vlc media3 skip intro audio") { page = "Playback" },
                         Entry(L.drawable.lucide_ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
+                        Entry(L.drawable.lucide_ic_user, "Accounts", "YouTube sign-in for Tube and downloads", "youtube google login sign in account subscriptions") { page = "Accounts" },
                         Entry(L.drawable.lucide_ic_globe, "Browser", "Search engine, ads, pop-ups, redirects", "google duckduckgo bing brave ads popups redirects dark cookies") { page = "Browser" },
                         Entry(L.drawable.lucide_ic_shield, "Secure DNS", "For plugins: look sites up past your provider's blocks", "doh dns over https cloudflare google blocked network") { page = "Secure DNS" },
                         Entry(L.drawable.lucide_ic_sliders_horizontal, "Preferred download", "What one-tap Download picks: resolution, codec, format…", "720p x265 hevc mkv mp4 quality codec") { page = "Preferred download" },
@@ -1312,6 +1313,11 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
         }
 
+        if (page == "Accounts") Panel {
+            Section("YouTube", "Signed in, Tube's Home starts with your own subscriptions and downloads can save videos shown only to signed-in accounts. The session stays on this phone.") {
+                YouTubeAccountCard()
+            }
+        }
         if (page == "Browser") Panel {
             // The Grabber app's browser settings, for the Browser tab.
             Section("Search Engine", "Where words typed in the Browser's address bar are searched.") {

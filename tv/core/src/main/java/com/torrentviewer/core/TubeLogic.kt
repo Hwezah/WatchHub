@@ -197,3 +197,58 @@ fun agoText(at: Long, now: Long = System.currentTimeMillis()): String {
         else -> say(s / (365 * 86_400), "year")
     }
 }
+
+/** The signed-in YouTube account: its name, @handle and picture. */
+data class TubeAccount(val name: String, val handle: String?, val photo: String?)
+
+/**
+ * The account from YouTube's account menu (InnerTube "account/account_menu"): the first activeAccountHeaderRenderer
+ * anywhere in the answer, so a reshuffle of the wrapping doesn't lose it. Null when there's none (signed out).
+ */
+fun parseAccountMenu(json: String): TubeAccount? {
+    val root = runCatching { JSONObject(json) }.getOrNull() ?: return null
+    val header = findObject(root, "activeAccountHeaderRenderer") ?: return null
+    fun text(o: JSONObject?): String? = o?.optString("simpleText")?.takeIf { it.isNotBlank() }
+        ?: o?.optJSONArray("runs")?.let { r -> (0 until r.length()).joinToString("") { r.optJSONObject(it)?.optString("text").orEmpty() } }?.takeIf { it.isNotBlank() }
+    val name = text(header.optJSONObject("accountName")) ?: return null
+    val photo = header.optJSONObject("accountPhoto")?.optJSONArray("thumbnails")?.let { t -> (0 until t.length()).mapNotNull { t.optJSONObject(it) }.maxByOrNull { it.optInt("width") }?.optString("url") }
+    return TubeAccount(name, text(header.optJSONObject("channelHandle")), photo?.takeIf { it.isNotBlank() }?.let { if (it.startsWith("//")) "https:$it" else it })
+}
+
+/** The first object under [key] anywhere inside [o], depth first. */
+private fun findObject(o: Any?, key: String): JSONObject? = when (o) {
+    is JSONObject -> o.optJSONObject(key) ?: o.keys().asSequence().firstNotNullOfOrNull { findObject(o.opt(it), key) }
+    is JSONArray -> (0 until o.length()).firstNotNullOfOrNull { findObject(o.opt(it), key) }
+    else -> null
+}
+
+/** The largest of yt-dlp's "thumbnails". */
+private fun bestThumb(o: JSONObject): String? = o.optJSONArray("thumbnails")?.let { t ->
+    (0 until t.length()).mapNotNull { t.optJSONObject(it) }.maxByOrNull { it.optInt("height") * 10_000 + it.optInt("width") }?.optString("url")
+}?.takeIf { it.isNotBlank() }?.let { if (it.startsWith("//")) "https:$it" else it }
+
+/**
+ * Videos from yt-dlp's flat listing of a feed (`-J --flat-playlist`, e.g. the signed-in Subscriptions feed): each
+ * entry with an 11-character id. Shorts are left out, as everywhere in Tube.
+ */
+fun parseFlatVideos(json: String): List<TubeVideo> {
+    val entries = runCatching { JSONObject(json).optJSONArray("entries") }.getOrNull() ?: return emptyList()
+    return (0 until entries.length()).mapNotNull { entries.optJSONObject(it) }.mapNotNull { e ->
+        val url = e.optString("url")
+        val id = e.optString("id").takeIf { it.length == 11 } ?: youtubeId(url) ?: return@mapNotNull null
+        if ("/shorts/" in url) return@mapNotNull null
+        TubeVideo(
+            id, e.optString("title"), e.optString("channel").ifBlank { e.optString("uploader") }, e.str("channel_url") ?: e.str("uploader_url"), null, bestThumb(e),
+            e.optDouble("duration", 0.0).toLong().coerceAtLeast(0), e.optLong("view_count", -1), null, e.optLong("timestamp", 0) * 1000, e.optString("live_status") == "is_live",
+        )
+    }
+}
+
+/** Channels from yt-dlp's flat listing of the signed-in "feed/channels" page: each entry a channel link. */
+fun parseFlatChannels(json: String): List<TubeChannel> {
+    val entries = runCatching { JSONObject(json).optJSONArray("entries") }.getOrNull() ?: return emptyList()
+    return (0 until entries.length()).mapNotNull { entries.optJSONObject(it) }.mapNotNull { e ->
+        val url = e.str("url") ?: e.str("channel_url") ?: e.str("id")?.takeIf { it.startsWith("UC") }?.let { "https://www.youtube.com/channel/$it" } ?: return@mapNotNull null
+        TubeChannel(url, e.optString("title").ifBlank { e.optString("channel") }.ifBlank { "Channel" }, bestThumb(e))
+    }.distinctBy { channelKey(it.url) }
+}

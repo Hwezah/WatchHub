@@ -88,4 +88,24 @@ class TubeTest {
         assertEquals("2 years ago", agoText(now - 800L * 86_400_000L, now))
         assertEquals("Just now", agoText(now, now))
     }
+
+    @Test fun accountMenu() {
+        val json = """{"actions":[{"openPopupAction":{"popup":{"multiPageMenuRenderer":{"header":{"activeAccountHeaderRenderer":{
+            "accountName":{"simpleText":"Hwe Zah"},"accountPhoto":{"thumbnails":[{"url":"//yt3.ggpht.com/a=s48","width":48},{"url":"//yt3.ggpht.com/a=s88","width":88}]},
+            "channelHandle":{"runs":[{"text":"@hwezah"}]}}}}}}}]}"""
+        assertEquals(TubeAccount("Hwe Zah", "@hwezah", "https://yt3.ggpht.com/a=s88"), parseAccountMenu(json))
+        assertNull(parseAccountMenu("""{"actions":[]}"""))
+    }
+
+    @Test fun flatFeed() {
+        val json = """{"entries":[
+            {"id":"abcdefghijk","url":"https://www.youtube.com/watch?v=abcdefghijk","title":"A","channel":"Ch","channel_url":"https://www.youtube.com/channel/UC1234567890123456789012","duration":61.0,"view_count":10,"thumbnails":[{"url":"https://i.ytimg.com/s.jpg","height":90},{"url":"https://i.ytimg.com/b.jpg","height":360}]},
+            {"id":"zzzzzzzzzzz","url":"https://www.youtube.com/shorts/zzzzzzzzzzz","title":"S"}]}"""
+        val v = parseFlatVideos(json)
+        assertEquals(listOf("abcdefghijk"), v.map { it.id })
+        assertEquals("https://i.ytimg.com/b.jpg", v[0].thumb)
+        assertEquals(61L, v[0].seconds)
+        val ch = parseFlatChannels("""{"entries":[{"url":"https://www.youtube.com/channel/UC1234567890123456789012","title":"Ch"},{"id":"UC1234567890123456789012","title":"Dup"}]}""")
+        assertEquals(listOf("Ch"), ch.map { it.name })
+    }
 }

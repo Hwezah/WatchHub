@@ -161,9 +161,21 @@ object Tube {
         return split(ChannelTabInfo.getInfo(yt, handler).relatedItems, ch).first.map { it.copy(channel = ch.name, channelUrl = ch.url, avatar = it.avatar ?: ch.avatar) }
     }
 
+    private var accountCache: Pair<Long, List<TubeVideo>>? = null
+
+    /** The signed-in account's Subscriptions feed, kept as long as [subscriptionFeed]'s. */
+    private suspend fun accountFeed(fresh: Boolean): List<TubeVideo> {
+        accountCache?.let { (at, list) -> if (!fresh && System.currentTimeMillis() - at < FEED_MS) return list }
+        return YouTubeAccount.feed().also { accountCache = System.currentTimeMillis() to it }
+    }
+
     /** Home: subscriptions' newest first, then trending; trending alone until there are subscriptions. */
     suspend fun home(fresh: Boolean = false): List<TubeVideo> = coroutineScope {
-        val subs = async { if (subscriptions.value.isEmpty()) emptyList() else runCatching { subscriptionFeed(fresh) }.getOrDefault(emptyList()) }
+        // Signed in to YouTube: the account's own Subscriptions feed; else the channels kept here.
+        val subs = async {
+            val own = if (YouTubeAccount.signedIn.value) runCatching { accountFeed(fresh) }.getOrDefault(emptyList()) else emptyList()
+            own.ifEmpty { if (subscriptions.value.isEmpty()) emptyList() else runCatching { subscriptionFeed(fresh) }.getOrDefault(emptyList()) }
+        }
         val hot = async { runCatching { trending() }.getOrDefault(emptyList()) }
         homeFeed(subs.await(), hot.await())
     }

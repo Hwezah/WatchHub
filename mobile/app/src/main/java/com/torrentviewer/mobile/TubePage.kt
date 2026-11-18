@@ -129,6 +129,7 @@ fun TubeScreen(watch: Watch) {
     var resumedId by remember { mutableStateOf<String?>(null) }
     // No History to dig through (the owner's choice): Tube opens on what was watched last, once per launch.
     LaunchedEffect(Unit) {
+        YouTubeAccount.init(context)
         if (!Tube.reopened && playing.isEmpty()) Tube.history.value.firstOrNull()?.let { last ->
             resumedId = last.id
             playing.add(last)
@@ -168,6 +169,8 @@ fun TubeScreen(watch: Watch) {
             }
             TubeRoute.You -> Column(Modifier.fillMaxSize()) {
                 BackBar("You", onBack = { routes.removeAt(routes.lastIndex) })
+                // Who is signed in (or a way to sign in), then the parts.
+                YouTubeAccountCard(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp))
                 SectionRow(section) { section = it }
                 when (section) {
                     TubeSection.SUBS -> SubsFeed(open, { menu = it }, openChannel)
@@ -262,7 +265,13 @@ private fun TubeHeader(typed: String, onTyped: (String) -> Unit, onSubmit: () ->
         Tap(onSubmit, shape = CircleShape) { Lc(R.drawable.ic_search_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp) }
         BareInput(typed, onTyped, "Search YouTube", Modifier.weight(1f).padding(horizontal = 6.dp), onSubmit = onSubmit)
         if (typed.isNotEmpty()) Tap({ onTyped("") }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 18.dp) }
-        Tap(onLogin, shape = CircleShape) { Lc(R.drawable.ic_user_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp) }
+        // Signed in: the account's picture; else the thin sign-in mark. Either opens You.
+        val account by YouTubeAccount.account.collectAsState()
+        val photo = account?.photo
+        Tap(onLogin, shape = CircleShape) {
+            if (photo != null) Box(Modifier.padding(8.dp).size(30.dp).clip(CircleShape)) { Artwork(photo, account?.name ?: "", Modifier.fillMaxSize()) }
+            else Lc(R.drawable.ic_user_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp)
+        }
     }
 }
 

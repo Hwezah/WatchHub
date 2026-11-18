@@ -76,6 +76,7 @@ object Media {
         ensure(context)
         val req = YoutubeDLRequest(url).addOption("--no-playlist").addOption("--no-update")
         headers.forEach { (k, v) -> req.addOption("--add-header", "$k:$v") }
+        signedIn(context, url, req)
         val v = try {
             YoutubeDL.getInstance().getInfo(req)
         } catch (e: Exception) {
@@ -100,6 +101,7 @@ object Media {
             .addOption("-N", 8)
             .addOption("-o", File(work, "$base.%(ext)s").absolutePath)
         headers.forEach { (k, v) -> req.addOption("--add-header", "$k:$v") }
+        signedIn(context, url, req)
         if (format.startsWith("a:")) {
             req.addOption("-f", "ba/b").addOption("-x").addOption("--audio-format", format.removePrefix("a:")).addOption("--audio-quality", "0")
         } else {
@@ -127,6 +129,14 @@ object Media {
         }
         return work.listFiles().orEmpty().filter { it.isFile && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") && !Regex("""\.f\d+\.""").containsMatchIn(it.name) }
             .maxByOrNull { it.length() } ?: error("yt-dlp finished but no file was made")
+    }
+
+    /** A YouTube page with the signed-in account's cookies, for videos shown only to signed-in accounts. */
+    private fun signedIn(context: Context, url: String, req: YoutubeDLRequest) {
+        val host = runCatching { Uri.parse(url).host.orEmpty().lowercase() }.getOrDefault("")
+        if ("youtube.com" !in host && host != "youtu.be") return
+        YouTubeAccount.init(context)
+        YouTubeAccount.cookiesFile()?.let { req.addOption("--cookies", it.absolutePath) }
     }
 
     /** yt-dlp's last ERROR line, without warnings, its [extractor] tag or the Python cause. */
