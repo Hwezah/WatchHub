@@ -1415,6 +1415,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             set(settings.copy(navStyle = if (it) "pill" else "bar"))
         }
 
+        Section("Active Tab", "The chosen tab in the bottom bar: ${NavActive.style}.") {
+            BarChoices(NavActive.CHOICES, NavActive.CHOICES.indexOf(NavActive.style)) { NavActive.choose(NavActive.CHOICES[it]) }
+        }
         ToggleSection("Fade header pictures", "The big pictures at the top of Home and of a title's page fade into the page; off for a clean straight line.", HeaderEdge.fade) {
             HeaderEdge.choose(it)
         }

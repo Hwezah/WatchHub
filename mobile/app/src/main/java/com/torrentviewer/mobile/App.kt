@@ -714,10 +714,12 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                             Box(
                                 // The chosen tab's capsule in the accent the viewer picked.
                                 // Slim enough to stay clear of the line between the rows and the panel's top and bottom.
-                                Modifier.clip(RoundedCornerShape(15.dp)).background(if (on) Ink.accent else Color.Transparent)
+                                // Its colour as chosen in Settings → Appearance (frosted grey by default), with the app's grain.
+                                Modifier.clip(RoundedCornerShape(15.dp)).background(if (on) NavActive.fill else Color.Transparent)
+                                    .then(if (on && NavActive.style != "Accent") Modifier.grain() else Modifier)
                                     .padding(horizontal = 18.dp, vertical = 6.dp),
                                 contentAlignment = Alignment.Center,
-                            ) { Lc(t.icon, tint = if (on) Ink.onAccent else Ink.muted, size = 22.dp) }
+                            ) { Lc(t.icon, tint = if (on) NavActive.tint else Ink.muted, size = 22.dp) }
                         }
                     }
                 }

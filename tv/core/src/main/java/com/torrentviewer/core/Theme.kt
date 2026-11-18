@@ -92,8 +92,8 @@ object Ink {
         Color(0xFFFFFFFF), Color(0xFFB3B3B3), Color(0xFF7A7A7A), Color(0xFF46D369), Color(0xFFFFB340), Color(0xFFFF5A4E),
     )
     private val LIGHT = Palette(
-        // A warm paper page; cards and sheets white on it, the greys warmed to match.
-        Color(0xFFF6F2EE), Color(0xFFFFFFFF), Color(0xFFEAE4DE), Color(0xFFDDD5CE),
+        // A warm paper page, as the Grabber app's light theme (the owner's choice: less white); cards and sheets white on it.
+        Color(0xFFEAE5DF), Color(0xFFFFFFFF), Color(0xFFE0D9D2), Color(0xFFDDD5CE),
         Color(0xFF141414), Color(0xFF575757), Color(0xFF8A8A8A), Color(0xFF1E8E3E), Color(0xFFB26A00), Color(0xFFD32F2F),
     )
     private var p by mutableStateOf(DARK)

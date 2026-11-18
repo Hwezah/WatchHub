@@ -413,13 +413,14 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 // the logo, facts and certificate on its foot.
                 val clean = !wide && !HeaderEdge.fade
                 if (clean) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(0.88f)) {
-                        Artwork(title.wide, title.title, Modifier.fillMaxSize(), fill = false)
-                        Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            TitleMark(title, Modifier.widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
-                            Facts(title.copy(genres = title.genres.take(2)), Modifier.padding(top = 12.dp))
-                            badges(Modifier.padding(top = 10.dp))
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(0.88f)) {
+                            Artwork(title.wide, title.title, Modifier.fillMaxSize(), fill = false)
+                            TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 16.dp).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
                         }
+                        // The facts and certificate on the page, under the picture's edge, not over the picture (the owner's choice).
+                        Facts(title.copy(genres = title.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp))
+                        badges(Modifier.padding(top = 10.dp))
                     }
                 } else if (!wide) {
                     Box(Modifier.fillMaxWidth().aspectRatio(1.1f)) {

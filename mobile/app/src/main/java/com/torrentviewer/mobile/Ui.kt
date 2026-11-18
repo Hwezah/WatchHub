@@ -829,6 +829,33 @@ val SECTION_FACE: Color
  * How the big pictures at the top of Home and of a title's page end (Settings → Appearance → Header edge): fading
  * into the page, or a clean straight line. App-wide; a clean line unless the viewer picks the fade.
  */
+/**
+ * The bottom nav's chosen tab: its capsule's colour (Settings → Appearance). Frosted grey by default (the owner's
+ * choice), the accent, or a faint tint; each drawn from the palette, so it suits light and dark alike.
+ */
+object NavActive {
+    private const val KEY = "navActiveStyle"
+    val CHOICES = listOf("Frosted Grey", "Subtle", "Accent")
+    var style by androidx.compose.runtime.mutableStateOf(com.torrentviewer.core.Kv.global(KEY)?.takeIf { it in CHOICES } ?: "Frosted Grey")
+        private set
+
+    fun choose(s: String) {
+        style = s
+        com.torrentviewer.core.Kv.setGlobal(KEY, s)
+    }
+
+    /** The capsule's colour. */
+    val fill: Color
+        get() = when (style) {
+            "Accent" -> Ink.accent
+            "Subtle" -> Ink.text.copy(alpha = 0.07f)
+            else -> Ink.text.copy(alpha = if (Ink.isDark) 0.14f else 0.11f)
+        }
+
+    /** The icon on it. */
+    val tint: Color get() = if (style == "Accent") Ink.onAccent else Ink.text
+}
+
 object HeaderEdge {
     private const val KEY = "headerEdgeFade"
     var fade by androidx.compose.runtime.mutableStateOf(com.torrentviewer.core.Kv.global(KEY) == "1")

@@ -516,7 +516,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
     // Clean line, upright: the facts and buttons sit under the picture, so the hero grows by their room and the
     // picture keeps its full height (the owner's choice: a tall poster area).
     val height = if (wide) (LocalConfiguration.current.screenHeightDp * 0.82f).dp
-    else (LocalConfiguration.current.screenWidthDp * 1.02f).dp + if (HeaderEdge.fade) 0.dp else 100.dp
+    else (LocalConfiguration.current.screenWidthDp * 1.02f).dp + if (HeaderEdge.fade) 0.dp else 136.dp
     Box(Modifier.fillMaxWidth().height(height)) {
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { titles.getOrNull(it)?.imdb ?: it }) { page ->
             val start = titles.getOrNull(page) ?: return@HorizontalPager
@@ -547,10 +547,11 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                             Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
                                 TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
                             }
-                            Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp))
                         }
                     }
-                    HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 16.dp, bottom = 22.dp))
+                    // The facts on the page, under the picture's edge, not over the picture (the owner's choice).
+                    Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp))
+                    HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 14.dp, bottom = 22.dp))
                 }
             } else {
                 Box(open) {
