@@ -880,3 +880,15 @@ fun BareInput(
         )
     }
 }
+
+/**
+ * A switch with its word before it ("Installed", "Subscribed"): the owner's choice over Remove / Uninstall / Subscribe
+ * buttons — on is having it, off takes it away.
+ */
+@Composable
+fun LabeledToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.clip(RoundedCornerShape(20.dp)).toggleable(checked, remember { MutableInteractionSource() }, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.padding(end = 10.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = if (checked) Ink.text else Ink.muted))
+        Toggle(checked, onChange)
+    }
+}

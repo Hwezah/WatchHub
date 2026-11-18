@@ -669,17 +669,10 @@ private fun ChannelPage(url: String, name: String, onOpen: (TubeVideo) -> Unit, 
     }
 }
 
-/** Subscribe or Subscribed: the accent when not yet, quiet once it is. */
+/** Subscribed, as a switch (the owner's choice over a Subscribe button). */
 @Composable
 private fun SubscribeButton(ch: TubeChannel, on: Boolean, modifier: Modifier = Modifier) {
-    Tap({ Tube.toggleSubscription(ch) }, modifier, RoundedCornerShape(22.dp)) {
-        Box(
-            Modifier.fillMaxWidth().background(if (on) Ink.text.copy(alpha = 0.1f) else Ink.accent, RoundedCornerShape(22.dp)).padding(horizontal = 18.dp, vertical = 10.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(if (on) "Subscribed" else "Subscribe", style = Type.label.copy(fontWeight = FontWeight.Bold, color = if (on) Ink.text else Color.White))
-        }
-    }
+    Box(modifier, contentAlignment = Alignment.CenterEnd) { LabeledToggle("Subscribed", on, { Tube.toggleSubscription(ch) }) }
 }
 
 @Composable

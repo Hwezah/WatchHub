@@ -137,15 +137,15 @@ private fun RepoCard(repo: RepositoryData, installed: List<PluginData>, changes:
                 )
             }
         }
-        Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(if (open) "Hide plugins" else "Browse plugins", { open = !open }, Modifier.weight(1f), icon = L.drawable.lucide_ic_search, compact = true)
-            Spacer(Modifier.width(8.dp))
-            Outline("Remove") {
-                scope.launch {
+        // Switches (the owner's choice): its plugins shown or not; the repository kept, or — off — removed with its plugins.
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            LabeledToggle("Show Plugins", open, { open = it })
+            LabeledToggle("Added", true, { on ->
+                if (!on) scope.launch {
                     CsPlugins.removeRepo(repo)
                     watch.notes.tryEmit("Removed ${repo.name} and its plugins")
                 }
-            }
+            })
         }
         if (!open) return@Column
         when {
@@ -243,21 +243,17 @@ private fun OfferedRow(w: PluginWrapper, busy: androidx.compose.runtime.MutableS
         }
         when {
             working -> Spinner(size = 22.dp, modifier = Modifier.padding(8.dp))
-            have == null -> RoundTap(L.drawable.lucide_ic_circle_arrow_down, Ink.download, ::install)
-            else -> Unit
+            // Installed or not, as a switch: on downloads it, off removes it.
+            else -> Toggle(have != null, { on ->
+                if (on) install() else have?.let { h -> scope.launch { CsPlugins.uninstall(h); watch.notes.tryEmit("Removed ${p.name}") } }
+            })
         }
     }
     if (below && have != null) Row(Modifier.fillMaxWidth().padding(start = 52.dp, top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         if (CsPlugins.loaded(have) && CsPlugins.settingsOf(have) != null) {
             RoundTap(L.drawable.lucide_ic_sliders_horizontal) { CsPlugins.openSettings(have)?.let { watch.notes.tryEmit(it) } }
         } else Spacer(Modifier.width(1.dp))
-        if (p.version > have.version) RoundTap(L.drawable.lucide_ic_refresh_cw, Ink.download, ::install)
-        RoundTap(L.drawable.lucide_ic_trash_2) {
-            scope.launch {
-                CsPlugins.uninstall(have)
-                watch.notes.tryEmit("Removed ${p.name}")
-            }
-        }
+        if (p.version > have.version) RoundTap(L.drawable.lucide_ic_refresh_cw, Ink.download, ::install) else Spacer(Modifier.width(1.dp))
     }
     }
 }
@@ -308,12 +304,12 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
                     }
                 }
             } else Spacer(Modifier.width(1.dp))
-            Outline("Remove") {
-                scope.launch {
+            LabeledToggle("Installed", true, { on ->
+                if (!on) scope.launch {
                     CsPlugins.uninstall(p)
                     watch.notes.tryEmit("Removed ${p.internalName}")
                 }
-            }
+            })
         }
     }
 }

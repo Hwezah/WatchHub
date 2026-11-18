@@ -1717,15 +1717,10 @@ private fun AddonCard(a: com.torrentviewer.core.Addon, first: Boolean, last: Boo
         // The host only: the rest of the link can be the viewer's own key.
         Text(a.host, Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Tap({ Addons.remove(a.url); onRemoved() }, Modifier.weight(1f), RoundedCornerShape(20.dp)) { pressed ->
-                Box(
-                    Modifier.fillMaxWidth().height(46.dp).border(1.dp, Ink.text.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
-                        .background(Ink.text.copy(alpha = if (pressed) 0.12f else 0f)),
-                    contentAlignment = Alignment.Center,
-                ) { Text("Uninstall", style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.muted)) }
-            }
-            Spacer(Modifier.width(8.dp))
-            Toggle(a.on, { Addons.toggle(a.url) })
+            // Switches (the owner's choice): installed — off uninstalls it — and on or paused.
+            LabeledToggle("Installed", true, { on -> if (!on) { Addons.remove(a.url); onRemoved() } })
+            Spacer(Modifier.weight(1f))
+            LabeledToggle("On", a.on, { Addons.toggle(a.url) })
             if (!first) Tap({ Addons.move(a.url, -1) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_chevron_up, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
             if (!last) Tap({ Addons.move(a.url, 1) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_chevron_down, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
         }
