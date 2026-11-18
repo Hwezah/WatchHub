@@ -522,8 +522,16 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             LaunchedEffect(Browser.scrolledUp) { if (tab == Tab.BROWSER && Browser.scrolledUp > 0) pillShown = true }
             val watchScroll = remember {
                 object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
-                    override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
-                        if (available.y < -6f) pillShown = false else if (available.y > 6f) pillShown = true
+                    // After the page has moved: hidden only when it really scrolled down. A page with nothing to scroll (or a
+                    // list already at its end) moves nothing, and the bar stays (or comes back).
+                    override fun onPostScroll(
+                        consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
+                    ): androidx.compose.ui.geometry.Offset {
+                        when {
+                            consumed.y < -6f -> pillShown = false
+                            consumed.y > 6f -> pillShown = true
+                            consumed.y == 0f && available.y != 0f -> pillShown = true
+                        }
                         return androidx.compose.ui.geometry.Offset.Zero
                     }
                 }
