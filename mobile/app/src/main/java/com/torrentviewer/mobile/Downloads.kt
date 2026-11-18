@@ -815,7 +815,9 @@ object Downloads {
                 val web = job.kind == WEB_KIND
                 if ((!web || webFolder("x." + result.ext) == "Video") && notVideo(result.file)) {
                     work.deleteRecursively()
-                    throw LinkExpiredException("The link sent a web page, not the video")
+                    // Small and not text: a piece of a stream or a preview clip, not a page.
+                    val tiny = result.file.length() in 1 until MIN_VIDEO_BYTES && !looksLikeText(runCatching { result.file.inputStream().use { i -> ByteArray(64).let { b -> b.copyOf(i.read(b).coerceAtLeast(0)) } } }.getOrDefault(ByteArray(0)))
+                    throw LinkExpiredException(if (tiny) "Only ${com.torrentviewer.core.bytes(result.file.length())}: a piece of a stream or a preview, not the video" else "The link sent a web page, not the video")
                 }
                 // A link's own file name ("song.mp3") already has its extension.
                 val named = if (web && job.label.endsWith(".${result.ext}", true)) job.label else job.label + "." + result.ext

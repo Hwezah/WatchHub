@@ -28,6 +28,8 @@ data class Sniffed(
     val url: String, val kind: String, val page: String, val title: String,
     /** The headers the page itself sent for it (Referer, Origin): a player in an embed checks its own. */
     val headers: Map<String, String> = emptyMap(),
+    /** Second line, as 1DM shows it: resolution, length, size; or what it is ("Preview clip"). */
+    val detail: String = "",
 )
 
 /** One browser tab: its own page, history and finds. */
@@ -42,6 +44,8 @@ class BTab(val id: Long) {
     var canForward by mutableStateOf(false)
     var blocked by mutableIntStateOf(0)
     val found = mutableStateListOf<Sniffed>()
+    /** A stream's quality playlists already listed under it as "1080p", so they aren't listed again bare. */
+    val children: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
     @Volatile var ua: String = ""
     /** A jump to another site that was stopped, offered with "Open anyway". */
     var stopped by mutableStateOf<String?>(null)
@@ -286,10 +290,79 @@ object Browser {
     private fun sniff(t0: BTab, url: String, sent: Map<String, String> = emptyMap()) {
         if (!sniffMedia) return
         val kind = kindOf(url) ?: return
-        // Pieces of a stream aren't worth listing; the stream itself is.
-        if (Regex("""(seg|chunk|frag|part)[-_]?\d+""", RegexOption.IGNORE_CASE).containsMatchIn(url) && kind != "Stream (HLS)") return
+        // Pieces of a stream aren't worth listing; the stream itself is. "init-…mp4" is a stream's header (a few KB),
+        // not a video: as 1DM, it's left out.
+        val file = url.substringBefore('?').substringAfterLast('/').lowercase()
+        if (kind != "Stream (HLS)" && (Regex("""(seg|chunk|frag|part)[-_]?\d+""").containsMatchIn(file) || Regex("""^init[-_.]|[-_.]init[-_.]""").containsMatchIn(file) || file.endsWith(".m4s"))) return
+        if (url in t0.children) return
         val s = Sniffed(url, kind, t0.url, t0.title, sent)
-        main.post { if (t0.found.none { it.url == url }) t0.found.add(0, s) }
+        main.post { if (t0.found.none { it.url == url } && url !in t0.children) t0.found.add(0, s) }
+        when {
+            kind == "Stream (HLS)" && expanded.add(url) -> describeStream(t0, s)
+            kind == "Video" && expanded.add(url) -> describeFile(t0, s)
+        }
+    }
+
+    private val expanded = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /** [url]'s text with the page's headers; null when it won't come. */
+    private fun fetchText(url: String, headers: Map<String, String>): String? = runCatching {
+        val b = okhttp3.Request.Builder().url(url)
+        headers.forEach { (k, v) -> runCatching { b.header(k, v) } }
+        okhttp3.OkHttpClient().newCall(b.build()).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
+    }.getOrNull()
+
+    /** [url]'s size by a HEAD request; -1 unknown. */
+    private fun sizeOf(url: String, headers: Map<String, String>): Long = runCatching {
+        val b = okhttp3.Request.Builder().url(url).head()
+        headers.forEach { (k, v) -> runCatching { b.header(k, v) } }
+        okhttp3.OkHttpClient().newCall(b.build()).execute().use { r -> if (r.isSuccessful) r.header("Content-Length")?.toLongOrNull() ?: -1 else -1 }
+    }.getOrDefault(-1)
+
+    private fun lengthOf(sec: Double): String {
+        val m = (sec / 60).toInt()
+        return if (m >= 60) "${m / 60} h ${m % 60} min" else if (m > 0) "$m min" else "${sec.toInt()} s"
+    }
+
+    private fun replace(t0: BTab, url: String, rows: List<Sniffed>) = main.post {
+        val at = t0.found.indexOfFirst { it.url == url }.coerceAtLeast(0)
+        t0.found.removeAll { it.url == url || it.url in t0.children }
+        t0.found.addAll(at.coerceAtMost(t0.found.size), rows)
+    }
+
+    /**
+     * A stream read as 1DM reads it: a master playlist becomes one row per quality ("1080p · HLS", its size from
+     * bitrate × length) and the quality playlists it names aren't listed again; a single quality gets its length.
+     */
+    private fun describeStream(t0: BTab, s: Sniffed) = kotlin.concurrent.thread(name = "browser-hls") {
+        val headers = headersFor(s, t0)
+        val text = fetchText(s.url, headers) ?: return@thread
+        val durationOf = { body: String -> Regex("""#EXTINF:\s*([\d.]+)""").findAll(body).sumOf { it.groupValues[1].toDoubleOrNull() ?: 0.0 } }
+        if (!isMasterPlaylist(text)) {
+            val sec = durationOf(text)
+            if (sec > 0) replace(t0, s.url, listOf(s.copy(detail = "One quality · " + lengthOf(sec))))
+            return@thread
+        }
+        val variants = parseMaster(text, s.url).variants.sortedByDescending { it.height ?: (it.bandwidth / 1000).toInt() }
+        if (variants.isEmpty()) return@thread
+        t0.children.addAll(variants.map { it.uri })
+        // Every quality runs as long: one measured, each sized by its bitrate.
+        val sec = fetchText(variants.last().uri, headers)?.let(durationOf) ?: 0.0
+        val rows = listOf(s.copy(kind = "Best Quality · HLS", detail = "Picks the best when it downloads" + if (sec > 0) " · " + lengthOf(sec) else "")) +
+            variants.map { v ->
+                val label = v.height?.let { "${it}p" } ?: "${v.bandwidth / 1000} kbps"
+                val size = if (sec > 0 && v.bandwidth > 0) "~" + com.torrentviewer.core.bytes((v.bandwidth * sec / 8).toLong()) else null
+                Sniffed(v.uri, "$label · HLS", s.page, s.title, s.headers, listOfNotNull(if (sec > 0) lengthOf(sec) else null, size).joinToString(" · "))
+            }
+        replace(t0, s.url, rows)
+    }
+
+    /** A video file's size; a small one is said to be a preview clip (a thumbnail's hover video), not the film. */
+    private fun describeFile(t0: BTab, s: Sniffed) = kotlin.concurrent.thread(name = "browser-size") {
+        val size = sizeOf(s.url, headersFor(s, t0))
+        if (size <= 0) return@thread
+        val detail = if (size < MIN_VIDEO_BYTES) "Preview clip · " + com.torrentviewer.core.bytes(size) else com.torrentviewer.core.bytes(size)
+        replace(t0, s.url, listOf(s.copy(detail = detail)))
     }
 
     /** The headers a download from this page needs: where it came from, the browser's identity, its cookies. */
@@ -378,7 +451,7 @@ object Browser {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 scrolledUp++
                 val u = if (url == "about:blank") "" else url
-                if (u != t.url) t.found.clear()
+                if (u != t.url) { t.found.clear(); t.children.clear() }
                 t.url = u
                 t.loading = true
                 t.blocked = 0

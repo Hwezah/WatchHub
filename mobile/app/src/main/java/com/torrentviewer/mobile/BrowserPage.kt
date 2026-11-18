@@ -261,7 +261,7 @@ fun BrowserScreen() {
                             Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
                                 Lc(
                                     when {
-                                        "Stream" in s.kind || s.kind == "Video" -> L.drawable.lucide_ic_film
+                                        "Stream" in s.kind || "HLS" in s.kind || s.kind == "Video" -> L.drawable.lucide_ic_film
                                         s.kind == "Audio" -> L.drawable.lucide_ic_music
                                         s.kind == "Torrent" -> L.drawable.lucide_ic_magnet
                                         else -> L.drawable.lucide_ic_file_text
@@ -272,7 +272,7 @@ fun BrowserScreen() {
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(s.kind, style = Type.label.copy(fontWeight = FontWeight.SemiBold))
-                                Text(s.url.substringBefore('?').substringAfterLast('/').ifBlank { s.url }, style = Type.meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(s.detail.ifBlank { s.url.substringBefore('?').substringAfterLast('/').ifBlank { s.url } }, style = Type.meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
@@ -286,7 +286,7 @@ fun BrowserScreen() {
         if (!o.direct) SaveSheet(o.url, o.title, null, o.headers, onDone = { Browser.offer = null })
         else {
             val grabber = remember { Media.hasGrabber(context) }
-            val hls = o.kind == "Stream (HLS)"
+            val hls = "HLS" in o.kind
             Sheet(
                 title = o.title.take(70),
                 options = listOfNotNull(
