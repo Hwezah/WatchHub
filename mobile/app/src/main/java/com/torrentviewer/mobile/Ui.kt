@@ -875,8 +875,24 @@ object NavActive {
             else -> Ink.text.copy(alpha = if (Ink.isDark) 0.14f else 0.11f)
         }
 
-    /** The icon on it: its strokes in the accent (the owner's choice), white on the accent's own capsule. */
-    val tint: Color get() = if (style == "Accent") Ink.onAccent else Ink.accent
+    private const val ICON_KEY = "navActiveIcon"
+    val ICONS = listOf("Accent", "White")
+
+    /** The chosen tab's icon strokes: the accent (default) or plain white (black in the light theme). */
+    var icon by androidx.compose.runtime.mutableStateOf(com.torrentviewer.core.Kv.global(ICON_KEY)?.takeIf { it in ICONS } ?: "Accent")
+        private set
+
+    fun chooseIcon(s: String) {
+        icon = s
+        com.torrentviewer.core.Kv.setGlobal(ICON_KEY, s)
+    }
+
+    /** The icon on it: on the accent's own capsule always white; otherwise as chosen in [icon]. */
+    val tint: Color get() = when {
+        style == "Accent" -> Ink.onAccent
+        icon == "Accent" -> Ink.accent
+        else -> Ink.text
+    }
 }
 
 object HeaderEdge {

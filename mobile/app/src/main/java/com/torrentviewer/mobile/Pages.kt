@@ -1424,6 +1424,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         Section("Active Tab", "The chosen tab in the bottom bar: ${NavActive.style}.") {
             BarChoices(NavActive.CHOICES, NavActive.CHOICES.indexOf(NavActive.style)) { NavActive.choose(NavActive.CHOICES[it]) }
         }
+        Section("Active Tab Icon", "The chosen tab's icon: in the button colour, or plain white.") {
+            BarChoices(NavActive.ICONS, NavActive.ICONS.indexOf(NavActive.icon)) { NavActive.chooseIcon(NavActive.ICONS[it]) }
+        }
         ToggleSection("Fade header pictures", "The big pictures at the top of Home and of a title's page fade into the page; off for a clean straight line.", HeaderEdge.fade) {
             HeaderEdge.choose(it)
         }
