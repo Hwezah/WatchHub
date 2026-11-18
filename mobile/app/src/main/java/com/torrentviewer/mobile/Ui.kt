@@ -673,7 +673,15 @@ fun Heading(text: String, modifier: Modifier = Modifier, centred: Boolean = fals
     // Clear of the screen's top and sides, as Home's wordmark is: a little down and in.
     Row(modifier.statusBarsPadding().padding(start = 10.dp, end = 10.dp, top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
         // [centred]: a page with a back button, on an upright phone, has its title in the middle (the owner's choice).
-        Text(text, Modifier.weight(1f), style = Type.display, textAlign = if (centred) TextAlign.Center else TextAlign.Start, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (centred) {
+            // One line on an upright phone (the owner's choice): a long title steps its size down until it fits.
+            var size by remember(text) { mutableStateOf(Type.display.fontSize) }
+            Text(
+                text, Modifier.weight(1f), style = Type.display.copy(fontSize = size, lineHeight = size * 1.15f), textAlign = TextAlign.Center,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                onTextLayout = { if (it.hasVisualOverflow && size.value > 16f) size = (size.value * 0.92f).sp },
+            )
+        } else Text(text, Modifier.weight(1f), style = Type.display, maxLines = 2, overflow = TextOverflow.Ellipsis)
         trailing()
     }
 }
