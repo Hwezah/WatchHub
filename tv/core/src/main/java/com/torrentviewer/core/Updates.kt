@@ -167,7 +167,11 @@ object Updates {
         val sha = MessageDigest.getInstance("SHA-256")
         var done = 0L
         // Timed out, not left blocked in a read: nothing could cancel that, and every retry found it still running.
-        URL(r.url).openConnection().apply { connectTimeout = 15_000; readTimeout = 30_000 }.getInputStream().use { input ->
+        val conn = URL(r.url).openConnection().apply { connectTimeout = 15_000; readTimeout = 30_000 }
+        // What the server says it is sending: a newer build may have replaced the file since the card read its size.
+        val length = conn.contentLengthLong
+        val expected = if (length > 0) length else r.size
+        conn.getInputStream().use { input ->
             to.outputStream().use { output ->
                 val buffer = ByteArray(64 * 1024)
                 while (true) {
@@ -177,13 +181,20 @@ object Updates {
                     output.write(buffer, 0, n)
                     sha.update(buffer, 0, n)
                     done += n
-                    if (r.size > 0) _progress.value = done.toFloat() / r.size
+                    if (expected > 0) _progress.value = done.toFloat() / expected
                 }
             }
         }
         val got = sha.digest().joinToString("") { "%02x".format(it) }
-        if (r.size > 0 && done != r.size || r.sha256 != null && got != r.sha256) throw IOException("The update didn't download properly. Try again.")
+        // Cut short: what arrived isn't all the server sent. The checksum is only the card's file's: when a newer build
+        // replaced it mid-way (every push publishes over "phone-latest"), the newer, whole file is taken instead.
+        val whole = expected <= 0 || done == expected
+        val same = r.size <= 0 || done == r.size
+        if (!whole || same && r.sha256 != null && got != r.sha256 || !looksLikeApk(to)) throw IOException("The update didn't download properly. Try again.")
     }
+
+    /** An APK is a zip: it starts with "PK". A web page or an error sent instead does not. */
+    private fun looksLikeApk(f: File): Boolean = runCatching { f.inputStream().use { val b = ByteArray(2); it.read(b) == 2 && b[0] == 'P'.code.toByte() && b[1] == 'K'.code.toByte() } }.getOrDefault(false)
 
     /** The first time, Android stops to ask for leave to install from this app, then carries on by itself. */
     private fun install(context: Context, apk: File) {
