@@ -1,6 +1,7 @@
 package com.torrentviewer.mobile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import com.torrentviewer.core.grain
 import androidx.compose.foundation.layout.Box
@@ -202,7 +203,7 @@ private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -
         ) {
             if (card) FilmBadge()
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(name, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(name, Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
                 Text("${bytes(f.size)}  ·  ${ago(f.at)}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
             }
             Lc(L.drawable.lucide_ic_play, tint = Ink.text, size = 20.dp)
@@ -221,7 +222,7 @@ private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onDe
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FilmBadge()
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(first.label.substringBefore(" · "), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(first.label.substringBefore(" · "), Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
                     Text("${episodes.size} episodes  ·  ${bytes(episodes.sumOf { it.size })}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
                 }
                 Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp)
@@ -262,7 +263,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             // The buttons sit at the foot of the words, level with the status line (the owner's choice).
             Row(verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                // One line; a name too long for it scrolls slowly across (the owner's choice), a short one stays still.
+                Text(row.job.label, Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1)
                 // A link being renewed says nothing (the owner's choice): the spinner beside it is enough.
                 val status = when (row.state) {
                         DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) }?.let { if (it.startsWith("Waiting for its turn")) "Queued — starts when one finishes" else it } else "Finding peers…"
