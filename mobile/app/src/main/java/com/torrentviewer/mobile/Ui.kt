@@ -267,7 +267,7 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
         val bg = when {
             on -> Ink.accent
             pressed -> Ink.text.copy(alpha = 0.18f)
-            else -> Ink.text.copy(alpha = 0.08f)
+            else -> QUIET_FILL
         }
         val fg = if (on) Ink.onAccent else Ink.muted
         Row(
@@ -390,7 +390,7 @@ fun Field(
     var focused by remember { mutableStateOf(false) }
     val ring by animateColorAsState(if (focused) Ink.text.copy(alpha = 0.7f) else Color.Transparent, Motion.effects(), label = "ring")
     Row(
-        modifier.height(50.dp).clip(RoundedCornerShape(7.dp)).background(Ink.text.copy(alpha = if (focused) 0.12f else 0.07f)).border(1.5.dp, ring, RoundedCornerShape(7.dp)).padding(horizontal = 14.dp),
+        modifier.height(50.dp).clip(RoundedCornerShape(7.dp)).background(if (focused) Ink.text.copy(alpha = 0.12f) else QUIET_FILL).border(1.5.dp, ring, RoundedCornerShape(7.dp)).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading?.let {
@@ -822,6 +822,13 @@ val CARD_FACE: Color
     get() = SECTION_FACE
 
 /** Settings' sections, addon and plugin cards: the surface toned down a notch toward the page (the owner's choice). */
+/**
+ * A quiet fill for pills and fields: in the dark theme a shade (white, faint), in the light theme a tint (white,
+ * stronger) — lighter than the paper page rather than greyer, as the owner asked.
+ */
+val QUIET_FILL: Color
+    get() = if (Ink.isDark) Ink.text.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.72f)
+
 val SECTION_FACE: Color
     get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.75f)
 

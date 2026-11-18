@@ -697,7 +697,10 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
     Column(
         modifier.navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 10.dp).fillMaxWidth()
             .clip(RoundedCornerShape(26.dp))
-            .background(androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f))
+            // Dark: a shade lighter than the page. Light: a tint — near-white on the paper page, edged faintly —
+            // so the bar stands apart in both (the owner's choice: light plays with tints as dark with shades).
+            .background(if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else androidx.compose.ui.graphics.lerp(Ink.bg, Color.White, 0.9f))
+            .then(if (Ink.isDark) Modifier else Modifier.border(1.dp, Ink.text.copy(alpha = 0.07f), RoundedCornerShape(26.dp)))
             .grain()
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
