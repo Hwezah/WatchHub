@@ -49,6 +49,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -72,6 +74,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -115,11 +118,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.composables.icons.lucide.R as L
 
+/**
+ * The tabs, in the order the nav lays them out: two rows of four. Browser, YouTube and Files are announced, not built
+ * yet ([ComingSoon]); each gets its own plan with the owner before it does anything.
+ */
 enum class Tab(val label: String, @DrawableRes val icon: Int) {
     HOME("Home", L.drawable.lucide_ic_house),
     SEARCH("Search", L.drawable.lucide_ic_search),
-    ADDONS("Addons", L.drawable.lucide_ic_puzzle),
+    YOUTUBE("YouTube", L.drawable.lucide_ic_youtube),
+    BROWSER("Browser", L.drawable.lucide_ic_globe),
     LIBRARY("Library", L.drawable.lucide_ic_library),
+    FILES("Files", L.drawable.lucide_ic_folder),
+    ADDONS("Addons", L.drawable.lucide_ic_puzzle),
     SETTINGS("Settings", L.drawable.lucide_ic_settings),
 }
 
@@ -455,6 +465,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                                     Tab.ADDONS -> AddonsScreen(watch)
                                     Tab.LIBRARY -> LibraryScreen(watch, me, onOpen = openTitle, onDownloads = { pages.add(Page.Downloads) })
                                     Tab.SETTINGS -> SettingsScreen(watch, me, onSwitchProfile = { switching = true })
+                                    Tab.YOUTUBE, Tab.BROWSER, Tab.FILES -> ComingSoon(t)
                                 }
                             }
                         }
@@ -630,8 +641,11 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
 /** Portrait: the tabs along the bottom, the one you are on white with the TV rail's red tick. */
 @Composable
 private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
-    Row(Modifier.fillMaxWidth().background(Ink.bg).grain().navigationBarsPadding().height(58.dp)) {
-        tabs().forEach { t ->
+    // Two rows of four, as the floating nav: eight tabs don't fit one row on a phone.
+    Column(Modifier.fillMaxWidth().background(Ink.bg).grain().navigationBarsPadding()) {
+    tabs().chunked(4).forEach { row ->
+    Row(Modifier.fillMaxWidth().height(54.dp)) {
+        row.forEach { t ->
             val on = t == tab
             Tap({ onTab(t) }, Modifier.weight(1f).fillMaxHeight(), RoundedCornerShape(0.dp)) {
                 Box {
@@ -643,36 +657,58 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
                 }
             }
         }
+        // A short row (a kids profile has no Addons) keeps its cells the width of a full row's.
+        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+    }
+    }
     }
 }
 
 /**
- * The tabs as a floating pill: icons only, the chosen one in a lighter capsule of its own, on the page's
- * translucent grained surface so what scrolls beneath still shows through.
+ * The tabs floating over the page, as a music app's nav: a wide rounded panel, two rows of four icons, the chosen one
+ * on a capsule of the accent. One flat colour a little lighter than the page's cards, with the grain over it, no rim.
  */
 @Composable
 private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier.navigationBarsPadding().padding(bottom = 12.dp)
-            // Frosted, bare (no rim, the owner's choice): one flat colour a little lighter than the page's cards, so the
-            // pill stands out over them, with the grain over it.
-            .clip(RoundedCornerShape(50))
+    Column(
+        modifier.navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 10.dp).fillMaxWidth()
+            .clip(RoundedCornerShape(26.dp))
             .background(androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f))
             .grain()
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        tabs().forEach { t ->
-            val on = t == tab
-            Tap({ onTab(t) }, shape = RoundedCornerShape(50)) {
-                Box(
-                    // The chosen tab's capsule in the accent the viewer picked (the owner's choice).
-                    Modifier.clip(RoundedCornerShape(50)).background(if (on) Ink.accent else Color.Transparent)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) { Lc(t.icon, tint = if (on) Ink.onAccent else Ink.muted, size = 22.dp) }
+        tabs().chunked(4).forEach { row ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                row.forEach { t ->
+                    val on = t == tab
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Tap({ onTab(t) }, shape = RoundedCornerShape(18.dp)) {
+                            Box(
+                                // The chosen tab's capsule in the accent the viewer picked.
+                                Modifier.clip(RoundedCornerShape(18.dp)).background(if (on) Ink.accent else Color.Transparent)
+                                    .padding(horizontal = 20.dp, vertical = 11.dp),
+                                contentAlignment = Alignment.Center,
+                            ) { Lc(t.icon, tint = if (on) Ink.onAccent else Ink.muted, size = 22.dp) }
+                        }
+                    }
+                }
+                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
             }
+        }
+    }
+}
+
+/** A tab announced but not built yet: its icon, its name, and a line saying it's coming. */
+@Composable
+private fun ComingSoon(t: Tab) {
+    Box(Modifier.fillMaxSize().background(Ink.bg), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 32.dp)) {
+            Box(Modifier.size(72.dp).clip(CircleShape).background(Ink.accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                Lc(t.icon, tint = Ink.accent, size = 32.dp)
+            }
+            Text(t.label, Modifier.padding(top = 18.dp), style = Type.display)
+            Text("Coming soon.", Modifier.padding(top = 6.dp), style = Type.body.copy(color = Ink.muted), textAlign = TextAlign.Center)
         }
     }
 }
@@ -681,14 +717,15 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
 @Composable
 private fun NavRail(tab: Tab, who: Profile, onTab: (Tab) -> Unit, onProfile: () -> Unit) {
     Column(
-        Modifier.width(76.dp).fillMaxHeight().background(Ink.bg).grain().statusBarsPadding().padding(vertical = 12.dp),
+        // Eight tabs are taller than a phone held sideways: the rail scrolls, centred when they fit.
+        Modifier.width(76.dp).fillMaxHeight().background(Ink.bg).grain().statusBarsPadding()
+            .verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // No avatar here either (the owner's choice): profiles are switched from Settings.
-        Spacer(Modifier.weight(1f))
         tabs().forEach { t ->
             val on = t == tab
-            Tap({ onTab(t) }, Modifier.fillMaxWidth().height(60.dp), RoundedCornerShape(0.dp)) {
+            Tap({ onTab(t) }, Modifier.fillMaxWidth().height(54.dp), RoundedCornerShape(0.dp)) {
                 Box {
                     if (on) Box(Modifier.align(Alignment.CenterStart).width(3.dp).height(22.dp).clip(RoundedCornerShape(2.dp)).background(Ink.accent))
                     Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -698,7 +735,6 @@ private fun NavRail(tab: Tab, who: Profile, onTab: (Tab) -> Unit, onProfile: () 
                 }
             }
         }
-        Spacer(Modifier.weight(1.4f))
     }
 }
 
