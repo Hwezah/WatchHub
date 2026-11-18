@@ -574,11 +574,8 @@ private fun LinkRow(link: TubeLink, onOpen: () -> Unit) {
 /** A page's top: ← and its name. */
 @Composable
 private fun BackBar(title: String, onBack: () -> Unit, trailing: @Composable () -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 10.dp, top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Tap(onBack, shape = CircleShape) { Lc(L.drawable.lucide_ic_arrow_left, Modifier.padding(10.dp), tint = Ink.text, size = 22.dp) }
-        Text(title, Modifier.weight(1f).padding(start = 4.dp), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        trailing()
-    }
+    // The app's titled-page top: centred on an upright phone, as every other page with a back button.
+    BackTitle(title, onBack, Modifier.statusBarsPadding().padding(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 8.dp), trailing = null)
 }
 
 /**

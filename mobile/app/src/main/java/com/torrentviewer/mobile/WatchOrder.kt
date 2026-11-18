@@ -209,13 +209,7 @@ fun WatchOrdersScreen(onOpen: (WatchOrder) -> Unit, onBack: () -> Unit) {
     val ranked = remember(orders, settings.genres) { rankOrders(orders, settings.genres) }
     val shown = ranked.filter { it.matches(query) }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.statusBarsPadding().padding(horizontal = EDGE + 6.dp).padding(top = 18.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            RoundIcon(L.drawable.lucide_ic_arrow_left, onBack)
-            Column(Modifier.padding(start = 12.dp)) {
-                Text("Watch orders", style = Type.title.copy(fontWeight = FontWeight.Bold))
-                Text("${WatchOrders.all.size} franchises, in the right order", style = Type.meta.copy(color = Ink.faint))
-            }
-        }
+        BackTitle("Watch Orders", onBack, Modifier.statusBarsPadding().padding(horizontal = EDGE + 6.dp).padding(top = 18.dp, bottom = 12.dp), subtitle = "${WatchOrders.all.size} franchises, in the right order")
         Field(query, { query = it }, "Find a watch order", Modifier.fillMaxWidth().padding(horizontal = EDGE).padding(bottom = 12.dp), leading = L.drawable.lucide_ic_search)
         LazyVerticalGrid(
             GridCells.Adaptive(320.dp),

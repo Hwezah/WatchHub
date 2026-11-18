@@ -86,10 +86,7 @@ fun Agreement(changed: Boolean, onAgree: () -> Unit) {
         val open = reading
         if (open != null) {
             BackHandler { reading = null }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RoundIcon(L.drawable.lucide_ic_arrow_left, { reading = null })
-                Text(open.first, Modifier.padding(start = 12.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
-            }
+            BackTitle(open.first, { reading = null })
             Column(Modifier.padding(top = 16.dp).weight(1f).verticalScroll(rememberScrollState())) { LegalText(open.second) }
         } else {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {

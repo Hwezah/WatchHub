@@ -981,3 +981,22 @@ fun EmptyNote(text: String, modifier: Modifier = Modifier) {
         style = Type.body.copy(color = Ink.faint), textAlign = if (centred) TextAlign.Center else TextAlign.Start,
     )
 }
+
+/**
+ * A page's top with a back button: the button on the left, the [title] (and a [subtitle] under it) beside it — in the
+ * middle of the screen on an upright phone (the owner's rule for every titled page), from the left elsewhere. Space
+ * the button's width is kept on the right so "the middle" is the screen's, unless [trailing] fills it.
+ */
+@Composable
+fun BackTitle(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, subtitle: String? = null, trailing: (@Composable () -> Unit)? = null) {
+    val centred = isPortraitPhone()
+    val align = if (centred) TextAlign.Center else TextAlign.Start
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        RoundIcon(L.drawable.lucide_ic_arrow_left, onBack)
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp), horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
+            Text(title, style = Type.title.copy(fontWeight = FontWeight.Bold), textAlign = align, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            subtitle?.let { Text(it, style = Type.meta.copy(color = Ink.faint), textAlign = align, maxLines = 2) }
+        }
+        if (trailing != null) trailing() else if (centred) Spacer(Modifier.width(40.dp))
+    }
+}
