@@ -57,6 +57,13 @@ class ShieldTest {
         assertTrue("PrivateKey = abc=" in out)
     }
 
+    @Test fun keepAlive() {
+        assertTrue("PersistentKeepalive = 25" in wireguardForApp(conf, "x", onlyApp = true))
+        val own = conf + "\nPersistentKeepalive = 10"
+        val out = wireguardForApp(own, "x", onlyApp = true)
+        assertEquals(1, Regex("PersistentKeepalive").findAll(out).count())
+    }
+
     @Test fun server() {
         assertEquals("185.65.134.1", wireguardServer(conf))
         assertEquals("2a03:1b20::1", wireguardServer("[Peer]\nEndpoint = [2a03:1b20::1]:51820"))

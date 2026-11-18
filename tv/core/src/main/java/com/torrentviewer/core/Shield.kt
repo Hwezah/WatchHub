@@ -43,11 +43,18 @@ fun wireguardForApp(conf: String, pkg: String, onlyApp: Boolean): String {
     val out = StringBuilder()
     var section = ""
     var added = false
+    // Mobile networks drop a connection that's quiet too long: a peer without a keep-alive gets one every 25 s, so
+    // the tunnel isn't left "connected" with nothing getting through after the phone sat idle.
+    val keepalive = conf.lineSequence().any { it.trim().substringBefore('=').trim().equals("PersistentKeepalive", true) }
     conf.lineSequence().forEach { line ->
         val t = line.trim()
         if (t.startsWith("[") && t.endsWith("]")) {
             if (section.equals("[Interface]", true) && onlyApp && !added) { out.append("IncludedApplications = $pkg\n"); added = true }
             section = t
+        }
+        if (!keepalive && section.equals("[Peer]", true) && t.substringBefore('=').trim().equals("Endpoint", true)) {
+            out.append(line).append('\n').append("PersistentKeepalive = 25\n")
+            return@forEach
         }
         val key = t.substringBefore('=').trim()
         if (section.equals("[Interface]", true) && (key.equals("IncludedApplications", true) || key.equals("ExcludedApplications", true))) return@forEach
