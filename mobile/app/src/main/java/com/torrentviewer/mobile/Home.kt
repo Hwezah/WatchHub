@@ -525,7 +525,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
             val open = Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) { onOpen(t) }
             if (wide) {
                 Box(open) {
-                    Artwork(t.wide, t.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.72f).fillMaxHeight().heroScrims(), fill = false)
+                    Artwork(t.wide, t.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.72f).fillMaxHeight().then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false)
                     Column(Modifier.align(Alignment.CenterStart).padding(start = EDGE + 8.dp, top = 40.dp).widthIn(max = 380.dp)) {
                         TitleMark(t, Modifier.widthIn(max = 300.dp), maxHeight = 72.dp, style = Type.display)
                         Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp))

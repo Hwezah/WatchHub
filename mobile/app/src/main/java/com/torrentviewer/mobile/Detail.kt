@@ -391,7 +391,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
 
     val wide = isWide()
     Box(Modifier.fillMaxSize()) {
-        if (wide) Artwork(title.wide, title.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.7f).fillMaxHeight(0.9f).heroScrims(), fill = false)
+        if (wide) Artwork(title.wide, title.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.7f).fillMaxHeight(0.9f).then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false)
 
         LazyColumn(state = list, contentPadding = PaddingValues(bottom = 32.dp), modifier = Modifier.fillMaxSize()) {
             item(key = "head") {
