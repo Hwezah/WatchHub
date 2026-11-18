@@ -838,6 +838,13 @@ object History {
         write(_items.value.filter { it.uri != uri })
     }
 
+    /** A saved file moved to [to] (into the Grabber! folders): its entry follows it, so Continue Watching still opens it. */
+    fun moved(from: String, to: String) {
+        val items = _items.value
+        if (items.none { it.uri == from }) return
+        write(items.map { if (it.uri == from) it.copy(uri = to) else it })
+    }
+
     /** Every entry of one title — each torrent it was played from — with their subtitles. */
     fun dropTitle(key: String, engine: TorrentStream) = _items.value.filter { it.titleKey == key }.forEach { drop(it.uri, engine) }
 

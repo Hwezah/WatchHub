@@ -236,6 +236,8 @@ private fun open(profile: Profile) {
     Kv.useProfile(profile.id, profile.isGuest)
     com.torrentviewer.core.SettingsStore.load()
     History.load()
+    // Older builds' downloads into the Grabber! folders, once — after History, so Continue Watching follows them.
+    Downloads.moveOldDownloads()
     SavedStore.load()
     Stremio.load(profile.id, profile.isGuest)
     com.torrentviewer.core.WATCH_TRACKERS.forEach { it.load(profile.id, profile.isGuest) }
@@ -465,7 +467,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                                     Tab.ADDONS -> AddonsScreen(watch)
                                     Tab.LIBRARY -> LibraryScreen(watch, me, onOpen = openTitle, onDownloads = { pages.add(Page.Downloads) })
                                     Tab.SETTINGS -> SettingsScreen(watch, me, onSwitchProfile = { switching = true })
-                                    Tab.YOUTUBE, Tab.BROWSER, Tab.FILES -> ComingSoon(t)
+                                    Tab.FILES -> FilesScreen(watch)
+                                    Tab.YOUTUBE, Tab.BROWSER -> ComingSoon(t)
                                 }
                             }
                         }

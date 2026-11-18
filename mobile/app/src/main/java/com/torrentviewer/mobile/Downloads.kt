@@ -1,5 +1,8 @@
 package com.torrentviewer.mobile
 
+import com.torrentviewer.core.libraryFolders
+import com.torrentviewer.core.GRABBER_ROOT
+import com.torrentviewer.core.GRABBER_FOLDERS
 import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -285,23 +288,65 @@ object Downloads {
 
     private fun pieceDir() = File(if (sdCard) cardRoot(null) ?: app.getExternalFilesDir(null) ?: app.filesDir else app.getExternalFilesDir(null) ?: app.filesDir, "downloads").apply { mkdirs() }
 
-    /** Public Movies/Watchly, visible in the Files app; the card's, if chosen; else the app's own Movies folder. */
-    private fun keepDir(): File {
-        if (sdCard) cardRoot(Environment.DIRECTORY_MOVIES)?.let { return File(it, "Watchly").apply { mkdirs() } }
-        val pub = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "Watchly")
-        if (runCatching { pub.mkdirs(); pub.exists() && pub.canWrite() }.getOrDefault(false)) return pub
-        return File(app.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: app.filesDir, "Watchly").apply { mkdirs() }
+    /**
+     * The public Download/Grabber! folder, shared with the Grabber app and visible in the phone's Files app (the owner's
+     * layout): Movies, Shows and the rest under it ([GRABBER_FOLDERS]). The card's, if chosen; else the app's own.
+     */
+    fun keepDir(): File {
+        val root = (if (sdCard) cardRoot(Environment.DIRECTORY_DOWNLOADS)?.let { File(it, GRABBER_ROOT) } else null)
+            ?: File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), GRABBER_ROOT)
+                .takeIf { runCatching { it.mkdirs(); it.exists() && it.canWrite() }.getOrDefault(false) }
+            ?: File(app.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: app.filesDir, GRABBER_ROOT)
+        root.mkdirs()
+        GRABBER_FOLDERS.forEach { runCatching { File(root, it).mkdirs() } }
+        return root
     }
 
     private fun safe(name: String) = name.replace(Regex("[\\\\/:*?\"<>|]+"), "_").trim().ifBlank { "Download" }
 
-    /** Movies/Watchly/<show>/<the torrent's own folders, minus a root named after the torrent>/file.mkv */
+    /** Grabber!/Movies/<film>/file.mkv, or Grabber!/Shows/<show>/Season NN/file.mkv ([libraryFolders]). */
     private fun destOf(job: DownloadJob, torrentName: String, path: String): File {
-        val parts = path.replace('\\', '/').split('/').filter { it.isNotBlank() }.map(::safe)
-        val rest = if (parts.size > 1 && parts.first().equals(safe(torrentName), ignoreCase = true)) parts.drop(1) else parts
-        val show = safe(job.titleName?.substringBefore(" · ") ?: torrentName)
-        return (listOf(show) + rest).fold(keepDir()) { dir, part -> File(dir, part) }
+        val file = safe(path.replace('\\', '/').split('/').last { it.isNotBlank() })
+        val folders = libraryFolders(job.titleName ?: torrentName, file, job.kind, job.season)
+        return File(folders.fold(keepDir()) { dir, part -> File(dir, part) }, file)
     }
+
+    /**
+     * Once: what older builds saved under Movies/Watchly moved into the Grabber! folders (the owner's choice), the
+     * list and Continue Watching following each file. A file that can't be moved stays where it is, still listed.
+     * Called once a profile is open, so that profile's Continue Watching is the one updated.
+     */
+    fun moveOldDownloads() = scope.launch { runCatching { moveOld() } }
+
+    /** [moveOldDownloads]'s work, off the main thread. */
+    private fun moveOld() {
+        // Before the list is read (a profile opened ahead of init): nothing to go on yet, asked again next launch.
+        if (!::app.isInitialized || Kv.global(MOVED_KEY) != null) return
+        val moved = _finished.value.map { f ->
+            if ("/Watchly/" !in f.file.path) return@map f
+            runCatching {
+                val folders = libraryFolders(f.titleName ?: f.name, f.file.name, f.kind, null)
+                val dest = File(folders.fold(keepDir()) { dir, part -> File(dir, part) }, f.file.name)
+                dest.parentFile?.mkdirs()
+                if (!f.file.renameTo(dest)) {
+                    f.file.copyTo(dest, overwrite = true)
+                    f.file.delete()
+                }
+                History.moved(f.path, dest.path)
+                f.copy(path = dest.path)
+            }.onFailure { Log.w(TAG, "move ${f.name}: ${it.message}") }.getOrDefault(f)
+        }
+        writeFinished(moved)
+        // Folders left empty in Movies/Watchly go too.
+        runCatching {
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "Watchly").walkBottomUp()
+                .forEach { if (it.isDirectory && it.listFiles().isNullOrEmpty()) it.delete() }
+        }
+        Kv.setGlobal(MOVED_KEY, "1")
+    }
+
+    /** Set once the old Movies/Watchly downloads were moved into Grabber!. */
+    private const val MOVED_KEY = "downloads-moved-to-grabber"
 
     /* --------------------------------------------------------------- store */
 
@@ -494,8 +539,9 @@ object Downloads {
         runCatching { f.file.delete() }
         // Leaves no empty show folder behind.
         var dir = f.file.parentFile
-        val root = keepDir().parentFile
-        while (dir != null && dir != root && dir.name != "Watchly" && dir.listFiles().isNullOrEmpty()) {
+        // Not the Grabber! folder itself or its Movies, Shows… folders: only a film's or show's own.
+        val keep = GRABBER_FOLDERS.toSet() + GRABBER_ROOT + "Watchly"
+        while (dir != null && dir.name !in keep && dir.listFiles().isNullOrEmpty()) {
             dir.delete()
             dir = dir.parentFile
         }
