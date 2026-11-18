@@ -702,8 +702,9 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
             // Flat, no edge (the owner's choice). Light theme: the page's own paper colour.
             .background(if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else Ink.bg)
             .grain()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            // A little more room above, below and between the rows (the owner's choice).
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         tabs().chunked(4).forEachIndexed { i, row ->
