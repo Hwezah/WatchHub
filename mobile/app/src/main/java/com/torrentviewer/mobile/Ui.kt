@@ -927,3 +927,16 @@ fun LabeledToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit, 
         Toggle(checked, onChange)
     }
 }
+
+
+/**
+ * A page's "nothing here" line: centred on an upright phone (the owner's choice), as [Note] elsewhere.
+ */
+@Composable
+fun EmptyNote(text: String, modifier: Modifier = Modifier) {
+    val centred = isPortraitPhone()
+    Text(
+        text, (if (centred) modifier.fillMaxWidth() else modifier),
+        style = Type.body.copy(color = Ink.faint), textAlign = if (centred) TextAlign.Center else TextAlign.Start,
+    )
+}

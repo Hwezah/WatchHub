@@ -298,7 +298,7 @@ private fun Loaded(key: Any, load: suspend (fresh: Boolean) -> List<TubeVideo>, 
         when {
             error != null && list == null -> item { Retry(error!!) { round++ } }
             list == null -> item { Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) { Spinner(size = 40.dp) } }
-            list.isEmpty() -> item { Note(empty, Modifier.padding(vertical = 16.dp, horizontal = 4.dp)) }
+            list.isEmpty() -> item { EmptyNote(empty, Modifier.padding(vertical = 16.dp, horizontal = 4.dp)) }
             else -> {
                 items(list, key = { it.id }) { row(it) }
                 item { Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) { Tap({ round++ }, shape = CircleShape) { Lc(L.drawable.lucide_ic_refresh_cw, Modifier.padding(12.dp), tint = Ink.muted, size = 20.dp) } } }
@@ -352,7 +352,7 @@ private fun HistoryList(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit
     val history by Tube.history.collectAsState()
     var clearing by remember { mutableStateOf(false) }
     if (history.isEmpty()) {
-        Note("Videos you watch show up here.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+        EmptyNote("Videos you watch show up here.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
         return
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 190.dp)) {
@@ -385,7 +385,7 @@ private fun TubeDownloads(watch: Watch) {
     val saved = finished.filter { it.kind in tube || (it.kind in media && it.path.contains("/YouTube/") || it.kind == Downloads.MEDIA_AUDIO && it.poster?.contains("ytimg") == true) }.sortedByDescending { it.at }
     var deleting by remember { mutableStateOf<Finished?>(null) }
     if (coming.isEmpty() && saved.isEmpty()) {
-        Note("Videos you download show up here, and in Files under Grabber!/YouTube.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+        EmptyNote("Videos you download show up here, and in Files under Grabber!/YouTube.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
         return
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 190.dp)) {
@@ -441,7 +441,7 @@ private fun YouPage(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, on
             }
         }
         item { Text("Watch Later", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) }
-        if (later.isEmpty()) item { Note("Save videos from their ⋯ menu to watch them later.", Modifier.padding(bottom = 18.dp)) }
+        if (later.isEmpty()) item { EmptyNote("Save videos from their ⋯ menu to watch them later.", Modifier.padding(bottom = 18.dp)) }
         items(later, key = { "later-" + it.id }) { SmallVideoRow(it, onOpen, onMenu) }
         item {
             Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -634,7 +634,7 @@ private fun Paged(
         when {
             error != null -> item { Retry(error!!) { round++ } }
             loading -> item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { Spinner(size = 34.dp) } }
-            videos.isEmpty() && links.isEmpty() -> item { Note(empty, Modifier.padding(vertical = 12.dp)) }
+            videos.isEmpty() && links.isEmpty() -> item { EmptyNote(empty, Modifier.padding(vertical = 12.dp)) }
         }
     }
 }
@@ -684,7 +684,7 @@ private fun ChannelPage(url: String, name: String, onOpen: (TubeVideo) -> Unit, 
                 }
                 if (handler == null) LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
                     header()
-                    item { Note("This channel has nothing here.") }
+                    item { EmptyNote("This channel has nothing here.") }
                 } else Paged(
                     url + tab, { Tube.channelTab(handler, p.channel) }, "This channel has nothing here.", onOpen, onMenu,
                     onChannel = { _, _ -> }, onPlaylist = onPlaylist, small = true, header = header,

@@ -128,7 +128,7 @@ fun FilesScreen(watch: Watch) {
         val list = entries
         when {
             list == null -> Unit
-            list.isEmpty() -> Note(if (trail.isEmpty()) "Finished downloads land here, sorted into folders." else "This folder is empty.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+            list.isEmpty() -> EmptyNote(if (trail.isEmpty()) "Finished downloads land here, sorted into folders." else "This folder is empty.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 180.dp)) {
                 items(list, key = { it.file.path }) { e -> EntryRow(e, { open(e) }, { deleting = e }) }
             }

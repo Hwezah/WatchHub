@@ -144,7 +144,7 @@ fun BrowserScreen() {
                 // Nothing open yet: the frosted page, with the bookmarks a tap away.
                 if (Browser.url.isEmpty()) Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 14.dp)) {
-                        if (Browser.bookmarks.isEmpty()) Note("Search or type an address above. Videos a page plays show up under the green download mark.")
+                        if (Browser.bookmarks.isEmpty()) EmptyNote("Search or type an address above. Videos a page plays show up under the green download mark.")
                         else {
                             Text("Bookmarks", Modifier.padding(start = 4.dp, bottom = 6.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
                             Browser.bookmarks.toList().forEach { p -> PlaceRow(p, onOpen = { Browser.go(p.url) }, onRemove = null) }
@@ -195,7 +195,7 @@ fun BrowserScreen() {
         val list = if (which == "bookmarks") Browser.bookmarks else Browser.history
         BottomSheet(if (which == "bookmarks") "Bookmarks" else "History", { places = null }) {
             Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-                if (list.isEmpty()) Note(if (which == "bookmarks") "No bookmarks yet. Open ⋮ on a page and tap the bookmark." else "Pages you visit show up here.")
+                if (list.isEmpty()) EmptyNote(if (which == "bookmarks") "No bookmarks yet. Open ⋮ on a page and tap the bookmark." else "Pages you visit show up here.")
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                     list.toList().forEach { p ->
                         PlaceRow(p, onOpen = { Browser.go(p.url); places = null }) { if (which == "bookmarks") Browser.removeBookmark(p) else Browser.removeVisit(p) }
@@ -238,7 +238,7 @@ fun BrowserScreen() {
                 Button("Grab This Page's Video", { picking = false; Browser.offerPage() }, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_download, fill = Ink.download)
                 Spacer(Modifier.height(10.dp))
             }
-            if (Browser.found.isEmpty()) Note("Nothing loaded yet. Start the video playing and it will show up here.")
+            if (Browser.found.isEmpty()) EmptyNote("Nothing loaded yet. Start the video playing and it will show up here.")
             Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                 Browser.found.toList().forEach { s ->
                     Tap({ picking = false; Browser.offer(s) }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {

@@ -176,8 +176,22 @@ object Tube {
             val own = if (YouTubeAccount.signedIn.value) runCatching { accountFeed(fresh) }.getOrDefault(emptyList()) else emptyList()
             own.ifEmpty { if (subscriptions.value.isEmpty()) emptyList() else runCatching { subscriptionFeed(fresh) }.getOrDefault(emptyList()) }
         }
-        val hot = async { runCatching { trending() }.getOrDefault(emptyList()) }
-        homeFeed(subs.await(), hot.await())
+        var failure: Throwable? = null
+        val hot = async { runCatching { trending() }.onFailure { failure = it }.getOrDefault(emptyList()) }
+        val feed = homeFeed(subs.await(), hot.await())
+        if (feed.isNotEmpty()) return@coroutineScope feed
+        // YouTube's charts gave nothing (they are often empty or refused for a country): what's popular, found by
+        // searching, so Home is never blank. A failure everywhere is said, with ↻, rather than an empty page.
+        val found = runCatching { popular() }.onFailure { failure = failure ?: it }.getOrDefault(emptyList())
+        found.ifEmpty { failure?.let { throw it } ?: emptyList() }
+    }
+
+    /** Popular videos by search, a few subjects woven together: Home's fallback when the charts are empty. */
+    private suspend fun popular(): List<TubeVideo> = coroutineScope {
+        val country = Locale.getDefault().displayCountry.takeIf { it.isNotBlank() }
+        listOfNotNull("trending today", "new music videos", country?.let { "$it news" }, "movie trailers")
+            .map { q -> async { runCatching { search(q).videos }.getOrDefault(emptyList()) } }.awaitAll()
+            .let(::interleave)
     }
 
     /** YouTube's own search: videos, channels and playlists, a page at a time. */
