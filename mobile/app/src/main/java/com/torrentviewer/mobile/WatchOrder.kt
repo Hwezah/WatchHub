@@ -258,12 +258,15 @@ fun WatchOrderScreen(order: WatchOrder, onOpen: (Title) -> Unit, onBack: () -> U
                         // Square, as a film's page has it; held sideways that would fill the screen.
                         Modifier.fillMaxWidth().aspectRatio(if (isWide()) 2.2f else 1f).bottomScrim(0.6f), fill = false,
                     )
-                    Column(Modifier.padding(horizontal = EDGE).offset(y = (-26).dp)) {
-                        Text(order.name, style = Type.display, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    // Upright phone: the name and its count in the middle (the owner's choice).
+                    val centred = isPortraitPhone()
+                    val align = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
+                    Column(Modifier.fillMaxWidth().padding(horizontal = EDGE).offset(y = (-26).dp), horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
+                        Text(order.name, style = Type.display, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = align)
                         Text(
                             listOfNotNull("${ids.size} films", totalRuntime(loaded.values.toList()), "more coming".takeIf { order.more }).joinToString("  ·  "),
                             Modifier.padding(top = 4.dp),
-                            style = Type.meta.copy(color = Ink.muted),
+                            style = Type.meta.copy(color = Ink.muted), textAlign = align,
                         )
                         if (done > 0) {
                             ProgressLine(done.toFloat() / ids.size, Modifier.padding(top = 12.dp).fillMaxWidth())
