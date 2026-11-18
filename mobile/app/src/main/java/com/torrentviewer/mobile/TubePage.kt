@@ -830,7 +830,8 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
         }
     }
 
-    if (settingsOpen) Sheet(
+    // The video page is a window of its own: its sheets open in windows above it ([Above]), not behind.
+    if (settingsOpen) Above(true, { settingsOpen = false }) { Sheet(
         title = "Playback",
         options = listOf(
             Option("quality", "Quality", quality?.label ?: "Auto", icon = L.drawable.lucide_ic_sliders_horizontal),
@@ -842,15 +843,15 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
             if (it == "quality") choosing = true else speeding = true
         },
         onDismiss = { settingsOpen = false },
-    )
-    if (speeding) Sheet(
+    ) }
+    if (speeding) Above(true, { speeding = false }) { Sheet(
         title = "Speed",
         options = SPEEDS.map { Option(it, speedLabel(it)) },
         selected = speed,
         onPick = { speed = it; speeding = false },
         onDismiss = { speeding = false },
-    )
-    if (choosing) details?.let { d ->
+    ) }
+    if (choosing) details?.let { d -> Above(true, { choosing = false }) {
         Sheet(
             title = "Quality",
             options = d.qualities.map { Option(it, it.label, if (it.audio != null) null else if (it.hls) "Adapts to the connection" else "One file") },
@@ -858,7 +859,7 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
             onPick = { quality = it; choosing = false },
             onDismiss = { choosing = false },
         )
-    }
+    } }
 }
 
 /** The player's speeds, as YouTube offers them. */
