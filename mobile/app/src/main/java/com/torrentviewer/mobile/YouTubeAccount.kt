@@ -95,16 +95,31 @@ object YouTubeAccount {
     private fun file() = File(app.filesDir, "signins/YouTube.txt")
 
     /** The cookies.txt for yt-dlp; null signed out. */
-    fun cookiesFile(): File? = if (::app.isInitialized) file().takeIf { it.exists() && it.length() > 0 } else null
+    fun cookiesFile(): File? {
+        if (!::app.isInitialized || !file().exists()) return null
+        // Written afresh from the WebView's store each time: YouTube sets and renews cookies after sign-in (its own
+        // LOGIN_INFO, the rotating PSIDTS), and an old copy reads as signed out to yt-dlp.
+        runCatching { write() }
+        return file().takeIf { it.length() > 0 }
+    }
 
     /** Whether the WebView now holds a signed-in Google session (its SAPISID cookie). */
-    fun sessionReady(): Boolean = CookieManager.getInstance().getCookie("https://www.youtube.com")?.contains("SAPISID=") == true
+    // Google's SAPISID comes first, mid-way through signing in; YouTube's own LOGIN_INFO only once it lands back on
+    // YouTube. Both, or yt-dlp is told "login details are needed".
+    fun sessionReady(): Boolean = CookieManager.getInstance().getCookie("https://www.youtube.com").orEmpty().let { "SAPISID=" in it && "LOGIN_INFO=" in it }
 
     /** Keeps the WebView's YouTube and Google cookies as cookies.txt. Whether there was a session to keep. */
     fun save(): Boolean {
-        val cm = CookieManager.getInstance()
-        cm.flush()
+        CookieManager.getInstance().flush()
         if (!sessionReady()) return false
+        if (!write()) return false
+        _signedIn.value = true
+        return true
+    }
+
+    /** The WebView's YouTube and Google cookies, written as cookies.txt. Whether there were any. */
+    private fun write(): Boolean {
+        val cm = CookieManager.getInstance()
         val far = System.currentTimeMillis() / 1000 + 365L * 24 * 3600
         val lines = DOMAINS.flatMap { d ->
             val raw = cm.getCookie("https://www.$d") ?: cm.getCookie("https://$d") ?: return@flatMap emptyList()
@@ -175,7 +190,13 @@ object YouTubeAccount {
 
     /** [block], with its failure kept in [problem] (and cleared on success). */
     suspend fun <T> noted(block: suspend () -> T): T = runCatching { block() }.onSuccess { _problem.value = null }
-        .onFailure { _problem.value = "Your YouTube account's feed didn't load: ${it.message ?: "unknown error"}" }.getOrThrow()
+        .onFailure {
+            val m = it.message.orEmpty()
+            // YouTube doesn't see a signed-in account: one way out, said plainly.
+            _problem.value = if ("login" in m.lowercase() || "sign in" in m.lowercase() || "cookies" in m.lowercase())
+                "YouTube doesn't see you signed in. Settings → Accounts: switch YouTube off, then sign in again."
+            else "Your YouTube account's feed didn't load: ${m.ifBlank { "unknown error" }}"
+        }.getOrThrow()
 
     /** YouTube's own Home for the account: its recommendations. */
     suspend fun recommended(): List<TubeVideo> = withContext(Dispatchers.IO) { parseFlatVideos(flat(":ytrec", 60)) }
