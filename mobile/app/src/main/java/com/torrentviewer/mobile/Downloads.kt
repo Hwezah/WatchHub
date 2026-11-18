@@ -625,8 +625,8 @@ object Downloads {
                 // (sources come back, links get renewed), a few times, by the same rules.
                 val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
                 val wait = waitMinutes(round)
-                errors[job.uri] = (if (dead && job.imdb != null) "No fresh link found — " else "") + (e.message ?: "Couldn't save that link") +
-                    " · what's saved is kept, trying again in $wait min"
+                // Short (one line on the card): what's saved is always kept, so it isn't said.
+                errors[job.uri] = (if (dead && job.imdb != null) "No fresh link" else (e.message ?: "Couldn't save that link")) + " · retrying in $wait min"
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
                 wakeIn(wait)
                 scope.launch {
@@ -677,22 +677,33 @@ object Downloads {
      * the next fresh link at the same resolution — never one that already failed — takes over, from the start.
      * A torrent, or a link with no title to search: tried again as it is.
      */
-    fun retry(uri: String) {
+    fun retry(uri: String, byHand: Boolean = false) {
         val job = _live.value.find { it.job.uri == uri }?.job ?: return
         if (job.paused) return
         if (!job.link || job.imdb == null) return resume(uri)
-        failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
+        // By hand: every link gets another chance (one that failed an hour ago may work now), the sources are asked
+        // afresh rather than from memory, and the waiting rounds start over.
+        if (byHand) {
+            failedLinks.remove(job.label)
+            autoRounds.remove(job.label)
+        } else failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
         update(uri) { it.copy(state = DlState.RESOLVING, error = "Finding a fresh ${job.quality ?: ""} link…".replace("  ", " "), speed = 0) }
         scope.launch {
-            val fresh = runCatching { LinkRefresh.fresh(job, tried(job)) }.onFailure { Log.w(TAG, "retry: ${it.message}") }.getOrNull()
+            if (byHand) {
+                com.torrentviewer.core.forgetStreams()
+                runCatching { com.torrentviewer.mobile.cs.CsPlugins.forgetPages() }
+            }
+            val fresh = runCatching { LinkRefresh.fresh(job, if (byHand) setOf(job.uri) else tried(job)) }.onFailure { Log.w(TAG, "retry: ${it.message}") }.getOrNull()
             // A retry by hand starts the automatic refreshes over.
             if (fresh != null) replaceLink(job.copy(refreshes = -1), fresh)
+            // Nothing new by hand: the link it had, tried again as it is — a tap always does something.
+            else if (byHand) resume(uri)
             else {
                 // Still nothing: asked again on its own, a few rounds, before it waits for the viewer.
                 val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
                 val wait = waitMinutes(round)
                 update(uri) {
-                    it.copy(state = DlState.FAILED, speed = 0, error = "No other ${job.quality ?: "working"} source right now · what's saved is kept, trying again in $wait min")
+                    it.copy(state = DlState.FAILED, speed = 0, error = "No other ${job.quality ?: "working"} source · retrying in $wait min")
                 }
                 wakeIn(wait)
                 scope.launch {

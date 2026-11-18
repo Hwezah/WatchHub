@@ -125,7 +125,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 row,
                 onPause = { Downloads.pause(row.job.uri) },
                 onResume = { Downloads.resume(row.job.uri) },
-                onRetry = { Downloads.retry(row.job.uri) },
+                onRetry = { Downloads.retry(row.job.uri, byHand = true) },
                 onCancel = { cancelling = row },
                 onWanted = { index, on -> Downloads.setWanted(row.job.uri, index, on) },
                 onOrder = { Downloads.setOrder(row.job.uri, it) },
@@ -276,11 +276,12 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                         DlState.WIFI -> listOfNotNull("Waiting for Wi-Fi", sizes(row) ?: "$pct%").joinToString(" · ")
                         DlState.FAILED -> row.error ?: "Failed"
                     }
+                // One line; a longer message scrolls across, as a long title does.
                 if (status != null) Text(
                     status,
-                    Modifier.padding(top = 1.dp),
+                    Modifier.padding(top = 1.dp).basicMarquee(),
                     style = Type.meta.copy(fontSize = 12.sp, color = if (row.state == DlState.FAILED) Ink.danger else Ink.muted),
-                    maxLines = 2,
+                    maxLines = 1,
                 )
                 if (pack) Text("$savedCount of ${wanted.size} episodes saved", style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint), maxLines = 1)
             }
