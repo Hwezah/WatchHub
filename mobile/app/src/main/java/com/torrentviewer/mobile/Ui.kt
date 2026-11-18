@@ -780,3 +780,25 @@ fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape): Modifier =
     // Bare: no rim round it (the owner's choice).
     background(Ink.surface).grain()
 
+/**
+ * Choices as words in a row, Grabber's way: no pills, a short coloured bar between each, the chosen one in the accent
+ * colour with a dot before it. Scrolls sideways when there are more than fit.
+ */
+@Composable
+fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier, onPick: (Int) -> Unit) {
+    val bars = listOf(Ink.accent, Ink.download, Ink.muted, Ink.good)
+    Row(modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+        labels.forEachIndexed { i, label ->
+            if (i > 0) Box(Modifier.size(width = 2.dp, height = 18.dp).clip(RoundedCornerShape(1.dp)).background(bars[(i - 1) % bars.size].copy(alpha = 0.8f)))
+            val on = i == chosen
+            Row(
+                Modifier.clip(RoundedCornerShape(6.dp)).clickable { onPick(i) }.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (on) Box(Modifier.padding(end = 6.dp).size(6.dp).clip(CircleShape).background(Ink.accent))
+                Text(label, style = Type.label.copy(color = if (on) Ink.accent else Ink.muted, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium))
+            }
+        }
+    }
+}
+

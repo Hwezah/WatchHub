@@ -538,10 +538,10 @@ private fun codecLabel(c: String) = when (c) {
 fun FilterRow(name: String, options: List<Pair<String, Int>>, chosen: String?, label: (String) -> String = { it }, onPick: (String?) -> Unit) {
     if (options.isEmpty() && chosen == null) return
     Text(name, Modifier.padding(top = 8.dp, bottom = 6.dp), style = Type.overline.copy(color = Ink.faint))
-    SpreadRow {
-        Chip("Any", chosen == null, onClick = { onPick(null) }, compact = true)
-        options.forEach { (value, n) ->
-            Chip("${label(value)} · $n", chosen == value, onClick = { onPick(if (chosen == value) null else value) }, compact = true)
-        }
+    // Words split by coloured bars, the chosen one with a dot (the owner's choice: Grabber's look, no pills).
+    val values = listOf<String?>(null) + options.map { it.first }
+    BarChoices(listOf("Any") + options.map { (value, n) -> "${label(value)} · $n" }, values.indexOf(chosen).takeIf { it >= 0 }) { i ->
+        val value = values[i]
+        onPick(if (value != null && value == chosen) null else value)
     }
 }
