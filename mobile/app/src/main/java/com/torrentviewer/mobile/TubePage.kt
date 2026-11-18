@@ -242,7 +242,7 @@ private fun TubeHeader(typed: String, onTyped: (String) -> Unit, onSubmit: () ->
     // One container for the whole bar, barely rounded; the input has no box of its own, only its green cursor.
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp)
-            .height(58.dp).frosted(RoundedCornerShape(8.dp)).padding(horizontal = 4.dp),
+            .height(58.dp).frosted(RoundedCornerShape(18.dp)).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Tap(onSubmit, shape = CircleShape) { Lc(R.drawable.ic_search_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp) }

@@ -790,8 +790,8 @@ fun ReloadArrow(busy: Boolean, tint: Color, size: Dp, modifier: Modifier = Modif
  * plugins): the surface with the app's grain over it. [shape] is kept for the caller's clip.
  */
 fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape, color: Color = SECTION_FACE): Modifier =
-    // Bare: no rim round it (the owner's choice).
-    background(color).grain()
+    // Bare: no rim round it (the owner's choice). Clipped to its shape, so the grain keeps the rounded corners too.
+    clip(shape).background(color).grain()
 
 /**
  * Choices as words in a row, Grabber's way: no pills, a short coloured bar between each, the chosen one in the accent

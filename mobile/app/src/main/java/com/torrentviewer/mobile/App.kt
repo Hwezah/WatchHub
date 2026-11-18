@@ -699,8 +699,8 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
             .clip(RoundedCornerShape(26.dp))
             // Dark: a shade lighter than the page. Light: a tint — near-white on the paper page, edged faintly —
             // so the bar stands apart in both (the owner's choice: light plays with tints as dark with shades).
-            .background(if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else androidx.compose.ui.graphics.lerp(Ink.bg, Color.White, 0.9f))
-            .then(if (Ink.isDark) Modifier else Modifier.border(1.dp, Ink.text.copy(alpha = 0.07f), RoundedCornerShape(26.dp)))
+            // Flat, no edge (the owner's choice). Light theme: the page's own paper colour.
+            .background(if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else Ink.bg)
             .grain()
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),

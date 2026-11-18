@@ -81,7 +81,7 @@ fun BrowserScreen() {
             Row(
                 // One container for the whole bar, barely rounded, as Tube's; the address has no box, only its green cursor.
                 Modifier.statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 8.dp).fillMaxWidth().height(58.dp)
-                    .frosted(RoundedCornerShape(8.dp)).padding(start = 6.dp, end = 2.dp),
+                    .frosted(RoundedCornerShape(18.dp)).padding(start = 6.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Tabs: a squircle with how many are open.
