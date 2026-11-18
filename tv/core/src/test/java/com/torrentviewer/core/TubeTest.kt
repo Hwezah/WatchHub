@@ -79,4 +79,13 @@ class TubeTest {
         assertEquals(ch, tubeChannels(tubeChannelsJson(ch)))
         assertEquals(emptyList<TubeVideo>(), tubeVideos("garbage"))
     }
+
+    @Test fun ages() {
+        val now = 1_800_000_000_000L
+        assertEquals("5 hours ago", agoText(now - 5 * 3_600_000L, now))
+        assertEquals("1 day ago", agoText(now - 86_400_000L, now))
+        assertEquals("1 month ago", agoText(now - 31L * 86_400_000L, now))
+        assertEquals("2 years ago", agoText(now - 800L * 86_400_000L, now))
+        assertEquals("Just now", agoText(now, now))
+    }
 }

@@ -198,7 +198,10 @@ object Tube {
         val live = info.streamType == StreamType.LIVE_STREAM || info.streamType == StreamType.AUDIO_LIVE_STREAM
         val video = TubeVideo(
             id, info.name.orEmpty(), info.uploaderName.orEmpty(), info.uploaderUrl, best(info.uploaderAvatars), best(info.thumbnails),
-            info.duration.coerceAtLeast(0), info.viewCount, info.textualUploadDate, runCatching { info.uploadDate?.instant?.toEpochMilli() }.getOrNull() ?: 0, live,
+            info.duration.coerceAtLeast(0), info.viewCount,
+            // YouTube's video page gives a full date ("2026-10-05T12:15:16-07:00"): said as the lists say it, "6 weeks ago".
+            (runCatching { info.uploadDate?.instant?.toEpochMilli() }.getOrNull()?.let { com.torrentviewer.core.agoText(it) } ?: info.textualUploadDate),
+            runCatching { info.uploadDate?.instant?.toEpochMilli() }.getOrNull() ?: 0, live,
         )
         TubeDetails(video, info.description?.content.orEmpty(), info.likeCount, info.uploaderSubscriberCount, qualities(info), split(info.relatedItems).first)
     }
@@ -299,6 +302,9 @@ object Tube {
     private const val SPOTS = "tubeSpots"
     /** History kept: enough to scroll back weeks, small enough to write on every video. */
     private const val HISTORY_MAX = 300
+
+    /** Set once the last video has been reopened this launch, so closing it doesn't bring it back. */
+    var reopened = false
 
     private val _subscriptions = MutableStateFlow<List<TubeChannel>>(emptyList())
     val subscriptions: StateFlow<List<TubeChannel>> = _subscriptions

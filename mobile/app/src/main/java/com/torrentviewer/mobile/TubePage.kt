@@ -80,7 +80,7 @@ import kotlinx.coroutines.delay
 import com.composables.icons.lucide.R as L
 
 /** The Tube tab's five parts, chosen along its top (the screenshot's bottom bar, moved up: the app has its own). */
-private enum class TubeSection(val label: String) { SUBS("Subscriptions"), HISTORY("History"), DOWNLOADS("Downloads"), YOU("Watch Later") }
+private enum class TubeSection(val label: String) { SUBS("Subscriptions"), HISTORY("History"), DOWNLOADS("Downloads"), YOU("Later") }
 
 /** A page opened over the sections: a search, a channel, or a playlist. Back closes it. */
 private sealed interface TubeRoute {
@@ -122,7 +122,19 @@ fun TubeScreen(watch: Watch) {
     val playing = remember { mutableStateListOf<TubeVideo>() }
     var menu by remember { mutableStateOf<TubeVideo?>(null) }
     var saving by remember { mutableStateOf<TubeVideo?>(null) }
+    /** Download pressed: this app's downloader or another app first, as everywhere else in the app. */
+    var downloading by remember { mutableStateOf<TubeVideo?>(null) }
     val context = LocalContext.current
+    /** The video reopened at launch: it waits paused where it was left, rather than starting by itself. */
+    var resumedId by remember { mutableStateOf<String?>(null) }
+    // No History to dig through (the owner's choice): Tube opens on what was watched last, once per launch.
+    LaunchedEffect(Unit) {
+        if (!Tube.reopened && playing.isEmpty()) Tube.history.value.firstOrNull()?.let { last ->
+            resumedId = last.id
+            playing.add(last)
+        }
+        Tube.reopened = true
+    }
 
     val open: (TubeVideo) -> Unit = { playing.add(it) }
     val openChannel: (String, String) -> Unit = { url, name ->
@@ -180,7 +192,8 @@ fun TubeScreen(watch: Watch) {
                 onClose = { playing.removeAt(playing.lastIndex) },
                 onOpen = open,
                 onChannel = openChannel,
-                onDownload = { saving = it },
+                onDownload = { downloading = it },
+                resumed = v.id == resumedId && playing.size == 1,
                 onMenu = { menu = it },
             )
         }
@@ -202,7 +215,7 @@ fun TubeScreen(watch: Watch) {
             onPick = {
                 menu = null
                 when (it) {
-                    "download" -> saving = v
+                    "download" -> downloading = v
                     "later" -> Tube.toggleLater(v)
                     "share" -> runCatching {
                         context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, v.url), v.title))
@@ -215,6 +228,22 @@ fun TubeScreen(watch: Watch) {
         )
     }
 
+    downloading?.let { v ->
+        DownloadChoice(
+            v.title,
+            onInternal = { saving = v },
+            onExternal = { to ->
+                // Another app (Grabber, Snaptube, 1DM…) is handed the video's YouTube link and does the rest.
+                val handed = ExternalDownloaders.hand(context, ExternalDownloaders.shareOf(v.url, v.title), to, "Send link to", v.url)
+                ExternalDownloaders.note(handed, many = false)?.let { watch.notes.tryEmit(it) }
+                if (handed != Handed.Failed) downloading = null
+            },
+            onDismiss = { downloading = null },
+            internalNote = "Pick a height, or MP3, M4A, Opus, FLAC or WAV. Saved in Grabber!/YouTube or Grabber!/Audio.",
+            externalNote = "Grabber, Snaptube, 1DM or another app gets the video's link and saves it.",
+            probe = ExternalDownloaders.sendProbe(),
+        )
+    }
     saving?.let { v -> SaveSheet(v.url, v.title, v.thumb, tube = v, onDone = { saving = null }) }
 }
 
@@ -302,9 +331,10 @@ private fun HomeFeed(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, o
 private fun SubsFeed(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit) {
     val subs by Tube.subscriptions.collectAsState()
     if (subs.isEmpty()) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp)) {
-            Note("No subscriptions yet. Tap Subscribe on a channel, or bring yours over from YouTube.")
-            ImportButton(Modifier.padding(top = 16.dp))
+        // Centred on the page (the owner's choice).
+        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("No subscriptions yet. Turn on Subscribed on a channel, or bring yours over from YouTube.", style = Type.body.copy(color = Ink.faint), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            ImportButton(Modifier.padding(top = 18.dp), centred = true)
         }
         return
     }
@@ -456,7 +486,7 @@ private fun Count(n: Int, label: String) {
  * NewPipe export (.json), picked from the phone's files.
  */
 @Composable
-private fun ImportButton(modifier: Modifier = Modifier) {
+private fun ImportButton(modifier: Modifier = Modifier, centred: Boolean = false) {
     val context = LocalContext.current
     var said by remember { mutableStateOf<String?>(null) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -466,10 +496,11 @@ private fun ImportButton(modifier: Modifier = Modifier) {
         said = if (found.isEmpty()) "No channels in that file. Pick subscriptions.csv from Google Takeout, or a NewPipe export."
         else Tube.importSubscriptions(found).let { n -> if (n == 0) "All ${found.size} channels were already here." else "Added $n channels." }
     }
-    Column(modifier) {
+    Column(modifier, horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
         Button("Import Subscriptions", { pick.launch(arrayOf("text/*", "application/json", "application/octet-stream", "*/*")) }, icon = L.drawable.lucide_ic_upload, compact = true)
-        said?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.meta) }
-        Text("From Google Takeout (subscriptions.csv) or a NewPipe export.", Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp))
+        val align = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
+        said?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.meta, textAlign = align) }
+        Text("From Google Takeout (subscriptions.csv) or a NewPipe export.", Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), textAlign = align)
     }
 }
 
@@ -694,13 +725,17 @@ private fun PlaylistPage(url: String, name: String, onOpen: (TubeVideo) -> Unit,
  * sideways without reloading the video.
  */
 @Composable
-private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit, onDownload: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit) {
+private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit, onDownload: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, resumed: Boolean = false) {
     var details by remember(start.id) { mutableStateOf<TubeDetails?>(null) }
     var error by remember(start.id) { mutableStateOf<String?>(null) }
     var round by remember(start.id) { mutableIntStateOf(0) }
     var full by remember { mutableStateOf(false) }
     var quality by remember(start.id) { mutableStateOf<TubeQuality?>(null) }
     var choosing by remember { mutableStateOf(false) }
+    /** The player's own small menu: quality and speed, nothing else (no YouTube controls). */
+    var settingsOpen by remember { mutableStateOf(false) }
+    var speeding by remember { mutableStateOf(false) }
+    var speed by remember { mutableStateOf(1f) }
     var more by remember { mutableStateOf(false) }
     val subs by Tube.subscriptions.collectAsState()
     val later by Tube.later.collectAsState()
@@ -741,7 +776,7 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
             ) {
                 val q = quality
                 when {
-                    q != null && d != null -> TubePlayer(d.video, q, onEnded = { d.related.firstOrNull()?.let(onOpen) })
+                    q != null && d != null -> TubePlayer(d.video, q, speed, autoplay = !resumed, onEnded = { d.related.firstOrNull()?.let(onOpen) })
                     error != null -> Artwork(start.thumb, start.title, Modifier.fillMaxSize())
                     else -> {
                         Artwork(start.thumb, start.title, Modifier.fillMaxSize())
@@ -754,8 +789,9 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
                         Lc(if (full) L.drawable.lucide_ic_arrow_left else L.drawable.lucide_ic_chevron_down, Modifier.padding(10.dp), tint = Color.White, size = 22.dp)
                     }
                     Spacer(Modifier.weight(1f))
-                    if (d != null && d.qualities.size > 1) Tap({ choosing = true }, shape = RoundedCornerShape(6.dp)) {
-                        Text(quality?.label ?: "", Modifier.padding(horizontal = 10.dp, vertical = 8.dp), style = Type.meta.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                    // One quiet mark for the player's menu (quality, speed) instead of words on the picture.
+                    if (d != null) Tap({ settingsOpen = true }, shape = CircleShape) {
+                        Lc(L.drawable.lucide_ic_settings, Modifier.padding(10.dp), tint = Color.White, size = 20.dp)
                     }
                     Tap({ full = !full }, shape = CircleShape) {
                         Lc(if (full) L.drawable.lucide_ic_minimize else L.drawable.lucide_ic_maximize, Modifier.padding(10.dp), tint = Color.White, size = 20.dp)
@@ -815,6 +851,26 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
         }
     }
 
+    if (settingsOpen) Sheet(
+        title = "Playback",
+        options = listOf(
+            Option("quality", "Quality", quality?.label ?: "Auto", icon = L.drawable.lucide_ic_sliders_horizontal),
+            Option("speed", "Speed", speedLabel(speed), icon = L.drawable.lucide_ic_gauge),
+        ),
+        selected = null,
+        onPick = {
+            settingsOpen = false
+            if (it == "quality") choosing = true else speeding = true
+        },
+        onDismiss = { settingsOpen = false },
+    )
+    if (speeding) Sheet(
+        title = "Speed",
+        options = SPEEDS.map { Option(it, speedLabel(it)) },
+        selected = speed,
+        onPick = { speed = it; speeding = false },
+        onDismiss = { speeding = false },
+    )
     if (choosing) details?.let { d ->
         Sheet(
             title = "Quality",
@@ -825,6 +881,12 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
         )
     }
 }
+
+/** The player's speeds, as YouTube offers them. */
+private val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+
+/** "1×" rather than "1.0×"; "Normal" for 1. */
+private fun speedLabel(s: Float) = if (s == 1f) "Normal" else (if (s % 1f == 0f) "${s.toInt()}" else "$s") + "×"
 
 /** One of the video page's actions: an icon over a word. */
 @Composable
@@ -843,7 +905,7 @@ private fun TubeAction(icon: Int, label: String, on: Boolean = false, onClick: (
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-private fun TubePlayer(v: TubeVideo, q: TubeQuality, onEnded: () -> Unit) {
+private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boolean, onEnded: () -> Unit) {
     val ctx = LocalContext.current
     val player = remember(v.id) { androidx.media3.exoplayer.ExoPlayer.Builder(ctx).build() }
     var ratio by remember(v.id) { mutableStateOf(16f / 9f) }
@@ -859,9 +921,14 @@ private fun TubePlayer(v: TubeVideo, q: TubeQuality, onEnded: () -> Unit) {
         }
         val video = source(q.video, q.hls)
         player.setMediaSource(q.audio?.let { androidx.media3.exoplayer.source.MergingMediaSource(video, source(it, false)) } ?: video, at)
+        // The first time: playing at once, or — reopened at launch — waiting paused where it was left.
+        // A change of quality keeps it as it was.
+        val wasPlaying = player.playWhenReady
+        val first = player.playbackState == androidx.media3.common.Player.STATE_IDLE && player.currentPosition == at
         player.prepare()
-        player.playWhenReady = true
+        player.playWhenReady = if (first) autoplay else wasPlaying
     }
+    LaunchedEffect(speed) { player.setPlaybackSpeed(speed) }
     // Where it is, kept every few seconds for History's resume.
     LaunchedEffect(v.id) {
         while (true) {

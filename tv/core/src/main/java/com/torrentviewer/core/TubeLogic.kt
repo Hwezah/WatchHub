@@ -182,3 +182,18 @@ fun interleave(lists: List<List<TubeVideo>>): List<TubeVideo> {
     for (i in 0 until longest) for (l in lists) l.getOrNull(i)?.let { if (seen.add(it.id)) out += it }
     return out
 }
+
+/** "5 hours ago", "13 days ago", "1 month ago", "2 years ago": how YouTube says when a video came out. */
+fun agoText(at: Long, now: Long = System.currentTimeMillis()): String {
+    val s = ((now - at) / 1000).coerceAtLeast(0)
+    fun say(n: Long, unit: String) = "$n $unit${if (n == 1L) "" else "s"} ago"
+    return when {
+        s < 60 -> "Just now"
+        s < 3600 -> say(s / 60, "minute")
+        s < 86_400 -> say(s / 3600, "hour")
+        s < 7 * 86_400 -> say(s / 86_400, "day")
+        s < 30 * 86_400 -> say(s / (7 * 86_400), "week")
+        s < 365 * 86_400 -> say(s / (30 * 86_400), "month")
+        else -> say(s / (365 * 86_400), "year")
+    }
+}
