@@ -184,7 +184,7 @@ private val DL_CARD = RoundedCornerShape(18.dp)
 
 /** A download card's colour: nearly the page's own, a breath lighter, grain still over it (the owner's choice). */
 private val DL_FACE: androidx.compose.ui.graphics.Color
-    get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.12f)
+    get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.22f)
 
 
 
