@@ -502,6 +502,10 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             }
         }
     }
+    // The tabs' content moved, not rebuilt, when the phone turns (upright: under the floating bar; sideways: beside the
+    // rail): a video playing in Tube, a page's scroll and everything typed carry over instead of starting again.
+    val host = remember { androidx.compose.runtime.movableContentOf { content: @Composable () -> Unit -> content() } }
+
     // Another tab: its own stack, as it was left. The tab you're on, tapped again: back to its start.
     val choose: (Tab) -> Unit = { t ->
         if (t == tab) clearPages() else tab = t
@@ -511,7 +515,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         if (isWide()) {
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal))) {
                 NavRail(tab, me, choose, onProfile = { switching = true })
-                Box(Modifier.weight(1f).fillMaxHeight()) { body() }
+                Box(Modifier.weight(1f).fillMaxHeight()) { host(body) }
             }
         } else if (SettingsStore.value.collectAsState().value.navStyle == "pill") {
             // The pages run to the bottom edge; the pill floats over them. It slides away while the page is scrolled
@@ -549,7 +553,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 }
             }
             Box(Modifier.fillMaxSize().nestedScroll(watchScroll)) {
-                body()
+                host(body)
                 AnimatedVisibility(
                     pillShown && OpenSheets.count == 0, Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
@@ -557,7 +561,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f).fillMaxWidth()) { body() }
+                Box(Modifier.weight(1f).fillMaxWidth()) { host(body) }
                 TabBar(tab, choose)
             }
         }
