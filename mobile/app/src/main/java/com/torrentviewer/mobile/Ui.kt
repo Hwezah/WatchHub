@@ -271,10 +271,10 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
         }
         val fg = if (on) Ink.onAccent else Ink.muted
         Row(
-            // With an icon (Pause All…), a notch less room after the words and between icon and words (the owner's choice).
+            // With an icon (Pause All…), a notch more room after the words and less between icon and words (the owner's choice).
             Modifier.background(bg).height(if (tall) 46.dp else if (compact) 32.dp else 36.dp).padding(
                 start = if (tall) 20.dp else if (compact) 11.dp else 16.dp,
-                end = (if (tall) 20.dp else if (compact) 11.dp else 16.dp) - if (icon != null) 3.dp else 0.dp,
+                end = (if (tall) 20.dp else if (compact) 11.dp else 16.dp) + if (icon != null) 3.dp else 0.dp,
             ),
             horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
         ) {
