@@ -9,6 +9,8 @@
     <!-- Downloads: a foreground service with a progress notification. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Tube keeps playing with the screen off or the app in the background. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The one-time "let downloads run in the background" prompt (battery optimisation off). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -19,6 +21,8 @@
     <!-- Android 11+ hides other apps unless asked for: the downloaders (1DM, ADM…) a link is handed to,
          listed in the "Download With" sheet and used straight away by a tap. -->
     <queries>
+        <!-- The owner's Grabber app, offered as "Send to Grabber" when it's installed. -->
+        <package android:name="com.hwezah.grabber" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
@@ -101,6 +105,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Tube's playback: Media3's session service, foreground while a video plays (its notification has the controls). -->
+        <service
+            android:name=".TubeService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".DownloadService"

@@ -129,6 +129,8 @@ dependencies {
     implementation("org.conscrypt:conscrypt-android:2.5.3")
     // The Browser tab's pages: Android's WebView with its darkening for light sites (as the Grabber app).
     implementation("androidx.webkit:webkit:1.12.1")
+    // Tube's background play: a media session with its own notification, kept running as a media service.
+    implementation("androidx.media3:media3-session:1.9.4")
     // Video and audio from YouTube and ~1,800 other sites (the Browser's "Grab this page", Tube's audio formats):
     // yt-dlp with Python, and FFmpeg to join streams and convert to MP3 / Opus / FLAC / WAV — the Grabber app's own.
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")

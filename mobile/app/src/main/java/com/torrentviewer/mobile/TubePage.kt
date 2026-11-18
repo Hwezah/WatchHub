@@ -266,21 +266,10 @@ private fun TubeHeader(typed: String, onTyped: (String) -> Unit, onSubmit: () ->
     }
 }
 
-/** The five parts as words spread across the width, the chosen one bold with the accent's dot. */
+/** The You page's parts, spread across the width and separated by bars, the chosen one marked (the app's BarChoices). */
 @Composable
 private fun SectionRow(on: TubeSection, onPick: (TubeSection) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp).padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        TubeSection.entries.forEach { s ->
-            val chosen = s == on
-            Row(
-                Modifier.clip(RoundedCornerShape(6.dp)).clickable { onPick(s) }.padding(horizontal = 6.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(s.label, style = Type.label.copy(fontSize = 14.sp, fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium, color = if (chosen) Ink.text else Ink.muted), maxLines = 1)
-                if (chosen) Box(Modifier.padding(start = 5.dp).size(6.dp).clip(CircleShape).background(Ink.accent))
-            }
-        }
-    }
+    BarChoices(TubeSection.entries.map { it.label }, on.ordinal, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp)) { onPick(TubeSection.entries[it]) }
 }
 
 /**
@@ -333,8 +322,7 @@ private fun SubsFeed(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, o
     if (subs.isEmpty()) {
         // Centred on the page (the owner's choice).
         Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("No subscriptions yet. Turn on Subscribed on a channel, or bring yours over from YouTube.", style = Type.body.copy(color = Ink.faint), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            ImportButton(Modifier.padding(top = 18.dp), centred = true)
+            Text("No subscriptions yet. Turn on Subscribed on a channel.", style = Type.body.copy(color = Ink.faint), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
         return
     }
@@ -452,7 +440,6 @@ private fun YouPage(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, on
             Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Subscriptions", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
             }
-            ImportButton(Modifier.padding(bottom = 14.dp))
         }
         items(subs, key = { "sub-" + it.url }) { ch ->
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onChannel(ch.url, ch.name) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -907,15 +894,20 @@ private fun TubeAction(icon: Int, label: String, on: Boolean = false, onClick: (
 @Composable
 private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boolean, onEnded: () -> Unit) {
     val ctx = LocalContext.current
-    val player = remember(v.id) { androidx.media3.exoplayer.ExoPlayer.Builder(ctx).build() }
+    // Tube's one player (background play): it lives in [TubeEngine], so leaving the app doesn't stop it.
+    val player = remember { TubeEngine.player(ctx) }
+    var loaded by remember(v.id) { mutableStateOf(false) }
     var ratio by remember(v.id) { mutableStateOf(16f / 9f) }
     var shown by remember(v.id) { mutableStateOf(false) }
     val ended = androidx.compose.runtime.rememberUpdatedState(onEnded)
     LaunchedEffect(q) {
-        val at = if (player.currentPosition > 0) player.currentPosition else Tube.spot(v.id) * 1000
+        val at = if (loaded) player.currentPosition else Tube.spot(v.id) * 1000
+        // Its name, channel and picture: what the notification and the lock screen show.
+        val meta = androidx.media3.common.MediaMetadata.Builder().setTitle(v.title).setArtist(v.channel)
+            .apply { v.thumb?.let { setArtworkUri(android.net.Uri.parse(it)) } }.build()
         fun source(url: String, hls: Boolean): androidx.media3.exoplayer.source.MediaSource {
             val http = androidx.media3.datasource.DefaultHttpDataSource.Factory().setUserAgent(Trailers.userAgent(url)).setAllowCrossProtocolRedirects(true)
-            val item = androidx.media3.common.MediaItem.fromUri(url)
+            val item = androidx.media3.common.MediaItem.Builder().setUri(url).setMediaId(v.id).setMediaMetadata(meta).build()
             return if (hls) androidx.media3.exoplayer.hls.HlsMediaSource.Factory(http).createMediaSource(item)
             else androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(http).createMediaSource(item)
         }
@@ -924,9 +916,10 @@ private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boo
         // The first time: playing at once, or — reopened at launch — waiting paused where it was left.
         // A change of quality keeps it as it was.
         val wasPlaying = player.playWhenReady
-        val first = player.playbackState == androidx.media3.common.Player.STATE_IDLE && player.currentPosition == at
         player.prepare()
-        player.playWhenReady = if (first) autoplay else wasPlaying
+        player.playWhenReady = if (!loaded) autoplay else wasPlaying
+        loaded = true
+        TubeEngine.start(ctx)
     }
     LaunchedEffect(speed) { player.setPlaybackSpeed(speed) }
     // Where it is, kept every few seconds for History's resume.
@@ -959,7 +952,9 @@ private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boo
             val length = player.duration.takeIf { it > 0 } ?: 0L
             if (!v.live && player.currentPosition > 0) Tube.setSpot(v.id, player.currentPosition / 1000, length / 1000)
             player.removeListener(listener)
-            player.release()
+            player.clearVideoSurface()
+            // The video page closed (or another video took its place): playback and its notification end.
+            TubeEngine.stop(ctx)
         }
     }
     Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
