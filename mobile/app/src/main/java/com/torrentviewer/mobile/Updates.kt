@@ -50,7 +50,8 @@ fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(12.dp)
     // White, with a red Update button edged faintly (the owner's choice). While downloading, the card fills from the
     // left in deep red; the words over the filled part turn white, those over the rest stay dark.
-    val deep = androidx.compose.ui.graphics.lerp(Ink.accent, Color.Black, 0.35f)
+    // The accent itself: the red is now this deep red everywhere (the owner's choice).
+    val deep = Ink.accent
     val body: @Composable (Color, Boolean) -> Unit = { ink, live ->
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

@@ -131,7 +131,8 @@ object Ink {
  * The first is the default red.
  */
 val ACCENT_SHADES: List<Pair<String, Long>> = listOf(
-    "Red" to 0xFFB81D24,
+    // The update card's deep red (the owner's choice): the old red darkened by a third.
+    "Red" to 0xFF781317,
     "Deep Orange" to 0xFFD84315,
     "Amber" to 0xFFC77700,
     "Teal" to 0xFF00897B,
