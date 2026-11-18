@@ -564,6 +564,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     Column(Modifier.padding(top = 22.dp)) {
                         // The heading, with the season's download at the far end of the same line.
                         Row(Modifier.fillMaxWidth().padding(start = EDGE, end = EDGE - 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            // The same accent asterisk as Sources' heading, close to its word.
+                            Lc(L.drawable.lucide_ic_asterisk, Modifier.padding(end = 2.dp), tint = Ink.accent, size = 22.dp)
                             Text("Episodes", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
                             season?.let { s ->
                                 // The whole season, episode by episode, with filters over what was found.
