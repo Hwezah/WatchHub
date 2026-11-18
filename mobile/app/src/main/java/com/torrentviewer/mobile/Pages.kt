@@ -1315,7 +1315,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
 
         if (page == "VPN") Panel {
-            Section("VPN", "A WireGuard connection inside the app, from a provider you pay for. Android asks once for leave.") {
+            Section("VPN", "A WireGuard connection inside the app, from Proton VPN (free or paid), Mullvad or another provider. Android asks once for leave.") {
                 VpnSettings { watch.notes.tryEmit(it) }
             }
         }

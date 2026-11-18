@@ -128,9 +128,16 @@ object Vpn {
         }
 
     /** A config file's text, checked before it's kept. Null when it's fine, else why not. */
-    fun import(text: String): String? {
+    fun import(raw: String): String? {
+        // As files come: a byte-order mark first, Windows line ends, spaces around lines.
+        val text = raw.removePrefix("\uFEFF").replace("\r\n", "\n").replace('\r', '\n').lines().joinToString("\n") { it.trim() }.trim()
+        if (text.isEmpty()) return "That file was empty or couldn't be opened. Pick the .conf again, or paste the config."
+        if (!text.contains("[Interface]", true) || !text.contains("PrivateKey", true)) return "That isn't a WireGuard config: it has no [Interface] with a PrivateKey."
         val err = runCatching { Config.parse(text.byteInputStream()) }.exceptionOrNull()
-        if (err != null) return "That isn't a WireGuard config (.conf): ${err.message ?: "it couldn't be read"}"
+        if (err != null) {
+            val why = (err as? com.wireguard.config.BadConfigException)?.let { e -> "${e.reason.name.lowercase().replace('_', ' ')} in ${e.section.name.lowercase()} ${e.location.name.lowercase().replace('_', ' ')}" + (e.text?.let { t -> " (\"$t\")" } ?: "") }
+            return "That config couldn't be read: ${why ?: err.message ?: err.javaClass.simpleName}"
+        }
         Secrets.put(CONFIG, text)
         if (_state.value == VpnState.ON) connect()
         return null

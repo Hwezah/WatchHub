@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -86,6 +87,23 @@ fun VpnSettings(say: (String) -> Unit) {
             Toggle(onlyApp, { onlyApp = it; Vpn.onlyApp = it })
         }
         Button(if (has) "Replace Config File" else "Import Config File", { pick.launch(arrayOf("*/*")) }, Modifier.padding(top = 16.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_upload, compact = true)
+        // Or the config's text, copied from the provider's page and pasted (the file can't be picked, or won't open).
+        var pasting by remember { mutableStateOf(false) }
+        var pasted by remember { mutableStateOf("") }
+        if (!pasting) Button("Paste Config Text", { pasting = true }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_copy, compact = true)
+        else {
+            androidx.compose.foundation.text.BasicTextField(
+                pasted, { pasted = it },
+                Modifier.padding(top = 10.dp).fillMaxWidth().heightIn(min = 140.dp).frosted(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(12.dp),
+                textStyle = Type.meta.copy(color = Ink.text), cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink.download),
+            )
+            Button("Use This Config", {
+                val problem = Vpn.import(pasted)
+                has = Vpn.hasConfig()
+                if (problem == null) { pasting = false; pasted = "" }
+                say(problem ?: "VPN config added")
+            }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_check, compact = true)
+        }
         if (has) Button("Remove Config", { Vpn.forget(); has = false; say("VPN config removed") }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_trash_2, compact = true)
         Text(
             "Use a WireGuard config (.conf) from your VPN's website: Mullvad (Account → WireGuard configuration), " +
