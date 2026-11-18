@@ -163,8 +163,25 @@ object YouTubeAccount {
         val cookies = cookiesFile() ?: error("Not signed in to YouTube")
         val req = YoutubeDLRequest(url).addOption("--flat-playlist").addOption("-J").addOption("--no-update")
             .addOption("--playlist-end", most).addOption("--cookies", cookies.absolutePath)
-        return YoutubeDL.getInstance().execute(req).out
+        val r = YoutubeDL.getInstance().execute(req)
+        // Failed (signed out by Google, a page yt-dlp can't read yet): said, not shown as an empty feed.
+        if (r.exitCode != 0 || r.out.isBlank()) throw IllegalStateException(Media.cleanError(r.err.ifBlank { "YouTube gave nothing back" }))
+        return r.out
     }
+
+    private val _problem = MutableStateFlow<String?>(null)
+    /** Why the account's own feed couldn't be read last time; null when it was. Tube's Home says it. */
+    val problem: StateFlow<String?> = _problem
+
+    /** [block], with its failure kept in [problem] (and cleared on success). */
+    suspend fun <T> noted(block: suspend () -> T): T = runCatching { block() }.onSuccess { _problem.value = null }
+        .onFailure { _problem.value = "Your YouTube account's feed didn't load: ${it.message ?: "unknown error"}" }.getOrThrow()
+
+    /** YouTube's own Home for the account: its recommendations. */
+    suspend fun recommended(): List<TubeVideo> = withContext(Dispatchers.IO) { parseFlatVideos(flat(":ytrec", 60)) }
+
+    /** The account's watch history on YouTube, newest first. */
+    suspend fun watchHistory(): List<TubeVideo> = withContext(Dispatchers.IO) { parseFlatVideos(flat(":ythistory", 100)) }
 
     /** The signed-in Subscriptions feed, newest first, as YouTube shows it. */
     suspend fun feed(): List<TubeVideo> = withContext(Dispatchers.IO) { parseFlatVideos(flat(":ytsubs", 60)) }

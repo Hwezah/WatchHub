@@ -111,8 +111,10 @@ private fun tubeError(e: Throwable): String = when {
 @Composable
 fun TubeScreen(watch: Watch) {
     var section by rememberSaveable { mutableStateOf(TubeSection.SUBS) }
-    var typed by rememberSaveable { mutableStateOf("") }
-    var query by rememberSaveable { mutableStateOf("") }
+    // The last search is where Tube opens (the owner's choice), until it's cleared with ✕ or Back.
+    var typed by rememberSaveable { mutableStateOf(Tube.recentSearches().firstOrNull().orEmpty()) }
+    var query by rememberSaveable { mutableStateOf(typed) }
+    LaunchedEffect(query) { if (query.isNotBlank()) Tube.remember(query) }
     var hints by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(typed) {
         if (typed.isBlank() || typed == query) { hints = emptyList(); return@LaunchedEffect }
@@ -305,7 +307,12 @@ private fun Retry(message: String, onRetry: () -> Unit) {
 @Composable
 private fun HomeFeed(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit) {
     val subs by Tube.subscriptions.collectAsState()
-    Loaded(subs.size, { Tube.home(it) }, "Nothing from YouTube right now.") { VideoCard(it, onOpen, onMenu, onChannel) }
+    val signedIn by YouTubeAccount.signedIn.collectAsState()
+    val problem by YouTubeAccount.problem.collectAsState()
+    Loaded(subs.size to signedIn, { Tube.home(it) }, "Nothing from YouTube right now.", header = {
+        // Signed in, but the account's own feed didn't come: said (with why), not hidden behind other videos.
+        problem?.let { p -> item { Text(p, Modifier.padding(bottom = 12.dp), style = Type.meta.copy(color = Ink.danger), maxLines = 3) } }
+    }) { VideoCard(it, onOpen, onMenu, onChannel) }
 }
 
 /** The subscribed channels' pictures in a row, then their newest videos. */
@@ -335,6 +342,12 @@ private fun SubsFeed(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, o
 
 @Composable
 private fun HistoryList(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit) {
+    // Signed in: the account's own watch history on YouTube, as YouTube keeps it.
+    val signedIn by YouTubeAccount.signedIn.collectAsState()
+    if (signedIn) {
+        Loaded("account-history", { YouTubeAccount.noted { YouTubeAccount.watchHistory() } }, "Nothing in your YouTube history yet.") { SmallVideoRow(it, onOpen, onMenu) }
+        return
+    }
     val history by Tube.history.collectAsState()
     var clearing by remember { mutableStateOf(false) }
     if (history.isEmpty()) {

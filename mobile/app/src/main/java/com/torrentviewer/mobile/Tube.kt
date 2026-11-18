@@ -163,10 +163,41 @@ object Tube {
 
     private var accountCache: Pair<Long, List<TubeVideo>>? = null
 
-    /** The signed-in account's Subscriptions feed, kept as long as [subscriptionFeed]'s. */
+    /**
+     * The signed-in account's own Home: YouTube's recommendations for it, then its Subscriptions feed, woven together;
+     * kept as long as [subscriptionFeed]'s. A failure is kept in [YouTubeAccount.problem] for Home to say.
+     */
     private suspend fun accountFeed(fresh: Boolean): List<TubeVideo> {
         accountCache?.let { (at, list) -> if (!fresh && System.currentTimeMillis() - at < FEED_MS) return list }
-        return YouTubeAccount.feed().also { accountCache = System.currentTimeMillis() to it }
+        val list = YouTubeAccount.noted {
+            coroutineScope {
+                val rec = async { runCatching { YouTubeAccount.recommended() }.getOrDefault(emptyList()) }
+                val subs = async { YouTubeAccount.feed() }
+                com.torrentviewer.core.interleave(listOf(rec.await(), subs.await()))
+            }
+        }
+        return list.also { accountCache = System.currentTimeMillis() to it }
+    }
+
+    private const val SEARCHES = "tubeSearches"
+
+    /** The last few searches, newest first (per profile). */
+    fun recentSearches(): List<String> = runCatching { org.json.JSONArray(Kv.get(SEARCHES) ?: "[]") }.getOrNull()
+        ?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } }.orEmpty()
+
+    /** A search kept, so Home leans towards it and the box opens on it. */
+    fun remember(query: String) {
+        val q = query.trim().takeIf { it.isNotEmpty() } ?: return
+        val list = (listOf(q) + recentSearches().filter { !it.equals(q, true) }).take(6)
+        Kv.set(SEARCHES, org.json.JSONArray(list).toString())
+    }
+
+    fun forgetSearches() = Kv.set(SEARCHES, null)
+
+    /** Videos from the last three searches, a few each, woven together. */
+    private suspend fun fromSearches(): List<TubeVideo> = coroutineScope {
+        recentSearches().take(3).map { q -> async { runCatching { search(q).videos.take(10) }.getOrDefault(emptyList()) } }.awaitAll()
+            .let(com.torrentviewer.core::interleave)
     }
 
     /** Home: subscriptions' newest first, then trending; trending alone until there are subscriptions. */
@@ -176,9 +207,15 @@ object Tube {
             val own = if (YouTubeAccount.signedIn.value) runCatching { accountFeed(fresh) }.getOrDefault(emptyList()) else emptyList()
             own.ifEmpty { if (subscriptions.value.isEmpty()) emptyList() else runCatching { subscriptionFeed(fresh) }.getOrDefault(emptyList()) }
         }
+        // What was searched lately (the owner's choice: Home follows what you look for, not YouTube's random picks).
+        val searched = async { runCatching { fromSearches() }.getOrDefault(emptyList()) }
         var failure: Throwable? = null
         val hot = async { runCatching { trending() }.onFailure { failure = it }.getOrDefault(emptyList()) }
-        val feed = homeFeed(subs.await(), hot.await())
+        // Yours first (account or subscriptions), then from your searches, YouTube's charts only after.
+        val feed = homeFeed(subs.await(), com.torrentviewer.core.interleave(listOf(searched.await(), hot.await())).let { mixed ->
+            val mine = searched.await()
+            if (mine.isEmpty()) mixed else mine + mixed.filter { v -> mine.none { it.id == v.id } }
+        })
         if (feed.isNotEmpty()) return@coroutineScope feed
         // YouTube's charts gave nothing (they are often empty or refused for a country): what's popular, found by
         // searching, so Home is never blank. A failure everywhere is said, with ↻, rather than an empty page.
