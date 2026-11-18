@@ -1395,16 +1395,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
-        Section("Genres on the home screen", "Leave all off to build the home screen from what you have watched.") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                GENRES.forEach { g ->
-                    val on = g in settings.genres
-                    Chip(g, on, icon = if (on) L.drawable.lucide_ic_check else null, onClick = {
-                        set(settings.copy(genres = if (on) settings.genres - g else settings.genres + g))
-                    })
-                }
-            }
-        }
+        // "Genres on the home screen" is gone from here (the owner's choice); the choice already made still stands.
         // Read by the lists opened from Home (a genre's, a row's "See all"); kept app-wide, as the phone's taste.
         var noAnimation by remember { mutableStateOf(com.torrentviewer.core.Kv.global(NO_ANIMATION) == "1") }
         ToggleSection("No Animation Results", "Cartoons and anime are left out of the genre lists and every row's See all. Animation's own list still shows them.", noAnimation) {
