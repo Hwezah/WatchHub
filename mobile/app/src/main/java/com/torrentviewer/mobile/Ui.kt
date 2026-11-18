@@ -165,7 +165,7 @@ fun Tap(
 }
 
 /** The near-white of a frosted button that isn't the main one, its words black: the same on either theme, since it sits on artwork. */
-private val GLASS_LIGHT = Color(0xFFF1F1F3)
+private val GLASS_LIGHT = Color(0xFFE0E0E3)
 
 /** The TV's buttons, on touch: red for the main action, translucent grey for the rest. */
 @Composable
@@ -209,7 +209,7 @@ fun Button(
                 fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
                 primary -> if (pressed) Ink.accent.copy(alpha = 0.8f) else Ink.accent
                 // A tint of the text colour: grey on either page.
-                else -> tint.copy(alpha = if (pressed) 0.22f else 0.12f)
+                else -> tint.copy(alpha = if (pressed) 0.18f else 0.09f)
             },
             Motion.effects(), label = "bg",
         )
@@ -218,11 +218,12 @@ fun Button(
             // The primary one — Play, Watch — a flat grainy red, a shade deeper while pressed; the rest a flat tint.
             (when {
                 // Opaque, one flat colour under the app's grain, no rim: red for the main one, near-white for the other.
-                glass -> Modifier.background(lerp(if (primary) Ink.accent else GLASS_LIGHT, Color.Black, if (pressed) 0.18f else 0f)).grain()
+                // A notch quieter than full strength (the owner's choice): a little black in every fill.
+                glass -> Modifier.background(lerp(if (primary) Ink.accent else GLASS_LIGHT, Color.Black, if (pressed) 0.28f else 0.12f)).grain()
                 // No button carries a gradient (the owner's choice): the main action is one flat red under the grain.
-                primary && fill == null -> Modifier.background(lerp(Ink.accent, Color.Black, if (pressed) 0.18f else 0f)).grain()
+                primary && fill == null -> Modifier.background(lerp(Ink.accent, Color.Black, if (pressed) 0.28f else 0.12f)).grain()
                 // The download buttons' green as frosted glass: a deep, opaque green under the grain (the owner's choice).
-                fill != null -> Modifier.background(lerp(fill, Color.Black, if (pressed) 0.5f else 0.38f)).grain()
+                fill != null -> Modifier.background(lerp(fill, Color.Black, if (pressed) 0.56f else 0.46f)).grain()
                 else -> Modifier.background(bg)
             })
                 .height(if (compact) 34.dp else 46.dp).padding(horizontal = if (compact) 14.dp else 20.dp),
@@ -776,7 +777,7 @@ fun ReloadArrow(busy: Boolean, tint: Color, size: Dp, modifier: Modifier = Modif
  * A card's face, frosted as Grabber's are (the owner's choice, for every card of a list — downloads, addons, settings,
  * plugins): the surface with the app's grain over it. [shape] is kept for the caller's clip.
  */
-fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape, color: Color = Ink.surface): Modifier =
+fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape, color: Color = SECTION_FACE): Modifier =
     // Bare: no rim round it (the owner's choice).
     background(color).grain()
 
@@ -810,4 +811,8 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
 /** A list card's colour (downloads, sources): nearly the page's own, a breath lighter, grain over it (the owner's choice). */
 val CARD_FACE: Color
     get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.45f)
+
+/** Settings' sections, addon and plugin cards: the surface toned down a notch toward the page (the owner's choice). */
+val SECTION_FACE: Color
+    get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.75f)
 

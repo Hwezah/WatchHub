@@ -301,7 +301,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             }
         }
         // Grabber's bar: across the whole card under the badge and words, thin, rounded, light on a dark track.
-        ProgressLine(row.ratio, Modifier.padding(top = 10.dp, end = 8.dp, bottom = 2.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f))
+        ProgressLine(row.ratio, Modifier.padding(top = 10.dp, end = 8.dp, bottom = 2.dp).fillMaxWidth().clip(CircleShape), height = 2.dp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.55f))
         if (row.state == DlState.WIFI || pack) Column {
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
