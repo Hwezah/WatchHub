@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -737,6 +738,8 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
             activity?.requestedOrientation = if (full) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             window?.let { w ->
                 WindowCompat.setDecorFitsSystemWindows(w, false)
+                // The window re-fits the screen as it turns, so nothing of the page sits past its edges.
+                w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                 val c = WindowInsetsControllerCompat(w, w.decorView)
                 c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 if (full) c.hide(WindowInsetsCompat.Type.systemBars()) else c.show(WindowInsetsCompat.Type.systemBars())
@@ -755,7 +758,7 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
             ) {
                 val q = quality
                 when {
-                    q != null && d != null -> TubePlayer(d.video, q, speed, autoplay = !resumed, onEnded = { d.related.firstOrNull()?.let(onOpen) })
+                    q != null && d != null -> TubePlayer(d.video, q, speed, autoplay = !resumed, full = full, onEnded = { d.related.firstOrNull()?.let(onOpen) })
                     error != null -> Artwork(start.thumb, start.title, Modifier.fillMaxSize())
                     else -> {
                         Artwork(start.thumb, start.title, Modifier.fillMaxSize())
@@ -763,7 +766,8 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
                     }
                 }
                 // Over the picture: back (or out of full screen), quality, full screen.
-                Row(Modifier.align(Alignment.TopStart).fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Full screen: kept inside the screen's safe area (clear of the cutout and the hidden bars' edges).
+                Row(Modifier.align(Alignment.TopStart).fillMaxWidth().then(if (full) Modifier.safeDrawingPadding() else Modifier).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Tap({ if (full) full = false else onClose() }, shape = CircleShape) {
                         Lc(if (full) L.drawable.lucide_ic_arrow_left else L.drawable.lucide_ic_chevron_down, Modifier.padding(10.dp), tint = Color.White, size = 22.dp)
                     }
@@ -885,7 +889,7 @@ private fun TubeAction(icon: Int, label: String, on: Boolean = false, onClick: (
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boolean, onEnded: () -> Unit) {
+private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boolean, full: Boolean, onEnded: () -> Unit) {
     val ctx = LocalContext.current
     // Tube's one player (background play): it lives in [TubeEngine], so leaving the app doesn't stop it.
     val player = remember { TubeEngine.player(ctx) }
@@ -952,7 +956,9 @@ private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boo
     }
     Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
         AndroidView(factory = { c -> android.view.TextureView(c).also { player.setVideoTextureView(it) } }, modifier = Modifier.aspectRatio(ratio))
-        if (shown) TrailerControls(remember(player) { ExoPlayback(player) }) else Spinner(size = 40.dp)
+        // The seek bar and play/pause, inside the safe area in full screen so the bar stays on the screen.
+        if (shown) Box(Modifier.fillMaxSize().then(if (full) Modifier.safeDrawingPadding() else Modifier)) { TrailerControls(remember(player) { ExoPlayback(player) }) }
+        else Spinner(size = 40.dp)
     }
 }
 
