@@ -438,16 +438,16 @@ object Browser {
                 exitFull = null
             }
         }
-        // The tab bar shows only on a page at rest at its very top (the owner's choice): any scroll away sends it off,
-        // back at the top it returns.
-        w.setOnScrollChangeListener { _, _, y, _, oldY ->
-            if (y > 0 && y != oldY) scrolledDown++ else if (y == 0 && oldY != 0) scrolledUp++
-        }
+        // Any movement of the page, either way, sends the tab bar off; it comes back once the page rests ([touched]).
+        w.setOnScrollChangeListener { _, _, y, _, oldY -> if (y != oldY) touched++ }
         // Any touch on the page sends the tab bar away (the owner's choice): a pop-up's buttons at the foot of the
         // screen (a site's own dialog, which scrolls inside itself) are never under it. It stays away until the page
         // is scrolled back up or another page opens.
         w.setOnTouchListener { _, e ->
-            if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) touched++
+            // Down, each move and the lift: the bar's rest timer starts over from the last of them.
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_MOVE, android.view.MotionEvent.ACTION_UP -> touched++
+            }
             false
         }
         w.addJavascriptInterface(BlobSaver(), "WatchHubBlob")
