@@ -690,7 +690,8 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
                 }
                 if (stremio) Text("✓ Signed in to Stremio — your library and where you stopped are below", Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint))
                 // End to end, like the other pill rows.
-                SpreadRow(Modifier.padding(bottom = 6.dp)) {
+                // Two pills: centred, the space shared round them (the owner's choice).
+                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Shelfs.entries.filter { it != Shelfs.HISTORY }.forEach { s -> Chip(s.label, s == shelf, onClick = { shelf = s }) }
                 }
             }
