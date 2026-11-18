@@ -814,7 +814,7 @@ private fun LazyListScope.sources(
             // The heading, and at its far right a green reload: these links' tokens expire within minutes.
             if (heading) Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 // An accent asterisk before the word, as the mirrors list marks its links (the owner's choice).
-                Lc(L.drawable.lucide_ic_asterisk, Modifier.padding(end = 8.dp), tint = Ink.accent, size = 22.dp)
+                Lc(L.drawable.lucide_ic_asterisk, Modifier.padding(end = 2.dp), tint = Ink.accent, size = 22.dp)
                 Text("Sources", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
                 if (onReload != null && hits != null) Tap(onReload, shape = RoundedCornerShape(5.dp)) {
                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
