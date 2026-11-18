@@ -24,5 +24,6 @@ fun libraryFolders(title: String, fileName: String, kind: String?, season: Int?)
     val ep = parseEpisode(fileName) ?: parseEpisode(title)
     val inSeason = season ?: ep?.season
     return if (kind == "tv" || inSeason != null) listOf("Shows", name) + listOfNotNull(inSeason?.let { "Season %02d".format(java.util.Locale.ROOT, it) })
-    else listOf("Movies", name)
+    // A film sits straight in Movies (the owner's choice): only shows get folders of their own.
+    else listOf("Movies")
 }

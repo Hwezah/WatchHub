@@ -509,7 +509,7 @@ class LibTest {
         val drawn = listOf(Title("a", "movie", "A", genres = listOf("Action", "Animation")), Title("b", "movie", "B", genres = listOf("Action")), Title("c", "tv", "C", genres = listOf("anime")))
         assertEquals(listOf("b"), withoutAnimation(drawn).map { it.imdb })
         // Downloads' folders under Grabber!: films by name, episodes by show and season.
-        assertEquals(listOf("Movies", "Interstellar"), libraryFolders("Interstellar", "Interstellar.2014.720p.mkv", "movie", null))
+        assertEquals(listOf("Movies"), libraryFolders("Interstellar", "Interstellar.2014.720p.mkv", "movie", null))
         assertEquals(listOf("Shows", "1923", "Season 01"), libraryFolders("1923 · S01E04", "1923.S01E04.720p.mkv", "tv", null))
         assertEquals(listOf("Shows", "Daredevil_ Born Again", "Season 02"), libraryFolders("Daredevil: Born Again", "x.mkv", "tv", 2))
         assertEquals(listOf("Shows", "Show"), libraryFolders("Show", "trailer.mkv", "tv", null))

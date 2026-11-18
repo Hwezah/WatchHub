@@ -324,11 +324,16 @@ object Downloads {
     private fun moveOld() {
         // Before the list is read (a profile opened ahead of init): nothing to go on yet, asked again next launch.
         if (!::app.isInitialized || Kv.global(MOVED_KEY) != null) return
+        val root = keepDir()
         val moved = _finished.value.map { f ->
-            if ("/Watchly/" !in f.file.path) return@map f
+            // Old Movies/Watchly files, and films an earlier build put in a folder of their own inside Movies.
+            val inMovieFolder = f.file.parentFile?.parentFile?.let { it.name == "Movies" && it.parentFile?.path == root.path } == true
+            if ("/Watchly/" !in f.file.path && !inMovieFolder) return@map f
             runCatching {
                 val folders = libraryFolders(f.titleName ?: f.name, f.file.name, f.kind, null)
-                val dest = File(folders.fold(keepDir()) { dir, part -> File(dir, part) }, f.file.name)
+                if (folders.firstOrNull() != "Movies" && inMovieFolder) return@runCatching f
+                val dest = File(folders.fold(root) { dir, part -> File(dir, part) }, f.file.name)
+                if (dest.path == f.file.path) return@runCatching f
                 dest.parentFile?.mkdirs()
                 if (!f.file.renameTo(dest)) {
                     f.file.copyTo(dest, overwrite = true)
@@ -344,11 +349,14 @@ object Downloads {
             File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "Watchly").walkBottomUp()
                 .forEach { if (it.isDirectory && it.listFiles().isNullOrEmpty()) it.delete() }
         }
+        // A film's emptied folder inside Movies goes too (Movies itself stays).
+        runCatching { File(root, "Movies").listFiles().orEmpty().filter { it.isDirectory && it.listFiles().isNullOrEmpty() }.forEach { it.delete() } }
         Kv.setGlobal(MOVED_KEY, "1")
     }
 
     /** Set once the old Movies/Watchly downloads were moved into Grabber!. */
-    private const val MOVED_KEY = "downloads-moved-to-grabber"
+    // A new key: runs once more, so films an earlier build put in folders of their own move up into Movies.
+    private const val MOVED_KEY = "downloads-layout-movies-flat"
 
     /* --------------------------------------------------------------- store */
 

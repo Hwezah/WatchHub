@@ -120,17 +120,17 @@ fun FilesScreen(watch: Watch) {
         Heading("Files")
         // Where we are: Grabber! › Shows › 1923, each part a step back up.
         Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (trail.isNotEmpty()) Tap({ trail = trail.dropLast(1) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_arrow_left, Modifier.padding(8.dp), tint = Ink.text, size = 20.dp) }
+            if (trail.isNotEmpty()) Tap({ trail = trail.dropLast(1) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_arrow_left, Modifier.padding(8.dp), tint = Ink.text, size = 24.dp) }
             // Spread across the width (the owner's choice), each part a tap back to that folder; the one here in bold.
             val parts = listOf(GRABBER_ROOT) + trail
             Row(Modifier.weight(1f).padding(start = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 parts.forEachIndexed { i, name ->
-                    if (i > 0) Text("›", style = Type.meta.copy(color = Ink.faint, fontSize = 13.sp))
+                    if (i > 0) Text("›", style = Type.meta.copy(color = Ink.faint, fontSize = 20.sp))
                     val here = i == parts.lastIndex
                     Text(
                         name,
                         Modifier.weight(1f, fill = false).clip(RoundedCornerShape(6.dp)).clickable(enabled = !here) { trail = trail.take(i) }.padding(horizontal = 4.dp, vertical = 6.dp),
-                        style = Type.meta.copy(color = if (here) Ink.text else Ink.muted, fontSize = 13.sp, fontWeight = if (here) FontWeight.SemiBold else FontWeight.Normal),
+                        style = Type.meta.copy(color = if (here) Ink.text else Ink.muted, fontSize = 16.sp, fontWeight = if (here) FontWeight.SemiBold else FontWeight.Normal),
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
