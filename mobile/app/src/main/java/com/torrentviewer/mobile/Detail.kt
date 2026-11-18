@@ -821,13 +821,13 @@ private fun LazyListScope.sources(
             }
             if (qualities.size > 1 || (!heading && onReload != null && hits != null)) {
                 // Spread across the row like the season pills; with many, 8 dp gaps and a sideways scroll.
-                SpreadRow(Modifier.padding(bottom = 12.dp)) {
-                    // Reload first: never lit like a chosen pill; spinning while links are still coming in.
-                    // Under a heading, the reload is the heading's; in the episode sheet (no heading), this pill.
-                    if (onReload != null && !heading) ReloadPill(busy, onReload)
-                    Chip("All", quality == null, onClick = { onQuality(null) })
-                    qualities.forEach { q -> Chip(q, quality == q, onClick = { onQuality(q) }) }
-                }
+                // Words split by coloured bars, the chosen one with a dot (the owner's choice); the reload stays a pill.
+                // Under a heading, the reload is the heading's; in the episode sheet (no heading), this pill, first.
+                val names = listOf<String?>(null) + qualities
+                BarChoices(
+                    listOf("All") + qualities, names.indexOf(quality).takeIf { it >= 0 }, Modifier.padding(bottom = 12.dp),
+                    leading = if (onReload != null && !heading) ({ ReloadPill(busy, onReload) }) else null,
+                ) { onQuality(names[it]) }
             }
             // The progress line: centred on an upright phone, from the start elsewhere.
             val centre = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart

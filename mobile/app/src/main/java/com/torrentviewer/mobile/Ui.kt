@@ -782,17 +782,19 @@ fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape, color: Color = I
 
 /**
  * Choices as words in a row, Grabber's way: no pills, a short coloured bar between each, the chosen one in the accent
- * colour with a dot before it. Scrolls sideways when there are more than fit.
+ * colour with a dot before it. Spread across the width as the pill rows were (bars midway between the words), scrolling
+ * sideways when there are more than fit. [leading] goes first, as it is (a reload button).
  */
 @Composable
-fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier, onPick: (Int) -> Unit) {
+fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier, leading: (@Composable () -> Unit)? = null, onPick: (Int) -> Unit) {
     val bars = listOf(Ink.accent, Ink.download, Ink.muted, Ink.good)
-    Row(modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+    SpreadRow(modifier) {
+        leading?.invoke()
         labels.forEachIndexed { i, label ->
             if (i > 0) Box(Modifier.size(width = 2.dp, height = 18.dp).clip(RoundedCornerShape(1.dp)).background(bars[(i - 1) % bars.size].copy(alpha = 0.8f)))
             val on = i == chosen
             Row(
-                Modifier.clip(RoundedCornerShape(6.dp)).clickable { onPick(i) }.padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier.clip(RoundedCornerShape(6.dp)).clickable { onPick(i) }.padding(horizontal = 4.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (on) Box(Modifier.padding(end = 6.dp).size(6.dp).clip(CircleShape).background(Ink.accent))
@@ -801,4 +803,3 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
         }
     }
 }
-
