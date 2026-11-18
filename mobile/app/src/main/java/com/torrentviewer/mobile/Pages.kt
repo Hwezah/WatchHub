@@ -1639,8 +1639,8 @@ fun AddonsScreen(watch: Watch) {
         // On an upright phone the two share the width, half each (as Search's Titles / Streams); elsewhere side by side.
         val half = isPortraitPhone()
         Row(if (half) Modifier.fillMaxWidth().padding(bottom = 16.dp) else Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Chip("Stremio addons", !plugins, onClick = { plugins = false }, if (half) Modifier.weight(1f) else Modifier)
-            Chip("CloudStream", plugins, onClick = { plugins = true }, if (half) Modifier.weight(1f) else Modifier)
+            Chip("Stremio Addons", !plugins, onClick = { plugins = false }, if (half) Modifier.weight(1f) else Modifier, tall = true)
+            Chip("CloudStream", plugins, onClick = { plugins = true }, if (half) Modifier.weight(1f) else Modifier, tall = true)
         }
         if (plugins) {
             PluginsSection(watch)
