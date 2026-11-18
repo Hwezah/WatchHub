@@ -197,7 +197,7 @@ object Tube {
     /** Videos from the last three searches, a few each, woven together. */
     private suspend fun fromSearches(): List<TubeVideo> = coroutineScope {
         recentSearches().take(3).map { q -> async { runCatching { search(q).videos.take(10) }.getOrDefault(emptyList()) } }.awaitAll()
-            .let(com.torrentviewer.core::interleave)
+            .let { com.torrentviewer.core.interleave(it) }
     }
 
     /** Home: subscriptions' newest first, then trending; trending alone until there are subscriptions. */
