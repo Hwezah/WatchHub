@@ -892,6 +892,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_radio, "Streaming", "Storage, buffer and trackers", "cache magnet") { page = "Streaming" },
                         Entry(L.drawable.lucide_ic_play, "Playback", "Player, languages and subtitles", "vlc media3 skip intro audio") { page = "Playback" },
                         Entry(L.drawable.lucide_ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
+                        Entry(L.drawable.lucide_ic_globe, "Browser", "Search engine, ads, pop-ups, redirects", "google duckduckgo bing brave ads popups redirects dark cookies") { page = "Browser" },
                         Entry(L.drawable.lucide_ic_shield, "Secure DNS", "For plugins: look sites up past your provider's blocks", "doh dns over https cloudflare google blocked network") { page = "Secure DNS" },
                         Entry(L.drawable.lucide_ic_sliders_horizontal, "Preferred download", "What one-tap Download picks: resolution, codec, format…", "720p x265 hevc mkv mp4 quality codec") { page = "Preferred download" },
                     ),
@@ -1311,6 +1312,36 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
         }
 
+        if (page == "Browser") Panel {
+            // The Grabber app's browser settings, for the Browser tab.
+            Section("Search Engine", "Where words typed in the Browser's address bar are searched.") {
+                var engine by remember { mutableStateOf(Browser.engine) }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Browser.ENGINES.forEach { (name, _) -> Chip(name, engine == name, onClick = { engine = name; Browser.engine = name }) }
+                }
+            }
+            Section("Pages", "How pages behave in the Browser tab.") {
+                @Composable
+                fun row(title: String, hint: String, get: () -> Boolean, set: (Boolean) -> Unit) {
+                    var on by remember { mutableStateOf(get()) }
+                    Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(title, style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                            Text(hint, style = Type.meta.copy(color = Ink.faint))
+                        }
+                        Toggle(on, { on = it; set(it) })
+                    }
+                }
+                row("Block Ads", "Drops requests to ad and tracker networks", { Browser.blockAds }, { Browser.blockAds = it })
+                row("Dark Pages", "Shows light websites dark, with the app's dark theme", { Browser.darkPages }, { Browser.darkPages = it })
+                row("Block Pop-ups", "Pages can't open new windows", { Browser.blockPopups }, { Browser.blockPopups = it })
+                row("Block Redirects", "Stops pages jumping to ad and betting sites; a bar offers Open Anyway", { Browser.blockRedirects }, { Browser.blockRedirects = it })
+                row("Spot Videos and Files", "Watches what pages load and offers it to download", { Browser.sniffMedia }, { Browser.sniffMedia = it })
+            }
+            Section("Browsing Data", "Forget cookies, sign-ins, the cache and history.") {
+                Button("Clear Browsing Data", { Browser.clearData(); watch.notes.tryEmit("Browsing data cleared") }, icon = L.drawable.lucide_ic_trash_2, compact = true)
+            }
+        }
         if (page == "Secure DNS") Panel {
         Text(
             "Many internet providers block streaming sites by their names, so plugins find few links or none. Auto (the " +

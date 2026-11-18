@@ -86,6 +86,57 @@ object Browser {
     /** Goes up when a tab's page had to be rebuilt (its renderer crashed): the screen puts the new one in. */
     var rebuilt by mutableIntStateOf(0)
 
+    /* ------------------------------------------------------------ settings (Settings → Browser, as Grabber's) */
+
+    /** Search engines: name to the address words are added to. */
+    val ENGINES = listOf(
+        "Google" to "https://www.google.com/search?q=",
+        "DuckDuckGo" to "https://duckduckgo.com/?q=",
+        "Bing" to "https://www.bing.com/search?q=",
+        "Brave" to "https://search.brave.com/search?q=",
+        "Startpage" to "https://www.startpage.com/do/search?q=",
+    )
+
+    private fun flag(key: String, default: Boolean) = Kv.global(key)?.let { it == "1" } ?: default
+    private fun setFlag(key: String, on: Boolean) { Kv.setGlobal(key, if (on) "1" else "0"); applySettings() }
+
+    /** Where typed words are searched: Google unless changed in Settings. */
+    var engine: String
+        get() = Kv.global("browserEngine")?.takeIf { e -> ENGINES.any { it.first == e } } ?: "Google"
+        set(v) = Kv.setGlobal("browserEngine", v)
+    var blockAds: Boolean get() = flag("browserBlockAds", true); set(v) = setFlag("browserBlockAds", v)
+    var darkPages: Boolean get() = flag("browserDarkPages", true); set(v) = setFlag("browserDarkPages", v)
+    var blockPopups: Boolean get() = flag("browserBlockPopups", true); set(v) = setFlag("browserBlockPopups", v)
+    var blockRedirects: Boolean get() = flag("browserBlockRedirects", true); set(v) = setFlag("browserBlockRedirects", v)
+    var sniffMedia: Boolean get() = flag("browserSniff", true); set(v) = setFlag("browserSniff", v)
+
+    /** Settings changed: every open tab takes them at once. */
+    private fun applySettings() = tabs.forEach { t ->
+        t.web?.settings?.let { s ->
+            s.javaScriptCanOpenWindowsAutomatically = !blockPopups
+            darken(s)
+        }
+    }
+
+    /** Settings: forget cookies, history and the cache, and go back to a blank start. */
+    fun clearData() {
+        CookieManager.getInstance().removeAllCookies(null)
+        android.webkit.WebStorage.getInstance().deleteAllData()
+        tabs.forEach { t ->
+            t.web?.apply {
+                clearHistory()
+                clearCache(true)
+                loadUrl("about:blank")
+            }
+            t.url = ""
+            t.title = ""
+            t.found.clear()
+            t.canBack = false
+            t.canForward = false
+        }
+        clearHistory()
+    }
+
     /** What the sheet should offer to download now (a tapped file link, a site's download, a find). */
     var offer by mutableStateOf<Offer?>(null)
 
@@ -131,7 +182,7 @@ object Browser {
 
     /** Whether this page jump should be stopped: to another site, and either untapped or to an ad or betting site. */
     private fun stopJump(t: BTab, request: WebResourceRequest): Boolean {
-        if (!request.isForMainFrame) return false
+        if (!blockRedirects || !request.isForMainFrame) return false
         val to = request.url.toString()
         if (t.pass == to) { t.pass = null; return false }
         val from = siteOf(android.net.Uri.parse(t.url).host)
@@ -178,6 +229,7 @@ object Browser {
     }
 
     private fun sniff(t0: BTab, url: String, sent: Map<String, String> = emptyMap()) {
+        if (!sniffMedia) return
         val kind = kindOf(url) ?: return
         // Pieces of a stream aren't worth listing; the stream itself is.
         if (Regex("""(seg|chunk|frag|part)[-_]?\d+""", RegexOption.IGNORE_CASE).containsMatchIn(url) && kind != "Stream (HLS)") return
@@ -219,7 +271,7 @@ object Browser {
             mediaPlaybackRequiresUserGesture = true
             // No pop-up windows: most are ads.
             setSupportMultipleWindows(false)
-            javaScriptCanOpenWindowsAutomatically = false
+            javaScriptCanOpenWindowsAutomatically = !blockPopups
             builtInZoomControls = true
             displayZoomControls = false
             loadWithOverviewMode = true
@@ -232,7 +284,7 @@ object Browser {
             // Runs on a background thread for every request: it must never throw.
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? = try {
                 val u = request.url
-                if (!request.isForMainFrame && blockedHost(u.host.orEmpty())) {
+                if (blockAds && !request.isForMainFrame && blockedHost(u.host.orEmpty())) {
                     main.post { t.blocked++ }
                     WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                 } else {
@@ -263,7 +315,7 @@ object Browser {
                     return true
                 }
                 if (u.scheme != "http" && u.scheme != "https") return true
-                if (blockedHost(u.host.orEmpty())) { t.blocked++; return true }
+                if (blockAds && blockedHost(u.host.orEmpty())) { t.blocked++; return true }
                 if (stopJump(t, request)) { t.stopped = u.toString(); return true }
                 return false
             }
@@ -362,14 +414,14 @@ object Browser {
         t.canForward = v.canGoForward()
     }
 
-    /** An address, or words to search for (DuckDuckGo, as Grabber's default). */
+    /** An address, or words to search for with the chosen [engine]. */
     fun go(input: String) {
         val t = input.trim()
         if (t.isEmpty()) return
         val target = when {
             t.startsWith("http://", true) || t.startsWith("https://", true) -> t
             !t.contains(' ') && t.contains('.') -> "https://$t"
-            else -> "https://duckduckgo.com/?q=" + java.net.URLEncoder.encode(t, "UTF-8")
+            else -> (ENGINES.firstOrNull { it.first == engine } ?: ENGINES.first()).second + java.net.URLEncoder.encode(t, "UTF-8")
         }
         val w = tab.web
         if (w != null) w.loadUrl(target) else tab.url = target
@@ -379,7 +431,7 @@ object Browser {
     @Suppress("DEPRECATION")
     private fun darken(s: android.webkit.WebSettings) {
         runCatching {
-            val dark = com.torrentviewer.core.Ink.isDark
+            val dark = darkPages && com.torrentviewer.core.Ink.isDark
             if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
                 androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(s, dark)
             } else if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
