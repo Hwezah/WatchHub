@@ -271,12 +271,16 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
         }
         val fg = if (on) Ink.onAccent else Ink.muted
         Row(
-            Modifier.background(bg).height(if (tall) 46.dp else if (compact) 32.dp else 36.dp).padding(horizontal = if (tall) 20.dp else if (compact) 11.dp else 16.dp),
+            // With an icon (Pause All…), a notch less room after the words and between icon and words (the owner's choice).
+            Modifier.background(bg).height(if (tall) 46.dp else if (compact) 32.dp else 36.dp).padding(
+                start = if (tall) 20.dp else if (compact) 11.dp else 16.dp,
+                end = (if (tall) 20.dp else if (compact) 11.dp else 16.dp) - if (icon != null) 3.dp else 0.dp,
+            ),
             horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
         ) {
             if (icon != null) {
                 Lc(icon, tint = fg, size = 16.dp)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(if (compact) 5.dp else 6.dp))
             }
             Text(label, style = Type.label.copy(fontSize = if (compact) 13.sp else 14.sp, color = fg, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium),
                 maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
