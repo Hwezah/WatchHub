@@ -622,8 +622,9 @@ object Downloads {
         "mp3", "m4a", "aac", "flac", "wav", "ogg", "opus" -> "Audio"
         "pdf", "doc", "docx", "epub", "txt", "xls", "xlsx", "ppt", "pptx" -> "Documents"
         "jpg", "jpeg", "png", "webp", "gif" -> "Images"
-        "zip", "rar", "7z", "apk", "torrent" -> "Other"
-        else -> "Video"
+        "mp4", "mkv", "webm", "avi", "mov", "m4v", "ts", "flv", "wmv", "mpg", "mpeg", "3gp", "m3u8" -> "Video"
+        // Anything else (an archive, an app, a VPN's .conf…): Other, and not checked as a video.
+        else -> "Other"
     }
 
     /** A page's video saved by yt-dlp: Grabber!/YouTube or Grabber!/Video. */
