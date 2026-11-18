@@ -79,11 +79,11 @@ import kotlinx.coroutines.delay
 import com.composables.icons.lucide.R as L
 
 /** The Tube tab's five parts, chosen along its top (the screenshot's bottom bar, moved up: the app has its own). */
-private enum class TubeSection(val label: String) { HOME("Home"), SUBS("Subscriptions"), HISTORY("History"), DOWNLOADS("Downloads"), YOU("You") }
+private enum class TubeSection(val label: String) { SUBS("Subscriptions"), HISTORY("History"), DOWNLOADS("Downloads"), YOU("Watch Later") }
 
 /** A page opened over the sections: a search, a channel, or a playlist. Back closes it. */
 private sealed interface TubeRoute {
-    data object Search : TubeRoute
+    data object You : TubeRoute
     data class Channel(val url: String, val name: String) : TubeRoute
     data class Playlist(val url: String, val name: String) : TubeRoute
 }
@@ -107,7 +107,15 @@ private fun tubeError(e: Throwable): String = when {
  */
 @Composable
 fun TubeScreen(watch: Watch) {
-    var section by rememberSaveable { mutableStateOf(TubeSection.HOME) }
+    var section by rememberSaveable { mutableStateOf(TubeSection.SUBS) }
+    var typed by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
+    var hints by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(typed) {
+        if (typed.isBlank() || typed == query) { hints = emptyList(); return@LaunchedEffect }
+        delay(250)
+        hints = runCatching { Tube.suggestions(typed) }.getOrDefault(emptyList()).take(8)
+    }
     val routes = remember { mutableStateListOf<TubeRoute>() }
     /** The videos opened, the newest on top: Back from a related video returns to the one before. */
     val playing = remember { mutableStateListOf<TubeVideo>() }
@@ -122,21 +130,39 @@ fun TubeScreen(watch: Watch) {
     }
 
     BackHandler(LocalShown.current && playing.isEmpty() && routes.isNotEmpty()) { routes.removeAt(routes.lastIndex) }
+    // Searching: Back clears the search and the feed comes back.
+    BackHandler(LocalShown.current && playing.isEmpty() && routes.isEmpty() && (query.isNotEmpty() || hints.isNotEmpty())) {
+        typed = ""; query = ""; hints = emptyList()
+    }
+    val playlist: (String, String) -> Unit = { url, name -> routes.add(TubeRoute.Playlist(url, name)) }
 
     Box(Modifier.fillMaxSize().background(Ink.bg)) {
         when (val route = routes.lastOrNull()) {
             null -> Column(Modifier.fillMaxSize()) {
-                TubeHeader(onSearch = { routes.add(TubeRoute.Search) })
+                TubeHeader(typed, { typed = it }, onSubmit = { query = typed.trim(); hints = emptyList() }, onLogin = { routes.add(TubeRoute.You) })
+                when {
+                    hints.isNotEmpty() -> LazyColumn(Modifier.fillMaxSize()) {
+                        items(hints) { h ->
+                            Row(Modifier.fillMaxWidth().clickable { typed = h; query = h; hints = emptyList() }.padding(horizontal = 22.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Lc(R.drawable.ic_search_thin, tint = Ink.faint, size = 18.dp)
+                                Text(h, Modifier.padding(start = 14.dp), style = Type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    query.isNotBlank() -> Paged(query, { Tube.search(query) }, "Nothing found for \"$query\".", open, { menu = it }, openChannel, playlist)
+                    else -> HomeFeed(open, { menu = it }, openChannel)
+                }
+            }
+            TubeRoute.You -> Column(Modifier.fillMaxSize()) {
+                BackBar("You", onBack = { routes.removeAt(routes.lastIndex) })
                 SectionRow(section) { section = it }
                 when (section) {
-                    TubeSection.HOME -> HomeFeed(open, { menu = it }, openChannel)
                     TubeSection.SUBS -> SubsFeed(open, { menu = it }, openChannel)
                     TubeSection.HISTORY -> HistoryList(open, { menu = it }, openChannel)
                     TubeSection.DOWNLOADS -> TubeDownloads(watch)
                     TubeSection.YOU -> YouPage(open, { menu = it }, openChannel)
                 }
             }
-            TubeRoute.Search -> SearchPage(open, { menu = it }, openChannel, onPlaylist = { url, name -> routes.add(TubeRoute.Playlist(url, name)) }, onBack = { routes.removeAt(routes.lastIndex) })
             is TubeRoute.Channel -> androidx.compose.runtime.key(route) {
                 ChannelPage(route.url, route.name, open, { menu = it }, onPlaylist = { url, name -> routes.add(TubeRoute.Playlist(url, name)) }, onBack = { routes.removeAt(routes.lastIndex) })
             }
@@ -191,15 +217,34 @@ fun TubeScreen(watch: Watch) {
     saving?.let { v -> SaveSheet(v, onDone = { saving = null }) }
 }
 
-/** "Tube" on the left; Cast and Search on the right, as the screenshot. */
+/**
+ * The Tube tab's only bar (the owner's choice: very basic): a thin search mark, a roomy, quiet input, and a thin
+ * sign-in mark that opens You — subscriptions, history, downloads, Watch Later. No account: everything is kept here.
+ */
 @Composable
-private fun TubeHeader(onSearch: () -> Unit) {
-    val context = LocalContext.current
-    val canCast = remember { castContext(context) != null }
-    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 18.dp, end = 8.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Tube", Modifier.weight(1f), style = Type.display)
-        if (canCast) AndroidView(factory = ::castButton, modifier = Modifier.size(46.dp))
-        Tap(onSearch, shape = CircleShape) { Lc(L.drawable.lucide_ic_search, Modifier.padding(11.dp), tint = Ink.text, size = 24.dp) }
+private fun TubeHeader(typed: String, onTyped: (String) -> Unit, onSubmit: () -> Unit, onLogin: () -> Unit) {
+    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Tap(onSubmit, shape = CircleShape) { Lc(R.drawable.ic_search_thin, Modifier.padding(8.dp), tint = Ink.text, size = 30.dp) }
+        Row(
+            Modifier.weight(1f).padding(horizontal = 6.dp).height(52.dp).clip(RoundedCornerShape(26.dp)).background(Ink.text.copy(alpha = 0.06f)).padding(horizontal = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (typed.isEmpty()) Text("Search YouTube", style = Type.label.copy(color = Ink.faint, fontSize = 16.sp), maxLines = 1)
+                androidx.compose.foundation.text.BasicTextField(
+                    value = typed,
+                    onValueChange = onTyped,
+                    singleLine = true,
+                    textStyle = Type.label.copy(fontSize = 16.sp),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink.accent),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { onSubmit() }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (typed.isNotEmpty()) Tap({ onTyped("") }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(4.dp), tint = Ink.muted, size = 18.dp) }
+        }
+        Tap(onLogin, shape = CircleShape) { Lc(R.drawable.ic_user_thin, Modifier.padding(8.dp), tint = Ink.text, size = 30.dp) }
     }
 }
 
@@ -575,39 +620,6 @@ private fun Paged(
             loading -> item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { Spinner(size = 34.dp) } }
             videos.isEmpty() && links.isEmpty() -> item { Note(empty, Modifier.padding(vertical = 12.dp)) }
         }
-    }
-}
-
-/** Search: a box with YouTube's suggestions as it's typed; results as cards, more as the list nears its end. */
-@Composable
-private fun SearchPage(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit, onPlaylist: (String, String) -> Unit, onBack: () -> Unit) {
-    var typed by rememberSaveable { mutableStateOf("") }
-    var query by rememberSaveable { mutableStateOf("") }
-    var hints by remember { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(typed) {
-        if (typed.isBlank() || typed == query) { hints = emptyList(); return@LaunchedEffect }
-        delay(250)
-        hints = runCatching { Tube.suggestions(typed) }.getOrDefault(emptyList()).take(8)
-    }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 14.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Tap(onBack, shape = CircleShape) { Lc(L.drawable.lucide_ic_arrow_left, Modifier.padding(10.dp), tint = Ink.text, size = 22.dp) }
-            Field(typed, { typed = it }, "Search YouTube", Modifier.weight(1f), onSubmit = { query = typed.trim(); hints = emptyList() }, leading = L.drawable.lucide_ic_search, trailing = {
-                if (typed.isNotEmpty()) Tap({ typed = ""; hints = emptyList() }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 18.dp) }
-            })
-        }
-        if (hints.isNotEmpty()) {
-            LazyColumn(Modifier.fillMaxSize()) {
-                items(hints) { h ->
-                    Row(Modifier.fillMaxWidth().clickable { typed = h; query = h; hints = emptyList() }.padding(horizontal = 20.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Lc(L.drawable.lucide_ic_search, tint = Ink.faint, size = 18.dp)
-                        Text(h, Modifier.padding(start = 14.dp), style = Type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        } else if (query.isNotBlank()) {
-            Paged(query, { Tube.search(query) }, "Nothing found for \"$query\".", onOpen, onMenu, onChannel, onPlaylist)
-        } else Note("Search videos, channels and playlists.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
     }
 }
 
