@@ -70,6 +70,8 @@ fun BrowserScreen() {
     /** "bookmarks" or "history" while that list is open. */
     var places by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { Browser.load() }
+    // A VPN config just taken in from a page: the sheet opens, its VPN switch at the top, the note under the title.
+    LaunchedEffect(Browser.vpnAdded) { if (Browser.vpnAdded > 0) menu = true }
     LaunchedEffect(Browser.url, typing, Browser.current) { if (!typing) input = Browser.url }
     val shown = LocalShown.current
     BackHandler(shown && Browser.canBack && !Browser.fullScreen) { Browser.back() }

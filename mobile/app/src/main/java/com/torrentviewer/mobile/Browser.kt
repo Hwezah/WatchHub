@@ -137,6 +137,56 @@ object Browser {
         clearHistory()
     }
 
+    /** Counts up each time the page is touched: the tab bar goes away. */
+    var touched by mutableIntStateOf(0)
+
+    /** The one file the page was just asked for, so [BlobSaver] takes nothing a page sends it unasked. */
+    @Volatile private var pending: String? = null
+
+    /** A blob: or data: link's file, read inside the page (only it can) and handed to [BlobSaver]. */
+    private fun saveMade(w: WebView, url: String, name: String, mime: String?) {
+        val token = java.util.UUID.randomUUID().toString()
+        pending = token
+        val q = org.json.JSONObject.quote(url)
+        val n = org.json.JSONObject.quote(name)
+        val m = org.json.JSONObject.quote(mime ?: "")
+        w.evaluateJavascript(
+            "(function(){fetch($q).then(function(r){return r.blob()}).then(function(b){var f=new FileReader();" +
+                "f.onloadend=function(){WatchHubBlob.save('$token',$n,$m,f.result)};f.readAsDataURL(b)})" +
+                ".catch(function(e){WatchHubBlob.save('$token',$n,$m,'')})})();",
+            null,
+        )
+    }
+
+    /**
+     * What a page made itself, back from [saveMade]: a WireGuard config goes straight into the VPN (Settings → VPN);
+     * anything else is saved to Grabber! by its kind.
+     */
+    private class BlobSaver {
+        @android.webkit.JavascriptInterface
+        fun save(token: String, name: String, mime: String, dataUrl: String) {
+            if (token != pending) return
+            pending = null
+            val bytes = runCatching { android.util.Base64.decode(dataUrl.substringAfter("base64,", ""), android.util.Base64.DEFAULT) }.getOrNull()
+            main.post {
+                if (bytes == null || bytes.isEmpty()) { note = "Couldn't save $name"; return@post }
+                val text = runCatching { String(bytes, Charsets.UTF_8) }.getOrDefault("")
+                if (name.endsWith(".conf", true) && "[Interface]" in text && "PrivateKey" in text) {
+                    val problem = Vpn.import(text)
+                    offer = null
+                    note = problem ?: "VPN config added. Turn the VPN on with the switch here or in Settings → VPN."
+                    vpnAdded++
+                } else {
+                    runCatching { Downloads.saveFile(name, bytes) }
+                        .onSuccess { note = "Saved $name to Grabber!/$it" }.onFailure { note = "Couldn't save $name" }
+                }
+            }
+        }
+    }
+
+    /** Counts up when a page's VPN config was taken in: the Browser opens its sheet to show the switch. */
+    var vpnAdded by mutableIntStateOf(0)
+
     /** A line the Browser's sheet shows once (no VPN config yet…). */
     var note by mutableStateOf<String?>(null)
 
@@ -326,6 +376,7 @@ object Browser {
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                scrolledUp++
                 val u = if (url == "about:blank") "" else url
                 if (u != t.url) t.found.clear()
                 t.url = u
@@ -387,12 +438,27 @@ object Browser {
                 exitFull = null
             }
         }
+        // The tab bar shows only on a page at rest at its very top (the owner's choice): any scroll away sends it off,
+        // back at the top it returns.
         w.setOnScrollChangeListener { _, _, y, _, oldY ->
-            if (y > oldY + 6) scrolledDown++ else if (y < oldY - 6) scrolledUp++
+            if (y > 0 && y != oldY) scrolledDown++ else if (y == 0 && oldY != 0) scrolledUp++
         }
+        // Any touch on the page sends the tab bar away (the owner's choice): a pop-up's buttons at the foot of the
+        // screen (a site's own dialog, which scrolls inside itself) are never under it. It stays away until the page
+        // is scrolled back up or another page opens.
+        w.setOnTouchListener { _, e ->
+            if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) touched++
+            false
+        }
+        w.addJavascriptInterface(BlobSaver(), "WatchHubBlob")
         // A file the site hands over: straight to the download sheet, with this page's headers.
         w.setDownloadListener { url, ua, disposition, mime, _ ->
             val name = URLUtil.guessFileName(url, disposition, mime)
+            // A file the page made itself (Proton's VPN config, a site's "export"): read in the page and saved here.
+            if (url.startsWith("blob:") || url.startsWith("data:")) {
+                saveMade(w, url, name, mime)
+                return@setDownloadListener
+            }
             val s = Sniffed(url, kindOf(name) ?: "File", t.url, name)
             offer = Offer(url, name, headersFor(s, t) + ("User-Agent" to ua), direct = true, kind = s.kind)
         }

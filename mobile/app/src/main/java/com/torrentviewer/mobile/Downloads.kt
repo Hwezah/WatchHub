@@ -627,6 +627,16 @@ object Downloads {
         else -> "Other"
     }
 
+    /** A file a web page made (no link to fetch), written to its Grabber! folder and listed. The folder's name. */
+    fun saveFile(name: String, bytes: ByteArray): String {
+        val folder = webFolder(name)
+        val dest = File(File(keepDir(), folder), safe(name))
+        dest.parentFile?.mkdirs()
+        dest.writeBytes(bytes)
+        writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, null, name, null, WEB_KIND)) + _finished.value.filter { it.path != dest.path })
+        return folder
+    }
+
     /** A page's video saved by yt-dlp: Grabber!/YouTube or Grabber!/Video. */
     const val MEDIA_KIND = "media"
 

@@ -527,9 +527,12 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 pillShown = true
             }
             // A web page scrolls inside its WebView, out of Compose's reach: the Browser counts its moves.
-            LaunchedEffect(Browser.scrolledDown, Browser.scrolledUp) {
-                if (tab == Tab.BROWSER && Browser.scrolledDown + Browser.scrolledUp > 0) { pillShown = false; moved++ }
+            // The Browser: a touch on the page, or scrolling down, sends the bar away and it stays away (a site's own
+            // pop-up has its buttons at the foot of the screen); scrolling back up, or a new page, brings it back.
+            LaunchedEffect(Browser.touched, Browser.scrolledDown) {
+                if (tab == Tab.BROWSER && Browser.touched + Browser.scrolledDown > 0) pillShown = false
             }
+            LaunchedEffect(Browser.scrolledUp) { if (tab == Tab.BROWSER && Browser.scrolledUp > 0) pillShown = true }
             val watchScroll = remember {
                 object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
                     override fun onPostScroll(
