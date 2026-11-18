@@ -72,6 +72,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -495,10 +496,24 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 Box(Modifier.weight(1f).fillMaxHeight()) { body() }
             }
         } else if (SettingsStore.value.collectAsState().value.navStyle == "pill") {
-            // The pages run to the bottom edge; the pill floats over them.
-            Box(Modifier.fillMaxSize()) {
+            // The pages run to the bottom edge; the pill floats over them. It slides away while the page is scrolled
+            // down — so the last items are never under it — and back the moment it's scrolled up (or a tab changes).
+            var pillShown by remember { mutableStateOf(true) }
+            LaunchedEffect(tab) { pillShown = true }
+            val watchScroll = remember {
+                object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+                    override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                        if (available.y < -6f) pillShown = false else if (available.y > 6f) pillShown = true
+                        return androidx.compose.ui.geometry.Offset.Zero
+                    }
+                }
+            }
+            Box(Modifier.fillMaxSize().nestedScroll(watchScroll)) {
                 body()
-                PillBar(tab, choose, Modifier.align(Alignment.BottomCenter))
+                AnimatedVisibility(
+                    pillShown, Modifier.align(Alignment.BottomCenter),
+                    enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
+                ) { PillBar(tab, choose) }
             }
         } else {
             Column(Modifier.fillMaxSize()) {
