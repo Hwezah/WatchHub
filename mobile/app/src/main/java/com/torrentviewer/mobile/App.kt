@@ -639,17 +639,12 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
 private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier.navigationBarsPadding().padding(bottom = 12.dp)
-            // Solid and dark, so nothing shows through, but still glass: a faint lift at the top fading to the page's
-            // black, the grain over it, and a rim catching light along the top edge.
+            // Frosted, bare (no rim, the owner's choice): one flat colour a little lighter than the page's cards, so the
+            // pill stands out over them, with the grain over it.
             .clip(RoundedCornerShape(50))
-            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.55f), Ink.bg)))
+            .background(androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f))
             .grain()
-            .border(
-                1.dp,
-                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Ink.text.copy(alpha = 0.16f), Ink.text.copy(alpha = 0.04f))),
-                RoundedCornerShape(50),
-            )
-            .padding(6.dp),
+            .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -658,9 +653,9 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
             Tap({ onTab(t) }, shape = RoundedCornerShape(50)) {
                 Box(
                     Modifier.clip(RoundedCornerShape(50)).background(if (on) Ink.text.copy(alpha = 0.16f) else Color.Transparent)
-                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                        .padding(horizontal = 15.dp, vertical = 9.dp),
                     contentAlignment = Alignment.Center,
-                ) { Lc(t.icon, tint = if (on) Ink.text else Ink.muted, size = 24.dp) }
+                ) { Lc(t.icon, tint = if (on) Ink.text else Ink.muted, size = 21.dp) }
             }
         }
     }
