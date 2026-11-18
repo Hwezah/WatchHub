@@ -585,7 +585,7 @@ private fun headingStyle(text: String) =
 
 /* -------------------------------------------------------------- library */
 
-private enum class Shelfs(val label: String) { HISTORY("History"), LATER("My List"), FAVORITE("Favourites") }
+private enum class Shelfs(val label: String) { HISTORY("History"), LATER("My Listing"), FAVORITE("Favourites") }
 
 private enum class LibrarySection(val label: String) { WISHLIST("Wishlist"), DOWNLOADS("Downloads") }
 
@@ -596,18 +596,17 @@ private enum class LibrarySection(val label: String) { WISHLIST("Wishlist"), DOW
 @Composable
 private fun LibraryTabs(on: LibrarySection, running: Boolean, onPick: (LibrarySection) -> Unit) =
     // The chosen tab's red dot, no line under (the owner's choice); a download running shows green by Downloads.
-    TextTabs(
-        LibrarySection.entries.map { it.label }, on.ordinal, dotAt = on.ordinal, underline = false,
-        busyAt = if (running) LibrarySection.DOWNLOADS.ordinal else null,
-    ) { onPick(LibrarySection.entries[it]) }
+    // Only the chosen tab has a dot (the owner's choice); the two sit at the row's far ends.
+    TextTabs(LibrarySection.entries.map { it.label }, on.ordinal, dotAt = on.ordinal, underline = false, ends = true) { onPick(LibrarySection.entries[it]) }
 
 /**
  * Tabs as plain words spread across the width, the chosen one bright with a red line under it as wide as the word;
  * a red dot beside the one at [dotAt]. The Library's Wishlist / Downloads, a genre's Movies / Shows.
  */
 @Composable
-fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, underline: Boolean = true, busyAt: Int? = null, onPick: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, underline: Boolean = true, busyAt: Int? = null, ends: Boolean = false, onPick: (Int) -> Unit) {
+    // [ends]: the first at the left edge and the last at the right, rather than spread evenly.
+    Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = if (ends) Arrangement.SpaceBetween else Arrangement.SpaceEvenly) {
         labels.forEachIndexed { i, label ->
             val on = i == chosen
             Column(
@@ -711,7 +710,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
             items(fromStremio, key = { "stremio:${it.imdb}" }) { s -> StremioRow(s) { onOpen(Title(s.imdb, s.kind, s.title, year = s.year)) } }
         } else {
             if (listed.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Note(if (shelf == Shelfs.LATER) "Titles you add to My List wait here." else "Titles you like collect here.", Modifier.padding(top = 16.dp))
+                Note(if (shelf == Shelfs.LATER) "Titles you add to My Listing wait here." else "Titles you like collect here.", Modifier.padding(top = 16.dp))
             }
             items(listed, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
         }

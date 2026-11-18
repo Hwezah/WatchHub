@@ -494,7 +494,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     Row(Modifier.fillMaxWidth().padding(top = 14.dp)) {
                         val share = Modifier.weight(1f)
                         // Green tick for My List, red heart for Like — each fills its disc when on.
-                        Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My List" else "My List", { SavedStore.toggle(title) }, modifier = share, on = inList, onColor = Ink.good)
+                        Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My Listing" else "My Listing", { SavedStore.toggle(title) }, modifier = share, on = inList, onColor = Ink.good)
                         Action(L.drawable.lucide_ic_heart, if (liked) "Liked" else "Like", { SavedStore.toggle(title, "favorite") }, modifier = share, on = liked, onColor = Ink.accent)
                         // No Download here: each source row has its own ⬇ (one-tap, by Preferred download, is the episodes').
                         // Always here: Cinemeta's trailer, else TMDB's, played in the card over the page.

@@ -345,7 +345,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                 }
             }
             if (watchlist.isNotEmpty()) item(key = "list") {
-                Rail("My List") { TitleRow(state.row("list"), watchlist, onOpen) }
+                Rail("My Listing") { TitleRow(state.row("list"), watchlist, onOpen) }
             }
             if (picks.isNotEmpty()) item(key = "picks") {
                 Rail("Picked for you") { PickedRow(state.row("picks"), picks, onOpen) }
@@ -563,7 +563,7 @@ private fun HeroButtons(t: Title, inList: Boolean, onOpen: (Title) -> Unit, modi
         Button("Watch", { onOpen(t) }, each, icon = L.drawable.lucide_ic_play, primary = true, glass = true)
         // Wide enough for "In My List", and the details screen's toggle: a green disc springs in behind the tick.
         Button(
-            if (inList) "In My List" else "My List", { SavedStore.toggle(t) }, each,
+            if (inList) "In My Listing" else "My Listing", { SavedStore.toggle(t) }, each,
             icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList, glass = true,
         )
     }
