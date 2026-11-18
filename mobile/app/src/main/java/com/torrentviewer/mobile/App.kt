@@ -669,9 +669,9 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                 Box(
                     // The chosen tab's capsule in the accent the viewer picked (the owner's choice).
                     Modifier.clip(RoundedCornerShape(50)).background(if (on) Ink.accent else Color.Transparent)
-                        .padding(horizontal = 15.dp, vertical = 9.dp),
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center,
-                ) { Lc(t.icon, tint = if (on) Ink.onAccent else Ink.muted, size = 21.dp) }
+                ) { Lc(t.icon, tint = if (on) Ink.onAccent else Ink.muted, size = 22.dp) }
             }
         }
     }
