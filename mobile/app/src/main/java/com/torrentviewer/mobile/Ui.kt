@@ -165,7 +165,7 @@ fun Tap(
 }
 
 /** The near-white of a frosted button that isn't the main one, its words black: the same on either theme, since it sits on artwork. */
-private val GLASS_LIGHT = Color(0xFFE0E0E3)
+private val GLASS_LIGHT = Color(0xFFF1F1F3)
 
 /** The TV's buttons, on touch: red for the main action, translucent grey for the rest. */
 @Composable
@@ -222,7 +222,8 @@ fun Button(
             (when {
                 // Opaque, one flat colour under the app's grain, no rim: red for the main one, near-white for the other.
                 // A notch quieter than full strength (the owner's choice): a little black in every fill.
-                glass -> Modifier.background(lerp(if (primary) Ink.accent else glassFill, Color.Black, if (pressed) 0.28f else 0.12f)).grain()
+                // The second (My Listing) stays at full strength: toned down, the near-white read as a faint grey.
+                glass -> Modifier.background(lerp(if (primary) Ink.accent else glassFill, Color.Black, if (pressed) 0.28f else if (primary) 0.12f else 0f)).grain()
                 // No button carries a gradient (the owner's choice): the main action is one flat red under the grain.
                 primary && fill == null -> Modifier.background(lerp(Ink.accent, Color.Black, if (pressed) 0.28f else 0.12f)).grain()
                 // The download buttons' green as frosted glass: a deep, opaque green under the grain (the owner's choice).

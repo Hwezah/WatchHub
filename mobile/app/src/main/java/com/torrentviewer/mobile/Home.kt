@@ -533,9 +533,22 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                         HeroButtons(t, inList, onOpen, Modifier.padding(top = 16.dp))
                     }
                 }
+            } else if (!HeaderEdge.fade) {
+                // Clean line (Settings → Appearance): as a title's page lays out — the picture with its logo at its foot,
+                // ending on a straight edge, and the facts and buttons below it on the page itself.
+                Column(open, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        Artwork(t.wide, t.title, Modifier.fillMaxSize(), fill = false)
+                        Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 14.dp).widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
+                            TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
+                        }
+                    }
+                    Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 18.dp, start = EDGE, end = EDGE))
+                    HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 14.dp, bottom = 22.dp))
+                }
             } else {
                 Box(open) {
-                    Artwork(t.wide, t.title, Modifier.fillMaxSize().then(if (HeaderEdge.fade) Modifier.bottomScrim(0.35f) else Modifier), fill = false)
+                    Artwork(t.wide, t.title, Modifier.fillMaxSize().bottomScrim(0.35f), fill = false)
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = EDGE, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
                             TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
