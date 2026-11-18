@@ -155,17 +155,31 @@ fun BrowserScreen() {
         }
     }
 
-    if (menu) BottomSheet("Browser", { menu = false }, trailing = if (Browser.url.isNotEmpty()) ({
-        val marked = Browser.isBookmarked(Browser.url)
-        Tap({ Browser.toggleBookmark(Browser.url, Browser.title) }, Modifier.size(44.dp), CircleShape) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_bookmark, tint = if (marked) Ink.accent else Ink.text, size = 22.dp) }
+    // The VPN switch beside the title (the owner's choice), then the page's bookmark mark.
+    if (menu) BottomSheet("Browser", { menu = false }, trailing = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            VpnSwitch(onNoConfig = { Browser.note = "Add a VPN config first: Settings → VPN" })
+            if (Browser.url.isNotEmpty()) {
+                val marked = Browser.isBookmarked(Browser.url)
+                Tap({ Browser.toggleBookmark(Browser.url, Browser.title) }, Modifier.size(44.dp), CircleShape) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_bookmark, tint = if (marked) Ink.accent else Ink.text, size = 22.dp) }
+                }
+            }
         }
-    }) else null) {
+    }) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
+            Browser.note?.let { Text(it, Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint)) }
+            // Icons only: three words side by side were cut short ("For…", "Relo…").
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button("Back", { Browser.back(); menu = false }, Modifier.weight(1f), icon = L.drawable.lucide_ic_arrow_left, compact = true)
-                Button("Forward", { Browser.forward(); menu = false }, Modifier.weight(1f), icon = L.drawable.lucide_ic_arrow_right, compact = true)
-                Button("Reload", { Browser.reload(); menu = false }, Modifier.weight(1f), icon = L.drawable.lucide_ic_rotate_cw, compact = true)
+                listOf(
+                    L.drawable.lucide_ic_arrow_left to { Browser.back() },
+                    L.drawable.lucide_ic_arrow_right to { Browser.forward() },
+                    L.drawable.lucide_ic_rotate_cw to { Browser.reload() },
+                ).forEach { (icon, go) ->
+                    Tap({ go(); menu = false }, Modifier.weight(1f).height(44.dp), RoundedCornerShape(12.dp)) {
+                        Box(Modifier.fillMaxSize().background(QUIET_FILL), contentAlignment = Alignment.Center) { Lc(icon, tint = Ink.text, size = 22.dp) }
+                    }
+                }
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

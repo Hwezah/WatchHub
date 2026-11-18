@@ -1,0 +1,96 @@
+package com.torrentviewer.mobile
+
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.torrentviewer.core.Ink
+import com.torrentviewer.core.Type
+import com.composables.icons.lucide.R as L
+
+/**
+ * The VPN's on/off, wherever it's offered (the Browser's sheet, Settings): on asks Android for leave the first time,
+ * then connects. Without a config yet, [onNoConfig] says where to add one.
+ */
+@Composable
+fun VpnSwitch(label: String = "VPN", onNoConfig: () -> Unit = {}, modifier: Modifier = Modifier) {
+    val state by Vpn.state.collectAsState()
+    val allow = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK) Vpn.connect()
+    }
+    val on = state == VpnState.ON || state == VpnState.CONNECTING
+    LabeledToggle(if (state == VpnState.CONNECTING) "Connecting…" else label, on, { want ->
+        when {
+            !want -> Vpn.disconnect()
+            !Vpn.hasConfig() -> onNoConfig()
+            else -> Vpn.permission()?.let { allow.launch(it) } ?: Vpn.connect()
+        }
+    }, modifier)
+}
+
+/**
+ * Settings → VPN: the WireGuard config (imported from a file), whether only this app goes through it, the switch,
+ * and where it connects.
+ */
+@Composable
+fun VpnSettings(say: (String) -> Unit) {
+    val context = LocalContext.current
+    val state by Vpn.state.collectAsState()
+    val error by Vpn.error.collectAsState()
+    var has by remember { mutableStateOf(Vpn.hasConfig()) }
+    var onlyApp by remember { mutableStateOf(Vpn.onlyApp) }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val text = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } }.getOrNull().orEmpty()
+        val problem = Vpn.import(text)
+        has = Vpn.hasConfig()
+        say(problem ?: "VPN config added")
+    }
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    when (state) {
+                        VpnState.ON -> "Connected"
+                        VpnState.CONNECTING -> "Connecting…"
+                        VpnState.FAILED -> "Not connected"
+                        VpnState.OFF -> if (has) "Off" else "No config yet"
+                    },
+                    style = Type.title.copy(fontWeight = FontWeight.Bold, color = if (state == VpnState.ON) Ink.download else Ink.text),
+                )
+                Vpn.server()?.let { Text("Server: $it", style = Type.meta.copy(color = Ink.faint)) }
+            }
+            if (has) VpnSwitch("")
+        }
+        error?.let { Text(it, Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.danger)) }
+        if (has) Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text("Only WatchHub", style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Text("Streams, downloads and the Browser go through it; the rest of the phone doesn't. Off: the whole phone.", style = Type.meta.copy(color = Ink.faint))
+            }
+            Toggle(onlyApp, { onlyApp = it; Vpn.onlyApp = it })
+        }
+        Button(if (has) "Replace Config File" else "Import Config File", { pick.launch(arrayOf("*/*")) }, Modifier.padding(top = 16.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_upload, compact = true)
+        if (has) Button("Remove Config", { Vpn.forget(); has = false; say("VPN config removed") }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_trash_2, compact = true)
+        Text(
+            "Use a WireGuard config (.conf) from your VPN's website: Mullvad (Account → WireGuard configuration), " +
+                "Proton VPN (Downloads → WireGuard configuration), Windscribe or IVPN. It stays encrypted on this phone.",
+            Modifier.padding(top = 12.dp), style = Type.meta.copy(color = Ink.faint),
+        )
+    }
+}

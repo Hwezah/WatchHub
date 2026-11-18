@@ -893,6 +893,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_play, "Playback", "Player, languages and subtitles", "vlc media3 skip intro audio") { page = "Playback" },
                         Entry(L.drawable.lucide_ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
                         Entry(L.drawable.lucide_ic_user, "Accounts", "YouTube sign-in for Tube and downloads", "youtube google login sign in account subscriptions") { page = "Accounts" },
+                        Entry(L.drawable.lucide_ic_shield, "VPN", "WireGuard: Mullvad, Proton… for this app or the whole phone", "vpn wireguard mullvad proton privacy") { page = "VPN" },
                         Entry(L.drawable.lucide_ic_globe, "Browser", "Search engine, ads, pop-ups, redirects", "google duckduckgo bing brave ads popups redirects dark cookies") { page = "Browser" },
                         Entry(L.drawable.lucide_ic_shield, "Secure DNS", "For plugins: look sites up past your provider's blocks", "doh dns over https cloudflare google blocked network") { page = "Secure DNS" },
                         Entry(L.drawable.lucide_ic_sliders_horizontal, "Preferred download", "What one-tap Download picks: resolution, codec, format…", "720p x265 hevc mkv mp4 quality codec") { page = "Preferred download" },
@@ -1313,6 +1314,11 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
         }
 
+        if (page == "VPN") Panel {
+            Section("VPN", "A WireGuard connection inside the app, from a provider you pay for. Android asks once for leave.") {
+                VpnSettings { watch.notes.tryEmit(it) }
+            }
+        }
         if (page == "Accounts") Panel {
             Section("YouTube", "Signed in, Tube's Home starts with your own subscriptions and downloads can save videos shown only to signed-in accounts. The session stays on this phone.") {
                 YouTubeAccountCard()
@@ -1343,6 +1349,16 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 row("Block Pop-ups", "Pages can't open new windows", { Browser.blockPopups }, { Browser.blockPopups = it })
                 row("Block Redirects", "Stops pages jumping to ad and betting sites; a bar offers Open Anyway", { Browser.blockRedirects }, { Browser.blockRedirects = it })
                 row("Spot Videos and Files", "Watches what pages load and offers it to download", { Browser.sniffMedia }, { Browser.sniffMedia = it })
+            }
+            Section("Ad Blocklist", "StevenBlack's list of ad, tracker and malware sites, updated weekly, on top of the built-in list. Leftover ad boxes are hidden too.") {
+                val count by AdBlock.count.collectAsState()
+                val scope = rememberCoroutineScope()
+                var busy by remember { mutableStateOf(false) }
+                Text(if (count > 0) "${"%,d".format(count)} sites blocked" + (AdBlock.updatedAt().takeIf { it > 0 }?.let { " · updated ${com.torrentviewer.core.ago(it)}" } ?: "") else "Not downloaded yet",
+                    Modifier.padding(bottom = 10.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Button(if (busy) "Updating…" else "Update Now", {
+                    if (!busy) { busy = true; scope.launch { runCatching { AdBlock.update() }.onFailure { watch.notes.tryEmit(it.message ?: "Couldn't update the blocklist") }; busy = false } }
+                }, icon = L.drawable.lucide_ic_refresh_cw, compact = true)
             }
             Section("Browsing Data", "Forget cookies, sign-ins, the cache and history.") {
                 Button("Clear Browsing Data", { Browser.clearData(); watch.notes.tryEmit("Browsing data cleared") }, icon = L.drawable.lucide_ic_trash_2, compact = true)

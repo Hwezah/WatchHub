@@ -137,6 +137,9 @@ object Browser {
         clearHistory()
     }
 
+    /** A line the Browser's sheet shows once (no VPN config yet…). */
+    var note by mutableStateOf<String?>(null)
+
     /** What the sheet should offer to download now (a tapped file link, a site's download, a find). */
     var offer by mutableStateOf<Offer?>(null)
 
@@ -203,6 +206,8 @@ object Browser {
     }
 
     private fun blockedHost(host: String): Boolean {
+        // The big weekly list first (about 100,000 sites), then the built-in short list.
+        if (AdBlock.blocks(host)) return true
         var h = host.lowercase()
         while (true) {
             if (h in AD_HOSTS) return true
@@ -330,7 +335,13 @@ object Browser {
                 nav(t, view)
             }
 
+            // Leftover ad boxes hidden as soon as the page shows, and again when it's done.
+            override fun onPageCommitVisible(view: WebView, url: String) {
+                if (blockAds) runCatching { view.evaluateJavascript(AdBlock.HIDE_SCRIPT, null) }
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
+                if (blockAds) runCatching { view.evaluateJavascript(AdBlock.HIDE_SCRIPT, null) }
                 t.url = if (url == "about:blank") "" else url
                 t.loading = false
                 t.title = view.title.orEmpty()
