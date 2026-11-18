@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The app's pause mark: two solid, slim, tall bars (Lucide's is two hollow boxes). Tinted where it is drawn. -->
+<!-- The app's pause mark: two solid, slim, tall bars with a wide gap between (Lucide's is two hollow boxes). Tinted where drawn. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,8 +7,8 @@
     android:viewportHeight="24">
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M7.85,4h1.3a0.6,0.6 0,0 1,0.6 0.6v14.8a0.6,0.6 0,0 1,-0.6 0.6h-1.3a0.6,0.6 0,0 1,-0.6 -0.6v-14.8a0.6,0.6 0,0 1,0.6 -0.6z" />
+        android:pathData="M6.1,4h1.3a0.6,0.6 0,0 1,0.6 0.6v14.8a0.6,0.6 0,0 1,-0.6 0.6h-1.3a0.6,0.6 0,0 1,-0.6 -0.6v-14.8a0.6,0.6 0,0 1,0.6 -0.6z" />
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M14.85,4h1.3a0.6,0.6 0,0 1,0.6 0.6v14.8a0.6,0.6 0,0 1,-0.6 0.6h-1.3a0.6,0.6 0,0 1,-0.6 -0.6v-14.8a0.6,0.6 0,0 1,0.6 -0.6z" />
+        android:pathData="M16.6,4h1.3a0.6,0.6 0,0 1,0.6 0.6v14.8a0.6,0.6 0,0 1,-0.6 0.6h-1.3a0.6,0.6 0,0 1,-0.6 -0.6v-14.8a0.6,0.6 0,0 1,0.6 -0.6z" />
 </vector>

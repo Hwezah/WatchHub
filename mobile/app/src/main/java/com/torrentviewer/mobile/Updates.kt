@@ -16,6 +16,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
@@ -42,7 +43,12 @@ fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
     if (hidden && p == null) return
     val context = LocalContext.current
     val shape = RoundedCornerShape(12.dp)
-    Column(modifier.fillMaxWidth().padding(horizontal = EDGE, vertical = 8.dp).shadow(8.dp, shape).clip(shape).background(Ink.surface)) {
+    // While downloading, the card itself fills from the left in the accent colour, as Nuvio's does (the owner's choice).
+    val fill = Ink.accent.copy(alpha = 0.35f)
+    Column(
+        modifier.fillMaxWidth().padding(horizontal = EDGE, vertical = 8.dp).shadow(8.dp, shape).clip(shape).background(Ink.surface)
+            .drawBehind { if (p != null) drawRect(fill, size = androidx.compose.ui.geometry.Size(size.width * p.coerceIn(0f, 1f), size.height)) },
+    ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(if (p != null) "Downloading update…" else "Update available", style = Type.body.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -57,10 +63,14 @@ fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
             Spacer(Modifier.width(4.dp))
             // A cross rather than a "Not now" button: side by side, the two left the words three lines. While downloading, it stops it.
             Tap({ if (p != null) Updates.cancel() else Updates.skip(r.version) }, Modifier.size(36.dp), CircleShape) {
-                Lc(L.drawable.lucide_ic_x, Modifier.align(Alignment.Center), tint = Ink.muted, size = 18.dp)
+                // A thin cross, drawn: Lucide's stroke is heavier than this bar wants.
+                val ink = Ink.muted
+                androidx.compose.foundation.Canvas(Modifier.align(Alignment.Center).size(14.dp)) {
+                    val w = 1.3.dp.toPx()
+                    drawLine(ink, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, size.height), w, androidx.compose.ui.graphics.StrokeCap.Round)
+                    drawLine(ink, androidx.compose.ui.geometry.Offset(size.width, 0f), androidx.compose.ui.geometry.Offset(0f, size.height), w, androidx.compose.ui.graphics.StrokeCap.Round)
+                }
             }
         }
-        // The download's progress, along the card's bottom edge.
-        if (p != null) com.torrentviewer.core.ProgressLine(p, height = 3.dp, color = Ink.download)
     }
 }

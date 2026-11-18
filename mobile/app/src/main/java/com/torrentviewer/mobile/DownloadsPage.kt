@@ -119,7 +119,8 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 Chip("Delete All", false, onClick = { deletingAll = true }, icon = L.drawable.lucide_ic_trash_2, compact = true)
             }
         }
-        items(live, key = { "live-" + it.job.uri }) { row ->
+        // Newest first (the owner's choice): a download just sent turns up at the top.
+        items(live.asReversed(), key = { "live-" + it.job.uri }) { row ->
             ActiveRow(
                 row,
                 onPause = { Downloads.pause(row.job.uri) },
@@ -284,19 +285,19 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 if (pack) Text("$savedCount of ${wanted.size} episodes saved", style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint), maxLines = 1)
             }
             when {
-                row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 18.dp) }
+                row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
                 // Failed: ↻ asks the sources again for the next fresh link at this resolution.
-                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 18.dp, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) }
+                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) }
                 // Queued behind the others: nothing is happening to it yet, so no spinner — it can be paused like a running one.
                 row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") == true ->
-                    Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 18.dp) }
+                    Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
                 // Looking for a fresh link: a small spinner where the button was.
-                row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) { com.torrentviewer.core.Spinner(size = 18.dp) }
+                row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
                 row.state == DlState.WIFI -> Unit
-                else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 18.dp) }
+                else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
             }
             // Inside the card's padding (the owner's choice: a notch of room from the edge).
-            Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 20.dp) }
+            Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 22.dp) }
             }
             }
         }
