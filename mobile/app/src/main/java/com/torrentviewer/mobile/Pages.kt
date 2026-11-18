@@ -1394,6 +1394,13 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
+        Section("Header edge", "How the big pictures at the top of Home and of a title's page end: fading into the page, or a clean straight line.") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("Clean line", !HeaderEdge.fade, onClick = { HeaderEdge.choose(false) })
+                Chip("Fade", HeaderEdge.fade, onClick = { HeaderEdge.choose(true) })
+            }
+        }
+
         // "Genres on the home screen" is gone from here (the owner's choice); the choice already made still stands.
         // Read by the lists opened from Home (a genre's, a row's "See all"); kept app-wide, as the phone's taste.
         var noAnimation by remember { mutableStateOf(com.torrentviewer.core.Kv.global(NO_ANIMATION) == "1") }

@@ -820,3 +820,18 @@ val CARD_FACE: Color
 val SECTION_FACE: Color
     get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.75f)
 
+/**
+ * How the big pictures at the top of Home and of a title's page end (Settings → Appearance → Header edge): fading
+ * into the page, or a clean straight line. App-wide; a clean line unless the viewer picks the fade.
+ */
+object HeaderEdge {
+    private const val KEY = "headerEdgeFade"
+    var fade by androidx.compose.runtime.mutableStateOf(com.torrentviewer.core.Kv.global(KEY) == "1")
+        private set
+
+    fun choose(fade: Boolean) {
+        this.fade = fade
+        com.torrentviewer.core.Kv.setGlobal(KEY, if (fade) "1" else null)
+    }
+}
+
