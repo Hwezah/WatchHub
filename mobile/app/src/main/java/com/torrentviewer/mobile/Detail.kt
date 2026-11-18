@@ -395,35 +395,48 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
 
         LazyColumn(state = list, contentPadding = PaddingValues(bottom = 32.dp), modifier = Modifier.fillMaxSize()) {
             item(key = "head") {
-                if (!wide) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
-                        // A clean straight edge where the art ends, or a fade into the page: the viewer's pick (HeaderEdge).
-                        Artwork(title.wide, title.title, Modifier.fillMaxSize().then(if (HeaderEdge.fade) Modifier.bottomScrim(0.6f) else Modifier), fill = false)
-                        // Centred under the art, which is cropped from its centre.
-                        TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
-                    }
-                }
-                Column(
-                    Modifier.padding(horizontal = EDGE).then(
-                        // Some room under the art's straight edge before the facts (the owner's choice).
-                        if (wide) Modifier.statusBarsPadding().padding(top = 56.dp).widthIn(max = 460.dp) else Modifier.padding(top = 22.dp),
-                    ),
-                ) {
-                    if (wide) TitleMark(title, Modifier.widthIn(max = 320.dp).padding(bottom = 12.dp), maxHeight = 80.dp, style = Type.display)
-                    if (wide) Facts(title.copy(genres = title.genres.take(2)))
-                    else Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Facts(title.copy(genres = title.genres.take(2))) }
-                    // On any release here, or on a connected account from another device; a series shows it per episode.
-                    val finished = history.filter { it.imdb == title.imdb && it.ratio >= com.torrentviewer.core.WATCHED_AT }.maxOfOrNull { it.at }
-                    val seenIt = !title.isSeries && (finished != null || title.imdb in stremio.films)
-                    // Centred on an upright phone, under the centred facts; from the start elsewhere.
+                // On any release here, or on a connected account from another device; a series shows it per episode.
+                val finished = history.filter { it.imdb == title.imdb && it.ratio >= com.torrentviewer.core.WATCHED_AT }.maxOfOrNull { it.at }
+                val seenIt = !title.isSeries && (finished != null || title.imdb in stremio.films)
+                /** The certificate and Watched marks, centred on an upright phone, from the start elsewhere. */
+                val badges: @Composable (Modifier) -> Unit = { m ->
                     if (seenIt || certificate != null) Row(
-                        Modifier.fillMaxWidth().padding(top = 12.dp),
+                        m.fillMaxWidth(),
                         horizontalArrangement = if (isPortraitPhone()) Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally) else Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         certificate?.let { CertificateBadge(it) }
                         if (seenIt) WatchedBadge(finished)
                     }
+                }
+                // Clean line, upright (Settings → Appearance): as Home's hero — the picture runs down to the Play button,
+                // the logo, facts and certificate on its foot.
+                val clean = !wide && !HeaderEdge.fade
+                if (clean) {
+                    Box(Modifier.fillMaxWidth().aspectRatio(0.8f)) {
+                        Artwork(title.wide, title.title, Modifier.fillMaxSize(), fill = false)
+                        Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            TitleMark(title, Modifier.widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
+                            Facts(title.copy(genres = title.genres.take(2)), Modifier.padding(top = 12.dp))
+                            badges(Modifier.padding(top = 10.dp))
+                        }
+                    }
+                } else if (!wide) {
+                    Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+                        Artwork(title.wide, title.title, Modifier.fillMaxSize().bottomScrim(0.6f), fill = false)
+                        // Centred under the art, which is cropped from its centre.
+                        TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
+                    }
+                }
+                Column(
+                    Modifier.padding(horizontal = EDGE).then(
+                        if (wide) Modifier.statusBarsPadding().padding(top = 56.dp).widthIn(max = 460.dp) else if (clean) Modifier else Modifier.padding(top = 10.dp),
+                    ),
+                ) {
+                    if (wide) TitleMark(title, Modifier.widthIn(max = 320.dp).padding(bottom = 12.dp), maxHeight = 80.dp, style = Type.display)
+                    if (wide) Facts(title.copy(genres = title.genres.take(2)))
+                    else if (!clean) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Facts(title.copy(genres = title.genres.take(2))) }
+                    if (!clean) badges(Modifier.padding(top = 12.dp))
                     // The list first, as someone chose its order; TMDB for any other film. A series has its seasons.
                     val inOrder by produceState(com.torrentviewer.core.WatchOrders.of(title.imdb), title.imdb) {
                         if (value == null && !title.isSeries) value = com.torrentviewer.core.Tmdb.orderOf(title.imdb)
