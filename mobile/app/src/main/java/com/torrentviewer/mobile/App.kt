@@ -652,10 +652,11 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
             val on = t == tab
             Tap({ onTab(t) }, shape = RoundedCornerShape(50)) {
                 Box(
-                    Modifier.clip(RoundedCornerShape(50)).background(if (on) Ink.text.copy(alpha = 0.16f) else Color.Transparent)
+                    // The chosen tab's capsule in the accent the viewer picked (the owner's choice).
+                    Modifier.clip(RoundedCornerShape(50)).background(if (on) Ink.accent else Color.Transparent)
                         .padding(horizontal = 15.dp, vertical = 9.dp),
                     contentAlignment = Alignment.Center,
-                ) { Lc(t.icon, tint = if (on) Ink.text else Ink.muted, size = 21.dp) }
+                ) { Lc(t.icon, tint = if (on) Ink.onAccent else Ink.muted, size = 21.dp) }
             }
         }
     }
