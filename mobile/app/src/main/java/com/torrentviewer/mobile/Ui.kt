@@ -809,5 +809,5 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
 
 /** A list card's colour (downloads, sources): nearly the page's own, a breath lighter, grain over it (the owner's choice). */
 val CARD_FACE: Color
-    get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.22f)
+    get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.45f)
 
