@@ -526,7 +526,8 @@ fun BottomSheet(title: String, onDismiss: () -> Unit, trailing: (@Composable () 
                 Modifier.widthIn(max = 600.dp).fillMaxWidth().heightIn(max = maxHeight)
                     .graphicsLayer { translationY = offset }
                     .nestedScroll(pull)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).background(Ink.surface)
+                    // Frosted, as the tab bar: its colour with the app's grain (the owner's choice).
+                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).background(SHEET_FACE).grain()
                     // Taps on the sheet stay on the sheet.
                     .clickable(remember { MutableInteractionSource() }, indication = null) {}
                     .navigationBarsPadding().padding(bottom = 10.dp),
@@ -540,7 +541,9 @@ fun BottomSheet(title: String, onDismiss: () -> Unit, trailing: (@Composable () 
                 ) {
                     Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp).size(36.dp, 4.dp).clip(CircleShape).background(Ink.stroke))
                     // The title, and beside it at the far right whatever the sheet puts there (a Reload…).
-                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // No title (a menu that heads itself, as Tube's): just room under the handle.
+                    if (title.isEmpty() && trailing == null) Spacer(Modifier.height(14.dp))
+                    else Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(title, Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         trailing?.invoke()
                     }
@@ -829,6 +832,10 @@ val CARD_FACE: Color
  */
 val QUIET_FILL: Color
     get() = if (Ink.isDark) Ink.text.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.72f)
+
+/** Sheets' face: the tab bar's colour — a shade lighter than the page in the dark theme, a near-white tint in the light. */
+val SHEET_FACE: Color
+    get() = if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else androidx.compose.ui.graphics.lerp(Ink.bg, Color.White, 0.9f)
 
 val SECTION_FACE: Color
     get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.75f)

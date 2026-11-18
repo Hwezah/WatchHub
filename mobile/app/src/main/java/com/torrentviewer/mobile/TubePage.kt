@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -200,34 +201,18 @@ fun TubeScreen(watch: Watch) {
         }
     }
 
-    menu?.let { v ->
-        val later = Tube.inLater(v.id)
-        val inHistory = Tube.history.value.any { it.id == v.id }
-        Sheet(
-            title = v.title,
-            options = listOfNotNull(
-                Option("download", "Download", "To Grabber!/YouTube", icon = L.drawable.lucide_ic_download, iconTint = Ink.download),
-                Option("later", if (later) "Remove from Watch Later" else "Save to Watch Later", icon = L.drawable.lucide_ic_clock),
-                Option("share", "Share", icon = L.drawable.lucide_ic_share_2),
-                v.channelUrl?.let { Option("channel", "Go to ${v.channel.ifBlank { "channel" }}", icon = L.drawable.lucide_ic_user) },
-                if (inHistory) Option("forget", "Remove from History", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger) else null,
-            ),
-            selected = null,
-            onPick = {
-                menu = null
-                when (it) {
-                    "download" -> downloading = v
-                    "later" -> Tube.toggleLater(v)
-                    "share" -> runCatching {
-                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, v.url), v.title))
-                    }
-                    "channel" -> v.channelUrl?.let { url -> openChannel(url, v.channel) }
-                    "forget" -> Tube.forget(v.id)
-                }
-            },
+    // Over the video page (its own window) when one is open, so these sheets show above it rather than behind.
+    val over = playing.isNotEmpty()
+    menu?.let { v -> Above(over, { menu = null }) {
+        VideoMenu(
+            v,
+            onPlay = { open(v) },
+            onDownload = { downloading = v },
+            onChannel = { v.channelUrl?.let { url -> openChannel(url, v.channel) } },
+            say = { watch.notes.tryEmit(it) },
             onDismiss = { menu = null },
         )
-    }
+    } }
 
     downloading?.let { v ->
         DownloadChoice(
@@ -245,7 +230,7 @@ fun TubeScreen(watch: Watch) {
             probe = ExternalDownloaders.sendProbe(),
         )
     }
-    saving?.let { v -> SaveSheet(v.url, v.title, v.thumb, tube = v, onDone = { saving = null }) }
+    saving?.let { v -> Above(over, { saving = null }) { SaveSheet(v.url, v.title, v.thumb, tube = v, onDone = { saving = null }) } }
 }
 
 /**
@@ -967,5 +952,95 @@ private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boo
     Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
         AndroidView(factory = { c -> android.view.TextureView(c).also { player.setVideoTextureView(it) } }, modifier = Modifier.aspectRatio(ratio))
         if (shown) TrailerControls(remember(player) { ExoPlayback(player) }) else Spinner(size = 40.dp)
+    }
+}
+
+
+/**
+ * A video's ⋯: a frosted sheet with the video on top (picture, title, channel) and what can be done with it as a
+ * list, each with its icon on the left: play, download, Watch Later, share, copy the link, open in YouTube, its
+ * channel, subscribe, and — when it's there — remove it from History.
+ */
+@Composable
+private fun VideoMenu(v: TubeVideo, onPlay: () -> Unit, onDownload: () -> Unit, onChannel: () -> Unit, say: (String) -> Unit, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val later by Tube.later.collectAsState()
+    val history by Tube.history.collectAsState()
+    val subs by Tube.subscriptions.collectAsState()
+    val saved = later.any { it.id == v.id }
+    val watched = history.any { it.id == v.id }
+    val subscribed = subs.isNotEmpty() && Tube.subscribed(v.channelUrl)
+    BottomSheet("", onDismiss) {
+        Column(Modifier.padding(bottom = 6.dp)) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Thumb(v.thumb, v.title, Modifier.width(120.dp), v.seconds, v.live, corner = 8.dp)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(v.title, style = Type.label.copy(fontWeight = FontWeight.SemiBold, lineHeight = 19.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(tubeLine(v), Modifier.padding(top = 3.dp), style = Type.meta.copy(fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(1.dp).background(Ink.text.copy(alpha = 0.07f)))
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(top = 4.dp)) {
+                MenuRow(L.drawable.lucide_ic_play, "Play") { onDismiss(); onPlay() }
+                MenuRow(L.drawable.lucide_ic_download, "Download", "In this app, or another app", tint = Ink.download) { onDismiss(); onDownload() }
+                MenuRow(L.drawable.lucide_ic_clock, if (saved) "Remove from Watch Later" else "Save to Watch Later", tint = if (saved) Ink.accent else Ink.text) { Tube.toggleLater(v); onDismiss() }
+                MenuRow(L.drawable.lucide_ic_share_2, "Share") {
+                    onDismiss()
+                    runCatching { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, v.url), v.title)) }
+                }
+                MenuRow(L.drawable.lucide_ic_copy, "Copy Link") {
+                    runCatching {
+                        (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                            .setPrimaryClip(android.content.ClipData.newPlainText("YouTube link", v.url))
+                    }
+                    say("Link copied")
+                    onDismiss()
+                }
+                MenuRow(L.drawable.lucide_ic_external_link, "Open in YouTube") {
+                    onDismiss()
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(v.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        .onFailure { say("No app here opens YouTube links") }
+                }
+                v.channelUrl?.let { url ->
+                    MenuRow(L.drawable.lucide_ic_user, "Go to ${v.channel.ifBlank { "Channel" }}") { onDismiss(); onChannel() }
+                    MenuRow(if (subscribed) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (subscribed) "Unsubscribe" else "Subscribe", tint = if (subscribed) Ink.accent else Ink.text) {
+                        Tube.toggleSubscription(TubeChannel(url, v.channel, v.avatar))
+                        say(if (subscribed) "Unsubscribed from ${v.channel}" else "Subscribed to ${v.channel}")
+                        onDismiss()
+                    }
+                }
+                if (watched) MenuRow(L.drawable.lucide_ic_trash_2, "Remove from History", tint = Ink.danger) { Tube.forget(v.id); onDismiss() }
+            }
+        }
+    }
+}
+
+/** One line of a menu: its icon on the left, the words, an optional hint under them. */
+@Composable
+private fun MenuRow(icon: Int, label: String, hint: String? = null, tint: Color = Ink.text, onClick: () -> Unit) {
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(0.dp)) { pressed ->
+        Row(
+            Modifier.fillMaxWidth().background(if (pressed) Ink.text.copy(alpha = 0.07f) else Color.Transparent).padding(horizontal = 22.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Lc(icon, tint = tint, size = 22.dp)
+            Column(Modifier.padding(start = 18.dp)) {
+                Text(label, style = Type.label.copy(fontWeight = FontWeight.Medium, color = if (tint == Ink.danger) Ink.danger else Ink.text))
+                hint?.let { Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp)) }
+            }
+        }
+    }
+}
+
+
+/**
+ * [content] (a sheet) in a window of its own when [over] — above the video page, which is a window itself — or as it
+ * is otherwise. The sheet keeps its own dimmed backdrop and its own dismissal.
+ */
+@Composable
+private fun Above(over: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    if (!over) return content()
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Box(Modifier.fillMaxSize()) { content() }
     }
 }
