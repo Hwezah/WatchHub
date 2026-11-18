@@ -788,7 +788,8 @@ fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape, color: Color = I
 @Composable
 fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier, leading: (@Composable () -> Unit)? = null, onPick: (Int) -> Unit) {
     val bars = listOf(Ink.accent, Ink.download, Ink.muted, Ink.good)
-    SpreadRow(modifier) {
+    // Spread only with three or more, as the pill rows: two stay side by side ("Any | With subs").
+    val content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
         leading?.invoke()
         labels.forEachIndexed { i, label ->
             if (i > 0) Box(Modifier.size(width = 2.dp, height = 18.dp).clip(RoundedCornerShape(1.dp)).background(bars[(i - 1) % bars.size].copy(alpha = 0.8f)))
@@ -802,4 +803,6 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
             }
         }
     }
+    if (labels.size + (if (leading != null) 1 else 0) >= 3) SpreadRow(modifier, content = content)
+    else Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, content = content)
 }
