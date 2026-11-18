@@ -68,6 +68,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -517,20 +518,26 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             // down — so the last items are never under it — and back the moment it's scrolled up (or a tab changes).
             var pillShown by remember { mutableStateOf(true) }
             LaunchedEffect(tab) { pillShown = true }
-            // A web page scrolls inside its WebView, out of Compose's reach: the Browser says which way.
-            LaunchedEffect(Browser.scrolledDown) { if (tab == Tab.BROWSER && Browser.scrolledDown > 0) pillShown = false }
-            LaunchedEffect(Browser.scrolledUp) { if (tab == Tab.BROWSER && Browser.scrolledUp > 0) pillShown = true }
+            // Hidden only while a page is actually moving (either way, a fling included); back as soon as it rests.
+            // A page with nothing to scroll never moves, so the bar never leaves.
+            var moved by remember { mutableIntStateOf(0) }
+            LaunchedEffect(moved) {
+                if (moved == 0) return@LaunchedEffect
+                kotlinx.coroutines.delay(350)
+                pillShown = true
+            }
+            // A web page scrolls inside its WebView, out of Compose's reach: the Browser counts its moves.
+            LaunchedEffect(Browser.scrolledDown, Browser.scrolledUp) {
+                if (tab == Tab.BROWSER && Browser.scrolledDown + Browser.scrolledUp > 0) { pillShown = false; moved++ }
+            }
             val watchScroll = remember {
                 object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
-                    // After the page has moved: hidden only when it really scrolled down. A page with nothing to scroll (or a
-                    // list already at its end) moves nothing, and the bar stays (or comes back).
                     override fun onPostScroll(
                         consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
                     ): androidx.compose.ui.geometry.Offset {
-                        when {
-                            consumed.y < -6f -> pillShown = false
-                            consumed.y > 6f -> pillShown = true
-                            consumed.y == 0f && available.y != 0f -> pillShown = true
+                        if (kotlin.math.abs(consumed.y) > 2f) {
+                            pillShown = false
+                            moved++
                         }
                         return androidx.compose.ui.geometry.Offset.Zero
                     }
