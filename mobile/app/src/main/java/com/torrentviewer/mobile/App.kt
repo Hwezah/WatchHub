@@ -706,8 +706,9 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                         Tap({ onTab(t) }, shape = RoundedCornerShape(18.dp)) {
                             Box(
                                 // The chosen tab's capsule in the accent the viewer picked.
-                                Modifier.clip(RoundedCornerShape(18.dp)).background(if (on) Ink.accent else Color.Transparent)
-                                    .padding(horizontal = 20.dp, vertical = 11.dp),
+                                // Slim enough to stay clear of the line between the rows and the panel's top and bottom.
+                                Modifier.clip(RoundedCornerShape(15.dp)).background(if (on) Ink.accent else Color.Transparent)
+                                    .padding(horizontal = 18.dp, vertical = 6.dp),
                                 contentAlignment = Alignment.Center,
                             ) { Lc(t.icon, tint = if (on) Ink.onAccent else Ink.muted, size = 22.dp) }
                         }

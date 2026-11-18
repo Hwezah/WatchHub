@@ -79,7 +79,9 @@ fun BrowserScreen() {
     Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.statusBarsPadding().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp).fillMaxWidth().height(54.dp),
+                // One container for the whole bar, barely rounded, as Tube's; the address has no box, only its green cursor.
+                Modifier.statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 8.dp).fillMaxWidth().height(58.dp)
+                    .frosted(RoundedCornerShape(8.dp)).padding(start = 6.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Tabs: a squircle with how many are open.
@@ -91,22 +93,12 @@ fun BrowserScreen() {
                     }
                 }
                 Spacer(Modifier.width(8.dp))
-                Row(
-                    Modifier.weight(1f).height(48.dp).frosted(RoundedCornerShape(24.dp)).padding(start = 18.dp, end = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.weight(1f)) {
-                        if (input.isEmpty()) Text("Search or type an address", style = Type.label.copy(color = Ink.faint, fontSize = 15.sp), maxLines = 1)
-                        BasicTextField(
-                            input, { input = it },
-                            Modifier.fillMaxWidth().onFocusChanged { typing = it.isFocused },
-                            singleLine = true, textStyle = Type.label.copy(fontSize = 15.sp), cursorBrush = SolidColor(Ink.accent),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-                            keyboardActions = KeyboardActions(onGo = { Browser.go(input); focus.clearFocus() }),
-                        )
-                    }
-                    if (input.isNotEmpty()) BarIcon(L.drawable.lucide_ic_x) { input = "" }
-                }
+                BareInput(
+                    input, { input = it }, "Search or type an address", Modifier.weight(1f).padding(horizontal = 4.dp),
+                    keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, onFocus = { typing = it },
+                    onSubmit = { Browser.go(input); focus.clearFocus() },
+                )
+                if (input.isNotEmpty()) BarIcon(L.drawable.lucide_ic_x) { input = "" }
                 // What this page has that can be downloaded, with a count.
                 Tap({ picking = true }, Modifier.size(width = 44.dp, height = 46.dp), CircleShape) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

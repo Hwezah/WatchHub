@@ -840,3 +840,43 @@ object HeaderEdge {
     }
 }
 
+
+/**
+ * A bare text input for a bar that is all one container (Tube's and the Browser's headers): no box of its own; where
+ * it starts is shown by a blinking green cursor, before the placeholder until it's tapped, then the field's own.
+ */
+@Composable
+fun BareInput(
+    value: String,
+    onValue: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    imeAction: ImeAction = ImeAction.Search,
+    onFocus: (Boolean) -> Unit = {},
+    onSubmit: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val blink = androidx.compose.animation.core.rememberInfiniteTransition(label = "cursor")
+    val on by blink.animateFloat(
+        1f, 0f,
+        androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(530, easing = { if (it < 0.5f) 0f else 1f }), androidx.compose.animation.core.RepeatMode.Reverse),
+        label = "cursorAlpha",
+    )
+    Box(modifier, contentAlignment = Alignment.CenterStart) {
+        if (value.isEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+            if (!focused) Box(Modifier.width(2.dp).height(22.dp).graphicsLayer { alpha = on }.background(Ink.download))
+            Text(placeholder, Modifier.padding(start = if (focused) 2.dp else 6.dp), style = Type.label.copy(color = Ink.faint, fontSize = 16.sp), maxLines = 1)
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = onValue,
+            singleLine = true,
+            textStyle = Type.label.copy(fontSize = 16.sp),
+            cursorBrush = SolidColor(Ink.download),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+            keyboardActions = KeyboardActions(onAny = { onSubmit() }),
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) },
+        )
+    }
+}

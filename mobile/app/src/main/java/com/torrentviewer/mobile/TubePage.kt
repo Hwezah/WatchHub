@@ -224,28 +224,16 @@ fun TubeScreen(watch: Watch) {
  */
 @Composable
 private fun TubeHeader(typed: String, onTyped: (String) -> Unit, onSubmit: () -> Unit, onLogin: () -> Unit) {
-    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Tap(onSubmit, shape = CircleShape) { Lc(R.drawable.ic_search_thin, Modifier.padding(8.dp), tint = Ink.text, size = 30.dp) }
-        Row(
-            Modifier.weight(1f).padding(horizontal = 6.dp).height(52.dp).frosted(RoundedCornerShape(26.dp)).padding(horizontal = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                if (typed.isEmpty()) Text("Search YouTube", style = Type.label.copy(color = Ink.faint, fontSize = 16.sp), maxLines = 1)
-                androidx.compose.foundation.text.BasicTextField(
-                    value = typed,
-                    onValueChange = onTyped,
-                    singleLine = true,
-                    textStyle = Type.label.copy(fontSize = 16.sp),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink.accent),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { onSubmit() }),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            if (typed.isNotEmpty()) Tap({ onTyped("") }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(4.dp), tint = Ink.muted, size = 18.dp) }
-        }
-        Tap(onLogin, shape = CircleShape) { Lc(R.drawable.ic_user_thin, Modifier.padding(8.dp), tint = Ink.text, size = 30.dp) }
+    // One container for the whole bar, barely rounded; the input has no box of its own, only its green cursor.
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp)
+            .height(58.dp).frosted(RoundedCornerShape(8.dp)).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Tap(onSubmit, shape = CircleShape) { Lc(R.drawable.ic_search_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp) }
+        BareInput(typed, onTyped, "Search YouTube", Modifier.weight(1f).padding(horizontal = 6.dp), onSubmit = onSubmit)
+        if (typed.isNotEmpty()) Tap({ onTyped("") }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 18.dp) }
+        Tap(onLogin, shape = CircleShape) { Lc(R.drawable.ic_user_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp) }
     }
 }
 
