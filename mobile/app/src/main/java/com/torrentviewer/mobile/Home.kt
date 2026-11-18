@@ -513,7 +513,10 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
         if (count > 1) pager.animateScrollToPage((pager.settledPage + 1) % count)
     }
     val wide = isWide()
-    val height = if (wide) (LocalConfiguration.current.screenHeightDp * 0.82f).dp else (LocalConfiguration.current.screenWidthDp * 1.12f).dp
+    // Clean line, upright: the facts and buttons sit under the picture, so the hero grows by their room and the
+    // picture keeps its full height (the owner's choice: a tall poster area).
+    val height = if (wide) (LocalConfiguration.current.screenHeightDp * 0.82f).dp
+    else (LocalConfiguration.current.screenWidthDp * 1.12f).dp + if (HeaderEdge.fade) 0.dp else 150.dp
     Box(Modifier.fillMaxWidth().height(height)) {
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { titles.getOrNull(it)?.imdb ?: it }) { page ->
             val start = titles.getOrNull(page) ?: return@HorizontalPager
