@@ -127,6 +127,12 @@ dependencies {
     implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.3")
     // TLS for older Androids, as CloudStream bundles.
     implementation("org.conscrypt:conscrypt-android:2.5.3")
+    // The Browser tab's pages: Android's WebView with its darkening for light sites (as the Grabber app).
+    implementation("androidx.webkit:webkit:1.12.1")
+    // Video and audio from YouTube and ~1,800 other sites (the Browser's "Grab this page", Tube's audio formats):
+    // yt-dlp with Python, and FFmpeg to join streams and convert to MP3 / Opus / FLAC / WAV — the Grabber app's own.
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
 
     testImplementation("junit:junit:4.13.2")
     // org.json is an Android stub on the JVM; the real one for unit tests.

@@ -8,8 +8,8 @@ package com.torrentviewer.core
 /** The root folder in the phone's Download folder, shared with the Grabber app. */
 const val GRABBER_ROOT = "Grabber!"
 
-/** The folders under [GRABBER_ROOT], made up front so the layout is there from the start. */
-val GRABBER_FOLDERS = listOf("Movies", "Shows", "YouTube", "Audio", "Documents", "Images", "Other")
+/** The folders under [GRABBER_ROOT], made up front so the layout is there from the start. Video and Audio as the Grabber app names them. */
+val GRABBER_FOLDERS = listOf("Movies", "Shows", "YouTube", "Video", "Audio", "Documents", "Images", "Other")
 
 /** A name a folder can take: no path separators or characters filesystems refuse. */
 fun folderSafe(name: String): String = name.replace(Regex("[\\\\/:*?\"<>|]+"), "_").trim().trimEnd('.').ifBlank { "Download" }

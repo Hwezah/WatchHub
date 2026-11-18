@@ -307,6 +307,8 @@ object Downloads {
     /** Grabber!/Movies/<film>/file.mkv, or Grabber!/Shows/<show>/Season NN/file.mkv ([libraryFolders]). */
     private fun destOf(job: DownloadJob, torrentName: String, path: String): File {
         val file = safe(path.replace('\\', '/').split('/').last { it.isNotBlank() })
+        // From the Browser: Grabber!/Video, Audio, Documents or Other, by what the file is, as the Grabber app sorts.
+        if (job.kind == WEB_KIND) return File(File(keepDir(), webFolder(file)), file)
         val folders = libraryFolders(job.titleName ?: torrentName, file, job.kind, job.season)
         return File(folders.fold(keepDir()) { dir, part -> File(dir, part) }, file)
     }
@@ -607,6 +609,67 @@ object Downloads {
         }
     }
 
+    /** A file or stream a web page loaded, downloaded from the Browser. */
+    const val WEB_KIND = "web"
+
+    /** [url] (a file, or an HLS stream when [hls]) downloaded with the page's [headers]. */
+    fun addWeb(url: String, title: String, headers: Map<String, String>, hls: Boolean) = add(
+        DownloadJob(uri = url, title = title, titleName = title, kind = WEB_KIND, link = true, headers = headers, playlist = hls),
+    )
+
+    /** Which Grabber! folder a Browser download goes to, by its extension. */
+    private fun webFolder(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+        "mp3", "m4a", "aac", "flac", "wav", "ogg", "opus" -> "Audio"
+        "pdf", "doc", "docx", "epub", "txt", "xls", "xlsx", "ppt", "pptx" -> "Documents"
+        "jpg", "jpeg", "png", "webp", "gif" -> "Images"
+        "zip", "rar", "7z", "apk", "torrent" -> "Other"
+        else -> "Video"
+    }
+
+    /** A page's video saved by yt-dlp: Grabber!/YouTube or Grabber!/Video. */
+    const val MEDIA_KIND = "media"
+
+    /** A page's sound saved (and converted) by yt-dlp and FFmpeg: Grabber!/Audio. */
+    const val MEDIA_AUDIO = "media-audio"
+
+    /** Between a page's address and the format in a yt-dlp download's id: the same page in two formats is two downloads. */
+    private const val GRAB = "#grab="
+
+    /** [page] saved in [format] ([SaveFormat.code]) by yt-dlp, with the page's [headers] (a site's Referer and cookies). */
+    fun addMedia(page: String, format: String, title: String, poster: String?, headers: Map<String, String> = emptyMap()) = add(
+        DownloadJob(
+            uri = page + GRAB + format, title = title, titleName = title, poster = poster,
+            kind = if (format.startsWith("a:")) MEDIA_AUDIO else MEDIA_KIND, link = true, quality = format, headers = headers,
+        ),
+    )
+
+    /** [runLink] for yt-dlp: progress as it reports it, the file moved into its Grabber! folder when done. */
+    private suspend fun saveMedia(job: DownloadJob) {
+        val page = job.uri.substringBeforeLast(GRAB)
+        val format = job.quality ?: "v:0"
+        update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Reading the page…", speed = 0) }
+        val work = linkWork(job.uri)
+        val out = Media.run(app, page, format, job.headers, job.label, work) { pct, _ ->
+            update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null, files = listOf(DlFile(0, job.label, 1000, (pct * 10).toLong().coerceIn(0, 1000), false))) }
+            notifyProgress()
+        }
+        val youtube = Regex("""(^|\.)(youtube\.com|youtu\.be)$""").containsMatchIn(runCatching { java.net.URL(page).host }.getOrDefault(""))
+        val folder = when {
+            format.startsWith("a:") -> "Audio"
+            youtube -> "YouTube"
+            else -> "Video"
+        }
+        val dest = File(File(keepDir(), folder), safe(job.label) + "." + out.extension)
+        dest.parentFile?.mkdirs()
+        if (!out.renameTo(dest)) { out.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } } }
+        work.deleteRecursively()
+        writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, job.poster, job.label, null, job.kind)) + _finished.value.filter { it.path != dest.path })
+        synchronized(lock) {
+            _live.value = _live.value.filter { it.job.uri != job.uri }
+            writeQueue(jobs())
+        }
+    }
+
     /** One picture track and one sound track copied, sample by sample in time order, into one MP4 at [out]. */
     private fun muxTube(video: File, audio: File, out: File) {
         val tmp = File(out.path + ".part")
@@ -689,6 +752,11 @@ object Downloads {
                     saveTube(job)
                     return
                 }
+                // A page's video through yt-dlp (the Browser's "Grab", Tube's MP3/Opus/FLAC/WAV).
+                if (job.kind == MEDIA_KIND || job.kind == MEDIA_AUDIO) {
+                    saveMedia(job)
+                    return
+                }
                 // Found a while ago (a season's batch waiting its turn, a pause, a restart): the link it has is asked first — a quick
                 // look, seconds — and only a link that no longer answers sends the sources off for a fresh one, which takes a while.
                 val stale = job.imdb != null && job.fetchedAt > 0 && System.currentTimeMillis() - job.fetchedAt > LINK_FRESH_MS
@@ -732,11 +800,15 @@ object Downloads {
                 }
                 // A web page saved as the episode (the host's error or "click to download" page): not a download.
                 // Thrown away, and the link counts as dead, so a fresh one is looked for.
-                if (notVideo(result.file)) {
+                // (A Browser download of a song or a document is small, and a document can be text: only its videos are checked.)
+                val web = job.kind == WEB_KIND
+                if ((!web || webFolder("x." + result.ext) == "Video") && notVideo(result.file)) {
                     work.deleteRecursively()
                     throw LinkExpiredException("The link sent a web page, not the video")
                 }
-                val dest = destOf(job, job.label, safe(job.label) + "." + result.ext)
+                // A link's own file name ("song.mp3") already has its extension.
+                val named = if (web && job.label.endsWith(".${result.ext}", true)) job.label else job.label + "." + result.ext
+                val dest = destOf(job, job.label, safe(named))
                 dest.parentFile?.mkdirs()
                 if (!result.file.renameTo(dest)) {
                     result.file.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }

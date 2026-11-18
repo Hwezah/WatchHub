@@ -42,6 +42,7 @@ import com.torrentviewer.core.Note
 import com.torrentviewer.core.Title
 import com.torrentviewer.core.Type
 import com.torrentviewer.core.Watch
+import com.torrentviewer.core.grain
 import com.torrentviewer.core.ago
 import com.torrentviewer.core.bytes
 import kotlinx.coroutines.Dispatchers
@@ -113,7 +114,7 @@ fun FilesScreen(watch: Watch) {
         }.onFailure { watch.notes.tryEmit("No app here opens ${e.file.extension.uppercase().ifBlank { "this file" }}.") }
     }
 
-    Column(Modifier.fillMaxSize().background(Ink.bg)) {
+    Column(Modifier.fillMaxSize().background(Ink.bg).grain()) {
         Heading("Files")
         // Where we are: Grabber! › Shows › 1923, each part a step back up.
         Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {

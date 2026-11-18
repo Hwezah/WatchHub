@@ -471,7 +471,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                                     Tab.SETTINGS -> SettingsScreen(watch, me, onSwitchProfile = { switching = true })
                                     Tab.FILES -> FilesScreen(watch)
                                     Tab.YOUTUBE -> TubeScreen(watch)
-                                    Tab.BROWSER -> ComingSoon(t)
+                                    Tab.BROWSER -> BrowserScreen()
                                 }
                             }
                         }
@@ -517,6 +517,9 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             // down — so the last items are never under it — and back the moment it's scrolled up (or a tab changes).
             var pillShown by remember { mutableStateOf(true) }
             LaunchedEffect(tab) { pillShown = true }
+            // A web page scrolls inside its WebView, out of Compose's reach: the Browser says which way.
+            LaunchedEffect(Browser.scrolledDown) { if (tab == Tab.BROWSER && Browser.scrolledDown > 0) pillShown = false }
+            LaunchedEffect(Browser.scrolledUp) { if (tab == Tab.BROWSER && Browser.scrolledUp > 0) pillShown = true }
             val watchScroll = remember {
                 object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
                     override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
@@ -683,8 +686,11 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
             .grain()
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        tabs().chunked(4).forEach { row ->
+        tabs().chunked(4).forEachIndexed { i, row ->
+            // Between the two rows: a thin, quiet line, short of the panel's edges (the owner's choice: 90% wide).
+            if (i > 0) Box(Modifier.fillMaxWidth(0.9f).height(1.dp).background(Ink.text.copy(alpha = 0.08f)))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 row.forEach { t ->
                     val on = t == tab
@@ -808,7 +814,7 @@ private fun Layer(shown: Boolean, z: Float, opaque: Boolean = false, content: @C
     val alpha by androidx.compose.animation.core.animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 220 else 120), label = "layer")
     Box(
         Modifier.fillMaxSize().zIndex(z).graphicsLayer { this.alpha = alpha }
-            .then(if (opaque) Modifier.background(Ink.bg) else Modifier)
+            .then(if (opaque) Modifier.background(Ink.bg).grain() else Modifier)
             .then(if (shown) Modifier else Modifier.blockTouches()),
     ) { content() }
 }

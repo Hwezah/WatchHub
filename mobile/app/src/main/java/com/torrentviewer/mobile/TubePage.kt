@@ -70,6 +70,7 @@ import com.torrentviewer.core.TubeChannel
 import com.torrentviewer.core.TubeVideo
 import com.torrentviewer.core.Type
 import com.torrentviewer.core.Watch
+import com.torrentviewer.core.grain
 import com.torrentviewer.core.bytes
 import com.torrentviewer.core.clockText
 import com.torrentviewer.core.compactCount
@@ -136,7 +137,7 @@ fun TubeScreen(watch: Watch) {
     }
     val playlist: (String, String) -> Unit = { url, name -> routes.add(TubeRoute.Playlist(url, name)) }
 
-    Box(Modifier.fillMaxSize().background(Ink.bg)) {
+    Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
         when (val route = routes.lastOrNull()) {
             null -> Column(Modifier.fillMaxSize()) {
                 TubeHeader(typed, { typed = it }, onSubmit = { query = typed.trim(); hints = emptyList() }, onLogin = { routes.add(TubeRoute.You) })
@@ -214,7 +215,7 @@ fun TubeScreen(watch: Watch) {
         )
     }
 
-    saving?.let { v -> SaveSheet(v, onDone = { saving = null }) }
+    saving?.let { v -> SaveSheet(v.url, v.title, v.thumb, tube = v, onDone = { saving = null }) }
 }
 
 /**
@@ -226,7 +227,7 @@ private fun TubeHeader(typed: String, onTyped: (String) -> Unit, onSubmit: () ->
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Tap(onSubmit, shape = CircleShape) { Lc(R.drawable.ic_search_thin, Modifier.padding(8.dp), tint = Ink.text, size = 30.dp) }
         Row(
-            Modifier.weight(1f).padding(horizontal = 6.dp).height(52.dp).clip(RoundedCornerShape(26.dp)).background(Ink.text.copy(alpha = 0.06f)).padding(horizontal = 18.dp),
+            Modifier.weight(1f).padding(horizontal = 6.dp).height(52.dp).frosted(RoundedCornerShape(26.dp)).padding(horizontal = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
@@ -365,8 +366,10 @@ private fun TubeDownloads(watch: Watch) {
     val live by Downloads.live.collectAsState()
     val finished by Downloads.finished.collectAsState()
     val tube = setOf(Downloads.TUBE_KIND, Downloads.TUBE_AUDIO)
-    val coming = live.filter { it.job.kind in tube }
-    val saved = finished.filter { it.kind in tube }.sortedByDescending { it.at }
+    val media = setOf(Downloads.MEDIA_KIND, Downloads.MEDIA_AUDIO)
+    // Tube's own, and those yt-dlp saved from YouTube (MP3 and the other formats).
+    val coming = live.filter { it.job.kind in tube || (it.job.kind in media && "youtube.com" in it.job.uri) }
+    val saved = finished.filter { it.kind in tube || (it.kind in media && it.path.contains("/YouTube/") || it.kind == Downloads.MEDIA_AUDIO && it.poster?.contains("ytimg") == true) }.sortedByDescending { it.at }
     var deleting by remember { mutableStateOf<Finished?>(null) }
     if (coming.isEmpty() && saved.isEmpty()) {
         Note("Videos you download show up here, and in Files under Grabber!/YouTube.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
@@ -391,7 +394,7 @@ private fun TubeDownloads(watch: Watch) {
                     Thumb(f.poster, f.label, Modifier.width(132.dp))
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                         Text(f.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text("${if (f.kind == Downloads.TUBE_AUDIO) "Audio" else "Video"}  ·  ${bytes(f.size)}", Modifier.padding(top = 3.dp), style = Type.meta.copy(fontSize = 12.sp))
+                        Text("${if (f.kind == Downloads.TUBE_AUDIO || f.kind == Downloads.MEDIA_AUDIO) "Audio" else "Video"}  ·  ${bytes(f.size)}", Modifier.padding(top = 3.dp), style = Type.meta.copy(fontSize = 12.sp))
                     }
                     Tap({ deleting = f }, shape = CircleShape) { Lc(L.drawable.lucide_ic_trash_2, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
                 }
@@ -702,27 +705,6 @@ private fun PlaylistPage(url: String, name: String, onOpen: (TubeVideo) -> Unit,
 
 /* ---------------------------------------------------------------------- saving */
 
-/** How to save a video: each height YouTube has in MP4, or the sound alone. */
-@Composable
-private fun SaveSheet(v: TubeVideo, onDone: () -> Unit) {
-    var heights by remember(v.id) { mutableStateOf<List<Int>?>(null) }
-    LaunchedEffect(v.id) { heights = runCatching { Tube.downloadHeights(v.id) }.getOrDefault(emptyList()) }
-    val list = heights
-    Sheet(
-        title = "Download ${v.title}",
-        options = list.orEmpty().map { Option(it, "${it}p", "Video · to Grabber!/YouTube", icon = L.drawable.lucide_ic_film) } +
-            if (list != null) listOf(Option(0, "Audio Only", "M4A · to Grabber!/Audio", icon = L.drawable.lucide_ic_music)) else emptyList(),
-        selected = null,
-        onPick = {
-            Downloads.addTube(v, it.takeIf { h -> h > 0 }, audio = it == 0)
-            onDone()
-        },
-        onDismiss = onDone,
-        busy = list == null,
-        empty = "YouTube offered nothing to save.",
-    )
-}
-
 /* ---------------------------------------------------------------------- the video page */
 
 /**
@@ -771,7 +753,7 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
         BackHandler { if (full) full = false else onClose() }
 
         val d = details
-        Column(Modifier.fillMaxSize().background(if (full) Color.Black else Ink.bg)) {
+        Column(Modifier.fillMaxSize().background(if (full) Color.Black else Ink.bg).then(if (full) Modifier else Modifier.grain())) {
             Box(
                 (if (full) Modifier.fillMaxSize() else Modifier.statusBarsPadding().fillMaxWidth().aspectRatio(16f / 9f)).background(Color.Black),
                 contentAlignment = Alignment.Center,

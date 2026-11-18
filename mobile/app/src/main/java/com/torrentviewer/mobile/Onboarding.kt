@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.torrentviewer.core.Artwork
 import com.torrentviewer.core.Ink
+import com.torrentviewer.core.grain
 import com.torrentviewer.core.Meta
 import com.torrentviewer.core.Title
 import com.torrentviewer.core.Type
@@ -81,7 +82,7 @@ fun LegalText(sections: List<Pair<String, String>>) {
 fun Agreement(changed: Boolean, onAgree: () -> Unit) {
     var reading by remember { mutableStateOf<Pair<String, List<Pair<String, String>>>?>(null) }
     val legal = com.torrentviewer.core.Legal
-    Column(Modifier.fillMaxSize().background(Ink.bg).statusBarsPadding().navigationBarsPadding().padding(horizontal = EDGE + 8.dp, vertical = 24.dp)) {
+    Column(Modifier.fillMaxSize().background(Ink.bg).grain().statusBarsPadding().navigationBarsPadding().padding(horizontal = EDGE + 8.dp, vertical = 24.dp)) {
         val open = reading
         if (open != null) {
             BackHandler { reading = null }
