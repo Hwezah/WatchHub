@@ -183,13 +183,13 @@ fun BrowserScreen() {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
             Browser.note?.let { Text(it, Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint)) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button("New Tab", { Browser.newTab(); menu = false }, Modifier.weight(1f), icon = L.drawable.lucide_ic_plus, compact = true)
-                Button("Close Tab", { Browser.close(Browser.current); menu = false }, Modifier.weight(1f), icon = L.drawable.lucide_ic_x, compact = true)
+                Button("New Tab", { Browser.newTab(); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_plus, compact = true)
+                Button("Close Tab", { Browser.close(Browser.current); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_x, compact = true)
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button("Bookmarks", { menu = false; places = "bookmarks" }, Modifier.weight(1f), icon = L.drawable.lucide_ic_bookmark, compact = true)
-                Button("History", { menu = false; places = "history" }, Modifier.weight(1f), icon = L.drawable.lucide_ic_history, compact = true)
+                Button("Bookmarks", { menu = false; places = "bookmarks" }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_bookmark, compact = true)
+                Button("History", { menu = false; places = "history" }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_history, compact = true)
             }
             if (Browser.url.isNotBlank()) {
                 val here = Browser.siteOf(android.net.Uri.parse(Browser.url).host)
