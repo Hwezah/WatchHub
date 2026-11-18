@@ -700,7 +700,8 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
 @Composable
 private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier) {
     Column(
-        modifier.navigationBarsPadding().padding(start = 24.dp, end = 24.dp, bottom = 10.dp).fillMaxWidth()
+        // Just wider than the pages' content (16 dp in), clear of the screen's edges (the owner's choice).
+        modifier.navigationBarsPadding().padding(start = 10.dp, end = 10.dp, bottom = 10.dp).fillMaxWidth()
             .clip(RoundedCornerShape(26.dp))
             // Dark: a shade lighter than the page. Light: a tint — near-white on the paper page, edged faintly —
             // so the bar stands apart in both (the owner's choice: light plays with tints as dark with shades).
@@ -708,8 +709,8 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
             .background(if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else Ink.bg)
             .grain()
             // A little more room above, below and between the rows (the owner's choice).
-            .padding(horizontal = 8.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+            .padding(horizontal = 8.dp, vertical = 13.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         tabs().chunked(4).forEachIndexed { i, row ->
@@ -726,7 +727,7 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                                 // Its colour as chosen in Settings → Appearance (frosted grey by default), with the app's grain.
                                 Modifier.clip(RoundedCornerShape(15.dp)).background(if (on) NavActive.fill else Color.Transparent)
                                     .then(if (on && NavActive.style != "Accent") Modifier.grain() else Modifier)
-                                    .padding(horizontal = 18.dp, vertical = 6.dp),
+                                    .padding(horizontal = 20.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center,
                             ) { Lc(t.icon, tint = if (on) NavActive.tint else Ink.muted, size = 22.dp) }
                         }
