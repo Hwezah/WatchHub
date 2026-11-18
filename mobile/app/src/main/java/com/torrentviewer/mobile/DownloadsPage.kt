@@ -180,7 +180,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
 }
 
 /** Every download card's shape: well rounded, as Grabber's list is (the owner's choice). */
-private val DL_CARD = RoundedCornerShape(22.dp)
+private val DL_CARD = RoundedCornerShape(18.dp)
 
 /** A download card's colour: nearly the page's own, a breath lighter, grain still over it (the owner's choice). */
 private val DL_FACE: androidx.compose.ui.graphics.Color
@@ -200,7 +200,7 @@ private fun FilmBadge() {
 @Composable
 private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -> Unit, onDelete: () -> Unit) {
     val card = poster
-    Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), if (card) DL_CARD else RoundedCornerShape(8.dp), onLongClick = onDelete) {
+    Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), if (card) DL_CARD else RoundedCornerShape(7.dp), onLongClick = onDelete) {
         Row(
             (if (card) Modifier.frosted(DL_CARD, DL_FACE).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp) else Modifier),
             verticalAlignment = Alignment.CenterVertically,
@@ -222,7 +222,7 @@ private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onDe
     val first = episodes.first()
     var open by rememberSaveable(first.imdb ?: first.label) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD, DL_FACE).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
-        Tap({ open = !open }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
+        Tap({ open = !open }, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FilmBadge()
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
@@ -311,7 +311,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
         // Fastest / In order live in Settings → Downloads now, for every download, not on each card.
 
         if (pack) {
-            Tap({ open = !open }, Modifier.fillMaxWidth().padding(top = 6.dp), RoundedCornerShape(6.dp)) {
+            Tap({ open = !open }, Modifier.fillMaxWidth().padding(top = 6.dp), RoundedCornerShape(5.dp)) {
                 Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Episodes  ·  ${wanted.size} of ${row.files.size} chosen", Modifier.weight(1f), style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
                     Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, tint = Ink.muted, size = 18.dp)
@@ -372,7 +372,7 @@ private fun SeasonGroup(
                     size = 20.dp,
                 )
             }
-            Tap(onExpand, Modifier.weight(1f), RoundedCornerShape(6.dp)) {
+            Tap(onExpand, Modifier.weight(1f), RoundedCornerShape(5.dp)) {
                 Row(Modifier.padding(vertical = 8.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(season?.let { if (it == 0) "Specials" else "Season $it" } ?: "Other files", Modifier.weight(1f), style = Type.label.copy(fontWeight = FontWeight.SemiBold))
                     Text(

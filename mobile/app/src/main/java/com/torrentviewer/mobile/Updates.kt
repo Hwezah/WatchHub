@@ -41,7 +41,7 @@ fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
     val p = progress
     if (hidden && p == null) return
     val context = LocalContext.current
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(12.dp)
     Column(modifier.fillMaxWidth().padding(horizontal = EDGE, vertical = 8.dp).shadow(8.dp, shape).clip(shape).background(Ink.surface)) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

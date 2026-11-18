@@ -542,7 +542,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                 Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart) {
                     Text(
                         "$hiddenFew torrent${if (hiddenFew == 1) "" else "s"} under $MIN_SEEDS seeds hidden · Show",
-                        Modifier.clip(RoundedCornerShape(6.dp)).clickable { showFew = true }.padding(horizontal = 6.dp, vertical = 4.dp),
+                        Modifier.clip(RoundedCornerShape(5.dp)).clickable { showFew = true }.padding(horizontal = 6.dp, vertical = 4.dp),
                         style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold),
                     )
                 }
@@ -611,7 +611,7 @@ fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, underline: B
         labels.forEachIndexed { i, label ->
             val on = i == chosen
             Column(
-                Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Max).clip(RoundedCornerShape(6.dp))
+                Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Max).clip(RoundedCornerShape(5.dp))
                     .then(Modifier.clickable { onPick(i) }).padding(horizontal = 6.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -776,9 +776,9 @@ fun whereLeft(item: Item): String? {
 @Composable
 private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
     val paused = com.torrentviewer.core.Stremio.library.collectAsState().value.paused.find { it.imdb == s.imdb }
-    Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) { pressed ->
+    Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) { pressed ->
         // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card); 2 dp on the right.
-        Row((if (pressed) Modifier.background(Ink.surface2) else Modifier.frosted(RoundedCornerShape(10.dp))).padding(end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row((if (pressed) Modifier.background(Ink.surface2) else Modifier.frosted(RoundedCornerShape(8.dp))).padding(end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(88.dp).height(96.dp)) {
                 Artwork("https://images.metahub.space/poster/medium/${s.imdb}/img", s.title, Modifier.fillMaxSize())
                 paused?.let { ProgressLine((it.progress / 100).toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp) }
@@ -801,7 +801,7 @@ private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
 /** One title in the Library: its poster with the progress along the foot, where it was left, when, and a menu. */
 @Composable
 private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: () -> Unit) {
-    Tap(onPlay, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), onLongClick = onMore) { pressed ->
+    Tap(onPlay, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp), onLongClick = onMore) { pressed ->
         // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card). The ⋮'s dots are
         // a thin line in the middle of a 20dp icon: 4dp at the end keeps them clear of the card's edge.
         Row(
@@ -827,7 +827,7 @@ private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: ()
                 Lc(L.drawable.lucide_ic_play, tint = Ink.text, size = 22.dp)
             }
             // Tall tap room above and below, little beside: the card's edge is right there.
-            Tap(onMore, shape = RoundedCornerShape(8.dp)) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(start = 6.dp, top = 12.dp, bottom = 12.dp), tint = Ink.muted, size = 20.dp) }
+            Tap(onMore, shape = RoundedCornerShape(7.dp)) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(start = 6.dp, top = 12.dp, bottom = 12.dp), tint = Ink.muted, size = 20.dp) }
         }
     }
 }
@@ -1605,7 +1605,7 @@ fun StremioSection(me: Profile, onLater: (() -> Unit)? = null) {
         note?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint)) }
     }
     if (onLater == null) Section("Stremio account", hint, body)
-    else Column(Modifier.fillMaxWidth().padding(bottom = 14.dp).background(Ink.surface, RoundedCornerShape(12.dp)).padding(CARD)) {
+    else Column(Modifier.fillMaxWidth().padding(bottom = 14.dp).background(Ink.surface, RoundedCornerShape(10.dp)).padding(CARD)) {
         Text("Bring your Stremio library", style = Type.title.copy(fontWeight = FontWeight.Bold))
         Text(hint, Modifier.padding(top = 4.dp, bottom = 12.dp), style = Type.meta.copy(color = Ink.faint))
         body()
@@ -1701,9 +1701,9 @@ fun AddonsScreen(watch: Watch) {
 private fun AddonCard(a: com.torrentviewer.core.Addon, first: Boolean, last: Boolean, onRemoved: () -> Unit) {
     val m = remember(a.manifest) { runCatching { org.json.JSONObject(a.manifest) }.getOrNull() }
     val types = remember(a) { (a.resources.flatMap { it.types } + a.catalogs.map { it.type }).distinct().joinToString(", ") { com.torrentviewer.core.typeLabel(it) } }
-    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).frosted(RoundedCornerShape(14.dp)).padding(CARD)) {
+    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).frosted(RoundedCornerShape(12.dp)).padding(CARD)) {
         Row(verticalAlignment = Alignment.Top) {
-            Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
                 Lc(L.drawable.lucide_ic_puzzle, tint = Ink.muted, size = 24.dp)
                 m?.optString("logo")?.takeIf { it.startsWith("http") }?.let { Artwork(it, a.name, Modifier.fillMaxSize(), fill = false) }
             }
@@ -1724,9 +1724,9 @@ private fun AddonCard(a: com.torrentviewer.core.Addon, first: Boolean, last: Boo
         // The host only: the rest of the link can be the viewer's own key.
         Text(a.host, Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Tap({ Addons.remove(a.url); onRemoved() }, Modifier.weight(1f), RoundedCornerShape(24.dp)) { pressed ->
+            Tap({ Addons.remove(a.url); onRemoved() }, Modifier.weight(1f), RoundedCornerShape(20.dp)) { pressed ->
                 Box(
-                    Modifier.fillMaxWidth().height(46.dp).border(1.dp, Ink.text.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+                    Modifier.fillMaxWidth().height(46.dp).border(1.dp, Ink.text.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
                         .background(Ink.text.copy(alpha = if (pressed) 0.12f else 0f)),
                     contentAlignment = Alignment.Center,
                 ) { Text("Uninstall", style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.muted)) }
@@ -1749,7 +1749,7 @@ private fun Group(title: String, content: @Composable () -> Unit) {
 /** The card itself. */
 @Composable
 private fun Panel(content: @Composable () -> Unit) {
-    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).frosted(RoundedCornerShape(14.dp)).padding(start = CARD, end = CARD, top = CARD + 2.dp)) { content() }
+    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).frosted(RoundedCornerShape(12.dp)).padding(start = CARD, end = CARD, top = CARD + 2.dp)) { content() }
 }
 
 /** One line of the settings list; [words] are what else it answers to in the search. */
@@ -1764,11 +1764,11 @@ private fun SettingsList(groups: List<List<Entry>>, query: String) {
     val shown = if (q.isEmpty()) groups else listOf(groups.flatten().filter { it.matches(q) }).filter { it.isNotEmpty() }
     if (shown.isEmpty()) Text("No settings match", Modifier.padding(start = 4.dp, bottom = 12.dp), style = Type.meta.copy(color = Ink.faint))
     shown.forEach { group ->
-        Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).frosted(RoundedCornerShape(18.dp)).padding(vertical = 4.dp)) {
+        Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).frosted(RoundedCornerShape(16.dp)).padding(vertical = 4.dp)) {
             group.forEach { e ->
-                Tap(e.onClick, Modifier.fillMaxWidth(), RoundedCornerShape(12.dp)) {
+                Tap(e.onClick, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(38.dp).clip(RoundedCornerShape(8.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
                             Lc(e.icon, tint = e.tint ?: Ink.text, size = 18.dp)
                         }
                         Column(Modifier.padding(start = 14.dp)) {
@@ -1814,7 +1814,7 @@ private fun TrackerSection(t: com.torrentviewer.core.Tracker) {
             // By its domain, from Google's favicon service, as the review sites are.
             Artwork(
                 "https://www.google.com/s2/favicons?sz=64&domain=${t.site}", t.name,
-                Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)), scale = androidx.compose.ui.layout.ContentScale.Fit, fill = false,
+                Modifier.size(38.dp).clip(RoundedCornerShape(8.dp)), scale = androidx.compose.ui.layout.ContentScale.Fit, fill = false,
             )
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(t.name, style = Type.body.copy(fontWeight = FontWeight.SemiBold))
@@ -1956,7 +1956,7 @@ private fun Picker(
             }
             if (!managing) Tile("Guest", onGuest) { Avatar(GUEST, 96.dp) }
             if (!managing && profiles.size < 6) Tile("Add profile", onAdd) {
-                Box(Modifier.size(96.dp).background(Ink.surface, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_plus, tint = Ink.muted, size = 36.dp) }
+                Box(Modifier.size(96.dp).background(Ink.surface, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_plus, tint = Ink.muted, size = 36.dp) }
             }
         }
         Spacer(Modifier.height(36.dp))
@@ -1969,7 +1969,7 @@ private fun Picker(
 
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.Badge(icon: Int) {
-    Box(Modifier.align(Alignment.BottomEnd).padding(6.dp).size(26.dp).clip(RoundedCornerShape(7.dp)).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+    Box(Modifier.align(Alignment.BottomEnd).padding(6.dp).size(26.dp).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
         Lc(icon, tint = Color.White, size = 14.dp)
     }
 }
@@ -1977,7 +1977,7 @@ private fun androidx.compose.foundation.layout.BoxScope.Badge(icon: Int) {
 @Composable
 private fun Tile(name: String, onClick: () -> Unit, face: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(100.dp)) {
-        Tap(onClick, shape = RoundedCornerShape(12.dp)) { Box { face() } }
+        Tap(onClick, shape = RoundedCornerShape(10.dp)) { Box { face() } }
         Text(name, Modifier.padding(top = 10.dp), style = Type.label.copy(color = Ink.muted), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -2016,10 +2016,10 @@ private fun Editor(profile: Profile?, canCancel: Boolean, onSave: (String, Strin
             Text("ICON", Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 10.dp), style = Type.overline)
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 EMOJI_ICONS.forEach { a ->
-                    Tap({ icon = a }, Modifier.size(54.dp), RoundedCornerShape(12.dp)) {
+                    Tap({ icon = a }, Modifier.size(54.dp), RoundedCornerShape(10.dp)) {
                         Box {
                             AvatarImage(a, colorOf(colour), 54.dp)
-                            if (a == icon) Box(Modifier.matchParentSize().border(3.dp, Ink.accent, RoundedCornerShape(12.dp)))
+                            if (a == icon) Box(Modifier.matchParentSize().border(3.dp, Ink.accent, RoundedCornerShape(10.dp)))
                         }
                     }
                 }

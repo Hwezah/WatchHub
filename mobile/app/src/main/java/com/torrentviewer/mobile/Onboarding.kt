@@ -174,7 +174,7 @@ fun Onboarding(onDone: () -> Unit) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = EDGE, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("WatchHub", Modifier.weight(1f), style = Type.title.copy(color = Color(0xFFE50914), fontWeight = FontWeight.Black, letterSpacing = 2.sp))
             // Skip past the genres keeps the home screen as it was; past sign-in, into the app.
-            if (step > WELCOME) Tap({ if (step == GENRES_STEP) step = SIGN_IN else { job?.cancel(); onDone() } }, shape = RoundedCornerShape(8.dp)) {
+            if (step > WELCOME) Tap({ if (step == GENRES_STEP) step = SIGN_IN else { job?.cancel(); onDone() } }, shape = RoundedCornerShape(7.dp)) {
                 Text("Skip", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = Type.label.copy(color = Color.White.copy(alpha = 0.85f)))
             }
         }
@@ -265,7 +265,7 @@ private fun PosterWall(posters: List<Title>) {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 (row + row).forEach { title ->
-                    Artwork(title.poster, title.title, Modifier.width(card).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)))
+                    Artwork(title.poster, title.title, Modifier.width(card).aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)))
                 }
             }
         }

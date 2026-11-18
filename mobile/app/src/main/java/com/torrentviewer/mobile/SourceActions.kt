@@ -81,7 +81,7 @@ fun SourceActions(
     val subs = remember(hit.uri) { CsStreams.subtitlesFor(hit.uri) }
     // Beside the title, a green Reload: these links' tokens expire within minutes.
     BottomSheet(heading, onDismiss, trailing = {
-        Tap(onReload, shape = RoundedCornerShape(6.dp)) {
+        Tap(onReload, shape = RoundedCornerShape(5.dp)) {
             Row(Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 ReloadArrow(busy, Ink.download, 18.dp)
                 Text("  Reload!", style = Type.label.copy(color = Ink.download, fontWeight = FontWeight.SemiBold))
@@ -170,7 +170,7 @@ fun SourceActions(
             }
             // From the sheet's left edge, as the rows above start, each marked with a green asterisk.
             if (mirrors) others.forEach { m ->
-                Tap({ onDismiss(); onPlay(m) }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
+                Tap({ onDismiss(); onPlay(m) }, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Lc(L.drawable.lucide_ic_asterisk, tint = Ink.download, size = 16.dp)
                         Text(
@@ -188,7 +188,7 @@ fun SourceActions(
 
 @Composable
 private fun Action(icon: Int, label: String, hint: String? = null, onClick: () -> Unit) {
-    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             // Every download is green, here as on the buttons.
             Lc(icon, tint = if (icon == L.drawable.lucide_ic_download) Ink.download else Ink.muted, size = 20.dp)
@@ -306,7 +306,7 @@ fun DownloadChoice(
             contentAlignment = Alignment.BottomCenter,
         ) {
         Column(
-            Modifier.widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Ink.surface)
+            Modifier.widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Ink.surface)
                 .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
                 .padding(CARD + 2.dp),
         ) {
@@ -324,7 +324,7 @@ fun DownloadChoice(
             ) { onExternal(Downloader.Default) }
             disclaimer?.let { Text(it, Modifier.padding(top = 12.dp), style = Type.meta.copy(color = Ink.download, fontWeight = FontWeight.Medium)) }
             Text(
-                "Cancel", Modifier.align(Alignment.End).padding(top = 14.dp).clip(RoundedCornerShape(8.dp))
+                "Cancel", Modifier.align(Alignment.End).padding(top = 14.dp).clip(RoundedCornerShape(7.dp))
                     .clickable(onClick = onDismiss).padding(horizontal = 10.dp, vertical = 6.dp),
                 style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.muted),
             )
@@ -335,7 +335,7 @@ fun DownloadChoice(
 
 @Composable
 private fun ChoiceTile(icon: Int, title: String, excerpt: String, tint: androidx.compose.ui.graphics.Color = Ink.text, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
-    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(14.dp), onLongClick = onLongClick) { pressed ->
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(12.dp), onLongClick = onLongClick) { pressed ->
         Row(
             Modifier.fillMaxWidth().background(Ink.text.copy(alpha = if (pressed) 0.12f else 0.06f)).padding(CARD - 2.dp),
             verticalAlignment = Alignment.Top,

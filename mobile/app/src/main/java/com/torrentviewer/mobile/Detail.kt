@@ -483,7 +483,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     if (title.directors.isNotEmpty() || !title.isSeries) Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (title.directors.isNotEmpty()) Crew(if (title.isSeries) "Creators" else "Director", title.directors.take(2), tmdb?.directors.orEmpty(), onPerson.takeUnless { com.torrentviewer.core.Kids.on }, Modifier.weight(1f))
                         else Spacer(Modifier.weight(1f))
-                        if (!title.isSeries) Tap({ storyEp = null; storyOpen = true }, Modifier.padding(start = 10.dp), RoundedCornerShape(6.dp)) {
+                        if (!title.isSeries) Tap({ storyEp = null; storyOpen = true }, Modifier.padding(start = 10.dp), RoundedCornerShape(5.dp)) {
                             Row(Modifier.padding(vertical = 6.dp, horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Lc(L.drawable.lucide_ic_info, tint = Ink.accent, size = 16.dp)
                                 Text("  Full Plot", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
@@ -565,7 +565,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             Text("Episodes", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
                             season?.let { s ->
                                 // The whole season, episode by episode, with filters over what was found.
-                                Tap({ askSeason = s }, shape = RoundedCornerShape(6.dp)) {
+                                Tap({ askSeason = s }, shape = RoundedCornerShape(5.dp)) {
                                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                         // As big as the "Episodes" heading beside it; the stacked layers say "all of them" (a whole season).
                                         Lc(L.drawable.lucide_ic_layers, tint = Ink.download, size = 24.dp)
@@ -812,7 +812,7 @@ private fun LazyListScope.sources(
             // The heading, and at its far right a green reload: these links' tokens expire within minutes.
             if (heading) Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Sources", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
-                if (onReload != null && hits != null) Tap(onReload, shape = RoundedCornerShape(6.dp)) {
+                if (onReload != null && hits != null) Tap(onReload, shape = RoundedCornerShape(5.dp)) {
                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         ReloadArrow(busy, Ink.download, 18.dp)
                         Text("  Reload Fresh Links!", style = Type.label.copy(color = Ink.download, fontWeight = FontWeight.SemiBold))
@@ -852,7 +852,7 @@ private fun LazyListScope.sources(
             if (hiddenFew > 0 && onShowFew != null) Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart) {
                 Text(
                     "$hiddenFew torrent${if (hiddenFew == 1) "" else "s"} under $MIN_SEEDS seeds hidden · Show",
-                    Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onShowFew).padding(horizontal = 6.dp, vertical = 4.dp),
+                    Modifier.clip(RoundedCornerShape(5.dp)).clickable(onClick = onShowFew).padding(horizontal = 6.dp, vertical = 4.dp),
                     style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold),
                 )
             }
@@ -902,7 +902,7 @@ private fun CastRow(names: List<String>, onPerson: ((com.torrentviewer.core.Cast
                 val photo = person?.photo ?: wiki
                 val open = person?.takeIf { onPerson != null }
                 Column(
-                    Modifier.width(72.dp).then(if (open != null) Modifier.clip(RoundedCornerShape(8.dp)).clickable { onPerson?.invoke(open) } else Modifier),
+                    Modifier.width(72.dp).then(if (open != null) Modifier.clip(RoundedCornerShape(7.dp)).clickable { onPerson?.invoke(open) } else Modifier),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(Modifier.size(64.dp).clip(CircleShape).background(Ink.surface2), contentAlignment = Alignment.Center) {
@@ -923,7 +923,7 @@ private fun AwardsCard(text: String) {
     // An upright phone: the trophy and the words spaced around the card's middle; elsewhere side by side from the start.
     val spread = isPortraitPhone()
     Row(
-        Modifier.padding(top = 18.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).frosted(RoundedCornerShape(10.dp)).padding(14.dp),
+        Modifier.padding(top = 18.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).frosted(RoundedCornerShape(8.dp)).padding(14.dp),
         horizontalArrangement = if (spread) Arrangement.SpaceAround else Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -952,7 +952,7 @@ private fun Pill(text: String, tint: Color) {
 private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?, busy: Boolean, selected: Boolean, seen: Double, modifier: Modifier, onPlay: () -> Unit, onSources: () -> Unit, onDownload: () -> Unit, onStory: () -> Unit) {
     Column(modifier.padding(horizontal = EDGE, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Tap(onPlay, Modifier.width(132.dp).aspectRatio(16f / 9f), RoundedCornerShape(6.dp)) {
+            Tap(onPlay, Modifier.width(132.dp).aspectRatio(16f / 9f), RoundedCornerShape(5.dp)) {
                 Box {
                     Artwork(ep.thumbnail ?: fallback, ep.name, Modifier.fillMaxSize(), fallback = fallback)
                     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (busy) 0.5f else 0.2f)), contentAlignment = Alignment.Center) {
@@ -1010,7 +1010,7 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
         Health.WEAK -> Ink.warn
         Health.DEAD -> Ink.danger
     }
-    Tap(onClick, modifier.fillMaxWidth(), RoundedCornerShape(8.dp), onLongClick = onMore) { pressed ->
+    Tap(onClick, modifier.fillMaxWidth(), RoundedCornerShape(7.dp), onLongClick = onMore) { pressed ->
         Row(
             Modifier.background(if (pressed) Ink.surface2 else Ink.surface.copy(alpha = 0.92f)).padding(start = 14.dp, end = 0.dp, top = 11.dp, bottom = 11.dp),
             verticalAlignment = Alignment.CenterVertically,

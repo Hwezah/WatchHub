@@ -1039,7 +1039,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
             enter = fadeIn() + slideInHorizontally { it / 3 },
             exit = fadeOut(),
         ) {
-            Tap({ intro?.let { seekTo(it.end) } }, shape = RoundedCornerShape(8.dp)) {
+            Tap({ intro?.let { seekTo(it.end) } }, shape = RoundedCornerShape(7.dp)) {
                 Row(Modifier.background(Color.White).padding(horizontal = 18.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
                     Lc(L.drawable.lucide_ic_chevrons_right, tint = Color.Black, size = 18.dp)
                     Text("  Skip intro", style = Type.label.copy(color = Color.Black, fontWeight = FontWeight.Bold))
@@ -1325,9 +1325,9 @@ private fun EpisodesPanel(title: Title, playing: Episode?, onPlay: (Episode) -> 
 @Composable
 private fun EpisodeRow(ep: Episode, fallback: String?, here: Boolean, seen: Double, onClick: () -> Unit) {
     val watched = isWatched(seen)
-    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
         Row(Modifier.fillMaxWidth().background(if (here) Color.White.copy(alpha = 0.12f) else Color.Transparent).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).background(Color.Black)) {
+            Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(5.dp)).background(Color.Black)) {
                 Artwork(ep.thumbnail ?: fallback, ep.name, Modifier.fillMaxSize(), fill = false)
                 if (seen > 0 && !watched) ProgressLine(seen.toFloat(), Modifier.align(Alignment.BottomStart))
                 if (watched) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(18.dp).clip(CircleShape).background(Ink.good), contentAlignment = Alignment.Center) {
@@ -1486,7 +1486,7 @@ private fun SeekBar(at: () -> Double, playing: () -> Double, duration: Double, s
                 exit = fadeOut(tween(220)) + scaleOut(tween(220), 0.9f, TransformOrigin(0.5f, 1f)),
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(clock(at()), Modifier.clip(RoundedCornerShape(6.dp)).background(Color.White).padding(horizontal = 10.dp, vertical = 3.dp), style = Type.label.copy(color = Color.Black, fontWeight = FontWeight.Bold))
+                    Text(clock(at()), Modifier.clip(RoundedCornerShape(5.dp)).background(Color.White).padding(horizontal = 10.dp, vertical = 3.dp), style = Type.label.copy(color = Color.Black, fontWeight = FontWeight.Bold))
                     Text(delta(at() - playing()), Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Color.White, fontWeight = FontWeight.SemiBold))
                 }
             }
@@ -1614,15 +1614,15 @@ private fun UpNext(name: String, still: String?, seconds: () -> Int, onPlay: () 
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
     AnimatedVisibility(visible, modifier, enter = fadeIn() + slideInHorizontally { it / 3 }) {
-        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xF2141414)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Artwork(still, name, Modifier.width(150.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)))
+        Row(Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xF2141414)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Artwork(still, name, Modifier.width(150.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(5.dp)))
             Column(Modifier.padding(start = 14.dp).width(210.dp)) {
                 Text("NEXT EPISODE", style = Type.overline.copy(color = Ink.muted))
                 Text(name, Modifier.padding(top = 4.dp, bottom = 10.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val left = seconds()
                     val fill by animateFloatAsState(1f - left / UP_NEXT_SECONDS.toFloat(), tween(900), label = "fill")
-                    Tap(onPlay, shape = RoundedCornerShape(6.dp)) {
+                    Tap(onPlay, shape = RoundedCornerShape(5.dp)) {
                         Box(Modifier.background(Color.White).height(38.dp).width(120.dp)) {
                             Box(Modifier.fillMaxHeight().fillMaxWidth(fill.coerceIn(0f, 1f)).background(Color.Black.copy(alpha = 0.14f)))
                             Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
@@ -1632,7 +1632,7 @@ private fun UpNext(name: String, still: String?, seconds: () -> Int, onPlay: () 
                         }
                     }
                     Spacer(Modifier.width(8.dp))
-                    Tap(onCancel, shape = RoundedCornerShape(6.dp)) {
+                    Tap(onCancel, shape = RoundedCornerShape(5.dp)) {
                         Text("Cancel", Modifier.background(Color.White.copy(alpha = 0.14f)).padding(horizontal = 14.dp, vertical = 9.dp), style = Type.label.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold))
                     }
                 }
@@ -1682,7 +1682,7 @@ private fun CastingCard(
                     scrub?.let(onSeek)
                     scrub = null
                 })
-                Tap(onStop, Modifier.align(Alignment.End).padding(top = 4.dp), RoundedCornerShape(6.dp)) {
+                Tap(onStop, Modifier.align(Alignment.End).padding(top = 4.dp), RoundedCornerShape(5.dp)) {
                     Text("Stop casting", Modifier.background(Color.White.copy(alpha = 0.14f)).padding(horizontal = 14.dp, vertical = 8.dp), style = Type.label.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold))
                 }
             }
@@ -1720,7 +1720,7 @@ private fun TracksPanel(
                     Row(Modifier.padding(start = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Delay", Modifier.width(56.dp), style = Type.meta)
                         Tap({ onDelay(delay - 100) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_minus, Modifier.padding(8.dp), tint = Color.White, size = 18.dp) }
-                        Tap({ onDelay(0) }, shape = RoundedCornerShape(6.dp)) {
+                        Tap({ onDelay(0) }, shape = RoundedCornerShape(5.dp)) {
                             Text("%+.1f s".format(delay / 1000.0), Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = if (delay != 0L) Ink.accent else Color.White))
                         }
                         Tap({ onDelay(delay + 100) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_plus, Modifier.padding(8.dp), tint = Color.White, size = 18.dp) }
@@ -1756,7 +1756,7 @@ private fun TrackColumn(heading: String, modifier: Modifier, content: LazyListSc
 
 @Composable
 private fun TrackRow(label: String, on: Boolean, @DrawableRes icon: Int? = null, onClick: () -> Unit) {
-    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(6.dp)) { pressed ->
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(5.dp)) { pressed ->
         Row(Modifier.background(if (pressed) Color.White.copy(alpha = 0.1f) else Color.Transparent).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(22.dp)) {
                 when {
@@ -1804,7 +1804,7 @@ private fun StatsPanel(s: Stats?, progress: Progress?, file: TorrentFile?, durat
         progress?.let { add("Swarm" to "${speed(it.speed)}  ·  ${it.peers} peers  ·  ${it.seeds} seeds") }
         file?.let { add("File" to "${bytes(it.size)}  ·  ${it.name}") }
     }
-    Column(Modifier.widthIn(max = 460.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.78f)).padding(horizontal = 14.dp, vertical = 10.dp)) {
+    Column(Modifier.widthIn(max = 460.dp).clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.78f)).padding(horizontal = 14.dp, vertical = 10.dp)) {
         rows.forEach { (label, value) ->
             Row(Modifier.padding(vertical = 2.dp)) {
                 Text(label, Modifier.width(70.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp))

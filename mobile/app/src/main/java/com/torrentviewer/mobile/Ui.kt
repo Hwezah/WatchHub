@@ -145,7 +145,7 @@ fun isWide(): Boolean = LocalConfiguration.current.let { it.screenWidthDp > it.s
 fun Tap(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(8.dp),
+    shape: Shape = RoundedCornerShape(7.dp),
     onLongClick: (() -> Unit)? = null,
     content: @Composable BoxScope.(pressed: Boolean) -> Unit,
 ) {
@@ -203,7 +203,7 @@ fun Button(
         seen = on
         pop.animateTo(1f, keyframes { durationMillis = 360; 0.72f at 100; 1.15f at 230; 1f at 360 })
     }
-    Tap(onClick, modifier, RoundedCornerShape(8.dp), onLongClick = onLongClick) { pressed ->
+    Tap(onClick, modifier, RoundedCornerShape(7.dp), onLongClick = onLongClick) { pressed ->
         val bg by animateColorAsState(
             when {
                 fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
@@ -381,7 +381,7 @@ fun Field(
     var focused by remember { mutableStateOf(false) }
     val ring by animateColorAsState(if (focused) Ink.text.copy(alpha = 0.7f) else Color.Transparent, Motion.effects(), label = "ring")
     Row(
-        modifier.height(50.dp).clip(RoundedCornerShape(8.dp)).background(Ink.text.copy(alpha = if (focused) 0.12f else 0.07f)).border(1.5.dp, ring, RoundedCornerShape(8.dp)).padding(horizontal = 14.dp),
+        modifier.height(50.dp).clip(RoundedCornerShape(7.dp)).background(Ink.text.copy(alpha = if (focused) 0.12f else 0.07f)).border(1.5.dp, ring, RoundedCornerShape(7.dp)).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading?.let {
@@ -517,7 +517,7 @@ fun BottomSheet(title: String, onDismiss: () -> Unit, trailing: (@Composable () 
                 Modifier.widthIn(max = 600.dp).fillMaxWidth().heightIn(max = maxHeight)
                     .graphicsLayer { translationY = offset }
                     .nestedScroll(pull)
-                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)).background(Ink.surface)
+                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).background(Ink.surface)
                     // Taps on the sheet stay on the sheet.
                     .clickable(remember { MutableInteractionSource() }, indication = null) {}
                     .navigationBarsPadding().padding(bottom = 10.dp),
@@ -590,7 +590,7 @@ fun StatusIconsOverArt(overArt: Boolean, navigationToo: Boolean = false) {
     }
 }
 
-private val POSTER_SHAPE = RoundedCornerShape(10.dp)
+private val POSTER_SHAPE = RoundedCornerShape(8.dp)
 
 /**
  * A poster with its name and a line of facts under it, as the streaming apps set them:
@@ -643,7 +643,7 @@ fun LandscapeCard(art: String?, name: String, stamp: String? = null, progress: F
     Box(Modifier.fillMaxSize()) {
         Artwork(art, name, Modifier.fillMaxSize())
         Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().fillMaxHeight(0.6f).background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.8f))))
-        Box(Modifier.matchParentSize().border(1.dp, Ink.stroke, RoundedCornerShape(6.dp)))
+        Box(Modifier.matchParentSize().border(1.dp, Ink.stroke, RoundedCornerShape(5.dp)))
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = if (progress != null) 6.dp else 7.dp)) {
             // Over the artwork's dark fade: white on either page.
             stamp?.let { Text(it, style = Type.meta.copy(fontSize = 11.sp, color = Color.White.copy(alpha = 0.75f)), maxLines = 1) }
@@ -794,7 +794,7 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
             if (i > 0) Box(Modifier.size(width = 2.dp, height = 18.dp).clip(RoundedCornerShape(1.dp)).background(bars[(i - 1) % bars.size].copy(alpha = 0.8f)))
             val on = i == chosen
             Row(
-                Modifier.clip(RoundedCornerShape(6.dp)).clickable { onPick(i) }.padding(horizontal = 4.dp, vertical = 8.dp),
+                Modifier.clip(RoundedCornerShape(5.dp)).clickable { onPick(i) }.padding(horizontal = 4.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (on) Box(Modifier.padding(end = 6.dp).size(6.dp).clip(CircleShape).background(Ink.accent))

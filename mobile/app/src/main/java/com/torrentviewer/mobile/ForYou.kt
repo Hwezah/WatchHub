@@ -62,7 +62,7 @@ import com.torrentviewer.core.imdbScore
 /** One suggestion, big: its backdrop and logo, its IMDb rating, and whose fault it is. All on art, so white. */
 @Composable
 private fun PickCard(pick: Pick, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(12.dp)
     val t = pick.title
     Tap(onClick, modifier, shape) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(Color.Black)) {
