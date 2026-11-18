@@ -1012,7 +1012,8 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
     }
     Tap(onClick, modifier.fillMaxWidth(), RoundedCornerShape(7.dp), onLongClick = onMore) { pressed ->
         Row(
-            Modifier.background(if (pressed) Ink.surface2 else Ink.surface.copy(alpha = 0.92f)).padding(start = 14.dp, end = 0.dp, top = 11.dp, bottom = 11.dp),
+            // Frosted, near the page's own colour, as the download cards are (the owner's choice).
+            (if (pressed) Modifier.background(Ink.surface2) else Modifier.frosted(RoundedCornerShape(7.dp), CARD_FACE)).padding(start = 14.dp, end = 0.dp, top = 11.dp, bottom = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // No resolution tag: the pills above already sort the rows by it.

@@ -806,3 +806,8 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
     if (labels.size + (if (leading != null) 1 else 0) >= 3) SpreadRow(modifier, content = content)
     else Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, content = content)
 }
+
+/** A list card's colour (downloads, sources): nearly the page's own, a breath lighter, grain over it (the owner's choice). */
+val CARD_FACE: Color
+    get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.22f)
+

@@ -182,9 +182,6 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
 /** Every download card's shape: well rounded, as Grabber's list is (the owner's choice). */
 private val DL_CARD = RoundedCornerShape(18.dp)
 
-/** A download card's colour: nearly the page's own, a breath lighter, grain still over it (the owner's choice). */
-private val DL_FACE: androidx.compose.ui.graphics.Color
-    get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.22f)
 
 
 
@@ -202,7 +199,7 @@ private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -
     val card = poster
     Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), if (card) DL_CARD else RoundedCornerShape(7.dp), onLongClick = onDelete) {
         Row(
-            (if (card) Modifier.frosted(DL_CARD, DL_FACE).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp) else Modifier),
+            (if (card) Modifier.frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp) else Modifier),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (card) FilmBadge()
@@ -221,7 +218,7 @@ private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -
 private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onDelete: (Finished) -> Unit) {
     val first = episodes.first()
     var open by rememberSaveable(first.imdb ?: first.label) { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD, DL_FACE).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
         Tap({ open = !open }, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FilmBadge()
@@ -259,7 +256,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
         mutableStateOf(setOf(row.files.firstOrNull { it.wanted && !it.saved }?.let { parseEpisode(it.name)?.season }))
     }
     // Grabber's look (the owner's choice): a well-rounded card, a film badge where the poster was.
-    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD, DL_FACE).padding(start = 16.dp, end = CARD - 2.dp, top = 10.dp, bottom = 10.dp)) {
+    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = CARD - 2.dp, top = 10.dp, bottom = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             FilmBadge()
             // Beside the poster: the words and buttons, and under them the progress line.
