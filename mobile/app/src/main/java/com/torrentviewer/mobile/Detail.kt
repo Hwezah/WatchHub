@@ -644,7 +644,15 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         if (scrolled) {
             Row(Modifier.fillMaxWidth().background(Ink.bg).grain().statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 RoundIcon(L.drawable.lucide_ic_arrow_left, onBack)
-                Text(title.title, Modifier.padding(start = 12.dp), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Upright phone: the name in the middle, as the other pages' titles (the owner's choice).
+                val centred = isPortraitPhone()
+                Text(
+                    title.title, Modifier.weight(1f).padding(horizontal = 12.dp),
+                    style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                )
+                // As wide as the back button, so the name sits in the true middle.
+                if (centred) Spacer(Modifier.width(40.dp))
             }
         } else {
             BackButton(onBack)
