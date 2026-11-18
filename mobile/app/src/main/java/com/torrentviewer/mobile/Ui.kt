@@ -810,7 +810,8 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
 
 /** A list card's colour (downloads, sources): nearly the page's own, a breath lighter, grain over it (the owner's choice). */
 val CARD_FACE: Color
-    get() = androidx.compose.ui.graphics.lerp(Ink.bg, Ink.surface, 0.45f)
+    // The settings sections' own colour (the owner's choice): one card colour across the app.
+    get() = SECTION_FACE
 
 /** Settings' sections, addon and plugin cards: the surface toned down a notch toward the page (the owner's choice). */
 val SECTION_FACE: Color
