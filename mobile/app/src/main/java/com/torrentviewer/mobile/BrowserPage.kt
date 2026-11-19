@@ -185,7 +185,6 @@ fun BrowserScreen() {
             Browser.note?.let { Text(it, Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint)) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button("New Tab", { Browser.newTab(); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_plus, compact = true)
-                Button("Incognito", { Browser.newTab(incognito = true); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_venetian_mask, compact = true)
                 Button("Close Tab", { Browser.close(Browser.current); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_x, compact = true)
             }
             Spacer(Modifier.height(8.dp))
