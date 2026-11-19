@@ -1321,7 +1321,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 YouTubeAccountCard()
             }
             ToggleSection("Mini Player", "A video you drop down keeps playing in a strip above the tab bar; drag it anywhere, tap it to open the video again.", TubeSession.miniEnabled) {
-                TubeSession.setMiniEnabled(it)
+                TubeSession.useMiniPlayer(it)
             }
         }
         if (page == "Browser") Panel {

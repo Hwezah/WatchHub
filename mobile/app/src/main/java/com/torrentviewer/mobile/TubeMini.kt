@@ -70,7 +70,7 @@ object TubeSession {
     var miniEnabled by mutableStateOf(Kv.global(MINI) != "0")
         private set
 
-    fun setMiniEnabled(on: Boolean) {
+    fun useMiniPlayer(on: Boolean) {
         miniEnabled = on
         Kv.setGlobal(MINI, if (on) "1" else "0")
     }
