@@ -43,3 +43,22 @@ fun streamNote(playing: Hit?, target: String): String? {
     val got = playing?.quality ?: return null
     return if (resolutionOf(got) == aim) null else "No $target source — playing $got"
 }
+
+/** The resolutions among [hits], highest first, one label each ("4K" and "2160p" alike), for the player's Sources panel to filter by. */
+fun sourceResolutions(hits: List<Hit>): List<String> =
+    hits.mapNotNull { h -> h.quality?.takeIf { resolutionOf(it) != null } }.distinctBy { resolutionOf(it) }.sortedByDescending { resolutionOf(it) }
+
+/**
+ * [hits] as the player's Sources panel lists them, at [quality] only when one is chosen (null or "": every one):
+ * links before torrents (the owner's rule), then the higher resolution, then a link's lighter file (less to wait on;
+ * an unknown size after) or a torrent's bigger swarm. Another app's links are left out: the player can't play them.
+ */
+fun sourceOrder(hits: List<Hit>, quality: String?): List<Hit> {
+    val want = quality?.takeIf { it.isNotEmpty() }?.let(::resolutionOf)
+    return hits.filter { !it.external && (want == null || resolutionOf(it.quality) == want) }.sortedWith(
+        compareByDescending<Hit> { it.direct }
+            .thenByDescending { resolutionOf(it.quality) ?: 0 }
+            .thenBy { if (it.direct && it.size <= 0) 1 else 0 }
+            .thenBy { if (it.direct) it.size else -it.seeders.toLong() },
+    )
+}

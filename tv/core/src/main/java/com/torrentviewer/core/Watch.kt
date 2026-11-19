@@ -83,6 +83,27 @@ class Watch(val engine: TorrentStream) {
         phase = Phase.IDLE
     }
 
+    /**
+     * The releases found for what is playing — Play's list, or the one a release was picked from — for the player's
+     * Sources panel to switch between. Kept per title and episode: the panel searches afresh when they aren't this one's.
+     */
+    var sources by mutableStateOf<SourceList?>(null)
+        private set
+
+    /** The player's Sources panel found the releases itself (the play came without a list): kept for its next look. */
+    fun keepSources(list: SourceList) {
+        sources = list
+    }
+
+    /**
+     * The player's Sources panel: [hit] instead of the release playing, from [seconds] in — the same spot, whichever
+     * release plays it. A link is given the spot outright; a torrent takes it from the title's place ([carried]).
+     */
+    fun switchTo(hit: Hit, from: Title?, episode: Episode?, seconds: Double) {
+        fallbacks = emptyList()
+        open(hit, from, episode?.let { episodeTag(it.season, it.episode) }, episode, at = seconds)
+    }
+
     /** What Play lined up after the release it opened, best first: tried in turn while one won't play. */
     private var fallbacks: List<Hit> = emptyList()
     private var fallbackTitle: Title? = null
@@ -95,8 +116,9 @@ class Watch(val engine: TorrentStream) {
      * Play: the first of [hits] — and should it not play (an error, a dead link, a file no player opens), the next,
      * and the next, rather than backing out. A release picked by hand is played alone ([stream]).
      */
-    fun streamFirstOf(hits: List<Hit>, from: Title?, tag: String? = null, episode: Episode? = null) {
+    fun streamFirstOf(hits: List<Hit>, from: Title?, tag: String? = null, episode: Episode? = null, among: List<Hit> = hits) {
         val first = hits.firstOrNull() ?: return
+        sources = SourceList(from?.imdb, episode?.id, among)
         fallbacks = hits.drop(1)
         fallbackTitle = from
         fallbackTag = tag
@@ -192,14 +214,15 @@ class Watch(val engine: TorrentStream) {
     }
 
     /** A chosen release becomes a stream. `tag` (S01E02) picks the file inside a pack. */
-    fun stream(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null): kotlinx.coroutines.Job {
-        // A release picked by hand is played alone: no line-up behind it.
+    fun stream(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null, among: List<Hit> = emptyList()): kotlinx.coroutines.Job {
+        // A release picked by hand is played alone: no line-up behind it. The list it was picked from, for the player.
         fallbacks = emptyList()
+        if (among.isNotEmpty()) sources = SourceList(from?.imdb, episode?.id, among)
         return open(hit, from, tag, episode)
     }
 
     /** [stream] without touching the line-up: Play's first release, and each next one tried. */
-    private fun open(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null) = AppScope.launch {
+    private fun open(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null, at: Double? = null) = AppScope.launch {
         if (hit.external) {
             opens.tryEmit(hit.uri)
             return@launch
@@ -220,6 +243,8 @@ class Watch(val engine: TorrentStream) {
                 addon = hit.addonUrl.takeIf { hit.direct && it.isNotEmpty() },
             ),
         )
+        // Switched to from the player ([switchTo]): a link starts where the last release was left.
+        if (hit.direct && at != null && at > 0) History.setPosition(fresh.uri, 0, at)
         if (hit.direct) return@launch playLink(fresh, hit.name, hit.size, hit.headers, hit.mime)
         val found = inspect(fresh) ?: return@launch
         if (found.files.none { it.isVideo }) return@launch fail("This torrent holds no video.")
@@ -597,3 +622,9 @@ class Watch(val engine: TorrentStream) {
         if (phase == Phase.INSPECTING) exit()
     }
 }
+
+/**
+ * The releases found for one title ([imdb]) and episode ([episodeId], null for a film), as the player's Sources panel
+ * offers them.
+ */
+data class SourceList(val imdb: String?, val episodeId: String?, val hits: List<Hit>)

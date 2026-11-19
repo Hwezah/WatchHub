@@ -35,4 +35,20 @@ class StreamPickTest {
         assertEquals("No 720p source — playing 1080p", streamNote(hit("a", "1080p"), "720p"))
         assertNull(streamNote(hit("a", null), "720p"))
     }
+
+    /** The player's Sources panel: links first, then the higher resolution, a link's lighter file, a torrent's bigger swarm. */
+    @Test fun sourcesPanelOrder() {
+        val link720 = Hit("l1", "a", "https://x/l1", 0, 0, 394, "720p", "tv", Scope.EPISODE, null)
+        val link720big = link720.copy(id = "l2", uri = "https://x/l2", size = 515)
+        val link720unknown = link720.copy(id = "l3", uri = "https://x/l3", size = 0)
+        val link1080 = link720.copy(id = "l4", uri = "https://x/l4", quality = "1080p", size = 900)
+        val torrent720 = Hit("t1", "t", "magnet:?xt=urn:btih:t1", 50, 0, 300, "720p", "tv", Scope.EPISODE, null)
+        val torrent720few = torrent720.copy(id = "t2", uri = "magnet:?xt=urn:btih:t2", seeders = 5)
+        val youtube = link720.copy(id = "y", uri = "https://youtube.com/x", external = true)
+        val all = listOf(torrent720few, link720unknown, youtube, link720big, torrent720, link1080, link720)
+        assertEquals(listOf("l1", "l2", "l3", "t1", "t2"), sourceOrder(all, "720p").map { it.id })
+        assertEquals(listOf("l4", "l1", "l2", "l3", "t1", "t2"), sourceOrder(all, null).map { it.id })
+        assertEquals(listOf("l4", "l1", "l2", "l3", "t1", "t2"), sourceOrder(all, "").map { it.id })
+        assertEquals(listOf("4K", "1080p", "720p"), sourceResolutions(all + link720.copy(id = "k", quality = "4K") + link720.copy(id = "k2", quality = "2160p") + link720.copy(id = "c", quality = "CAM")))
+    }
 }
