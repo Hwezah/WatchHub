@@ -61,6 +61,9 @@ class BTab(val id: Long, val incognito: Boolean = false) {
     @Volatile var openedAt = 0L
     /** When the viewer last tapped a link on the page: the site's own redirects after it (an "/out?l=" hop) go through. */
     @Volatile var tappedAt = 0L
+    /** The window a page opened for this tab ([catchPopup]), already loading: taken as the tab's own page, not reloaded. */
+    @SuppressLint("StaticFieldLeak")
+    var adopt: WebView? = null
 }
 
 /** A page bookmarked or visited. */
@@ -553,10 +556,34 @@ object Browser {
     @SuppressLint("SetJavaScriptEnabled")
     fun view(context: Context, t: BTab = tab): WebView {
         t.web?.let { return it }
+        // A window the page opened, already on its way: kept as it is (its opener, referrer and what it was sent), not
+        // loaded again from scratch, which sites' click-through pages ("/out?l=") answer with nothing.
+        val adopted = t.adopt
+        t.adopt = null
+        val w = adopted ?: WebView(context).also { prepare(it, t.incognito) }
+        finishView(w, t)
+        if (t.url.isNotEmpty() && adopted == null) w.loadUrl(t.url)
+        // What the adopted window got to before it was watched: its address, title and progress.
+        if (adopted != null) {
+            adopted.url?.takeIf { it.isNotBlank() && it != "about:blank" }?.let { t.url = it }
+            t.title = adopted.title.orEmpty()
+            t.progress = adopted.progress
+            t.loading = adopted.progress < 100
+            nav(t, adopted)
+        }
+        return w
+    }
+
+    /**
+     * A new page's WebView made ready before it loads anything: the tab's profile (incognito's private one), what it may
+     * run, and the shield and media watch at the start of every page. A window a page opens gets the same ([catchPopup]),
+     * so it can become a tab as it is.
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun prepare(w: WebView, incognito: Boolean) {
         CookieManager.getInstance().setAcceptCookie(true)
-        val w = WebView(context)
         // Incognito: the private profile, set before anything loads; nothing cached to disk.
-        if (t.incognito) {
+        if (incognito) {
             if (trulyPrivate) runCatching {
                 androidx.webkit.ProfileStore.getInstance().getOrCreateProfile(PRIVATE)
                 androidx.webkit.WebViewCompat.setProfile(w, PRIVATE)
@@ -582,6 +609,11 @@ object Browser {
             runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, SHIELD_SCRIPT, setOf("*")) }
             runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, MEDIA_SPY, setOf("*")) }
         }
+    }
+
+    /** The tab's own watchers on its WebView: requests, pages, windows, downloads, scrolling. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun finishView(w: WebView, t: BTab) {
         t.ua = w.settings.userAgentString.orEmpty()
         cookiesOf(t).setAcceptThirdPartyCookies(w, true)
         w.webViewClient = object : WebViewClient() {
@@ -751,8 +783,6 @@ object Browser {
             offer = Offer(url, name, headersFor(s, t) + ("User-Agent" to ua), direct = true, kind = s.kind)
         }
         t.web = w
-        if (t.url.isNotEmpty()) w.loadUrl(t.url)
-        return w
     }
 
     /**
@@ -762,33 +792,43 @@ object Browser {
      */
     private fun catchPopup(opener: WebView, t: BTab, tapped: Boolean, msg: android.os.Message): Boolean {
         if (blockPopups && !tapped) { t.blocked++; return false }
+        // Made as a tab's page is (its profile, scripts, settings): a real page then simply becomes the new tab.
         val probe = WebView(opener.context)
-        // An incognito tab's windows are read in its private profile: nothing of them reaches the other tabs.
-        if (t.incognito && trulyPrivate) runCatching { androidx.webkit.WebViewCompat.setProfile(probe, PRIVATE) }
+        prepare(probe, t.incognito)
+        var kept = false
         probe.webViewClient = object : WebViewClient() {
-            private var done = false
-            private fun decide(url: String) {
-                if (done) return
-                done = true
+            private var done: Boolean? = null
+
+            /** Whether to stop this window: judged once, on the first address it goes to. */
+            private fun decide(url: String): Boolean {
+                done?.let { return it }
                 val host = android.net.Uri.parse(url).host.orEmpty().lowercase()
                 val ad = url.startsWith("about:") || host.isEmpty() || (blockAds && blockedHost(host)) || BAD_JUMP.containsMatchIn(host)
+                done = ad
                 main.post {
-                    runCatching { probe.stopLoading(); probe.destroy() }
-                    // A tapped link to a real page: a new tab of the same kind (incognito stays incognito), its redirects let through.
-                    if (ad) t.blocked++ else {
+                    if (ad) {
+                        runCatching { probe.stopLoading(); probe.destroy() }
+                        t.blocked++
+                    } else {
+                        // A tapped link to a real page: this very window as a new tab of the same kind (incognito stays
+                        // incognito), still loading, its redirects let through.
+                        kept = true
                         newTab(incognito = t.incognito)
                         tab.tappedAt = System.currentTimeMillis()
                         tab.url = url
+                        tab.adopt = probe
                     }
                 }
+                return ad
             }
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean { decide(request.url.toString()); return true }
-            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) { if (url != "about:blank") decide(url) }
+
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = decide(request.url.toString())
+            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) { if (url != "about:blank" && decide(url)) view.stopLoading() }
         }
         (msg.obj as? WebView.WebViewTransport)?.webView = probe
         msg.sendToTarget()
-        // Nothing came (a window that stays blank): let go after a moment.
-        main.postDelayed({ runCatching { probe.destroy() } }, 8_000)
+        // Nothing came (a window that stays blank): let go after a moment — unless it became a tab.
+        main.postDelayed({ if (!kept) runCatching { probe.destroy() } }, 8_000)
         return true
     }
 
