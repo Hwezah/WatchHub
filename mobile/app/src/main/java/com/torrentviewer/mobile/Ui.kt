@@ -821,10 +821,11 @@ fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape, color: Color = S
 /**
  * Choices as words in a row, Grabber's way: no pills, a short coloured bar between each, the chosen one in the accent
  * colour with a dot before it. In plain flow from the start, a little apart — not spread across the width (the owner's choice) — scrolling
- * sideways when there are more than fit. [leading] goes first, as it is (a reload button).
+ * sideways when there are more than fit. [leading] goes first, as it is (a reload button). [spread] lays one row end to end
+ * instead, as a [SpreadRow] does (the owner's choice for the season sheet's resolutions only).
  */
 @Composable
-fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier, leading: (@Composable () -> Unit)? = null, onPick: (Int) -> Unit) {
+fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier, leading: (@Composable () -> Unit)? = null, spread: Boolean = false, onPick: (Int) -> Unit) {
     val bars = listOf(Ink.accent, Ink.download, Ink.muted, Ink.good)
     // In plain flow from the start, a little apart, never spread across the width (the owner's choice, everywhere these
     // rows are); a row longer than the screen scrolls sideways rather than being cut off.
@@ -842,7 +843,7 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
             }
         }
     }
-    Row(
+    if (spread) SpreadRow(modifier, content = content) else Row(
         modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, content = content,
     )

@@ -362,7 +362,8 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                     episodeOptions(eps, filter.copy(source = null)) { it.source },
                 )
             }
-            FilterRow("Resolution", options[0], filter.quality) { filter = filter.copy(quality = it) }
+            // Spread end to end here only (the owner's choice); every other bar row stays in plain flow.
+            FilterRow("Resolution", options[0], filter.quality, spread = true) { filter = filter.copy(quality = it) }
             FilterRow("Codec", options[1], filter.codec, label = ::codecLabel) { filter = filter.copy(codec = it) }
             FilterRow("Format", options[2], filter.format) { filter = filter.copy(format = it) }
             FilterRow("Subtitles", options[3], if (filter.subsOnly) "With subs" else null) { filter = filter.copy(subsOnly = it != null) }
@@ -537,14 +538,14 @@ private fun codecLabel(c: String) = when (c) {
     else -> c
 }
 
-/** One filter: its name, then Any and each value found with its count. */
+/** One filter: its name, then Any and each value found with its count; [spread] lays it across the width ([BarChoices]). */
 @Composable
-fun FilterRow(name: String, options: List<Pair<String, Int>>, chosen: String?, label: (String) -> String = { it }, onPick: (String?) -> Unit) {
+fun FilterRow(name: String, options: List<Pair<String, Int>>, chosen: String?, label: (String) -> String = { it }, spread: Boolean = false, onPick: (String?) -> Unit) {
     if (options.isEmpty() && chosen == null) return
     Text(name, Modifier.padding(top = 8.dp, bottom = 6.dp), style = Type.overline.copy(color = Ink.faint))
     // Words split by coloured bars, the chosen one with a dot (the owner's choice: Grabber's look, no pills).
     val values = listOf<String?>(null) + options.map { it.first }
-    BarChoices(listOf("Any") + options.map { (value, n) -> "${label(value)} · $n" }, values.indexOf(chosen).takeIf { it >= 0 }) { i ->
+    BarChoices(listOf("Any") + options.map { (value, n) -> "${label(value)} · $n" }, values.indexOf(chosen).takeIf { it >= 0 }, spread = spread) { i ->
         val value = values[i]
         onPick(if (value != null && value == chosen) null else value)
     }
