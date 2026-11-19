@@ -884,8 +884,9 @@ object NavActive {
     val fill: Color
         get() = when (style) {
             "Accent" -> Ink.accent
-            "Subtle" -> Ink.text.copy(alpha = 0.07f)
-            else -> Ink.text.copy(alpha = if (Ink.isDark) 0.14f else 0.11f)
+            // Dark: toned down with the near-black bar, a soft lift rather than a bright patch.
+            "Subtle" -> Ink.text.copy(alpha = if (Ink.isDark) 0.05f else 0.07f)
+            else -> Ink.text.copy(alpha = if (Ink.isDark) 0.09f else 0.11f)
         }
 
     private const val ICON_KEY = "navActiveIcon"

@@ -722,7 +722,9 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
  */
 @Composable
 private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier, haze: dev.chrisbanes.haze.HazeState? = null) {
-    val face = if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else Ink.surface2
+    // Dark: near pitch black, a breath above the page's own black, its parts toned down to match (the owner's choice:
+    // dark, muted, nothing that clashes with the pages behind). Light: as it was.
+    val face = if (Ink.isDark) NAV_DARK else Ink.surface2
     Column(
         // Just wider than the pages' content (16 dp in), clear of the screen's edges (the owner's choice).
         modifier.navigationBarsPadding().padding(start = 10.dp, end = 10.dp, bottom = 10.dp).fillMaxWidth()
@@ -737,8 +739,8 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                 if (NavGlass.glass && haze != null) Modifier.hazeEffect(
                     haze,
                     dev.chrisbanes.haze.HazeStyle(
-                        backgroundColor = Ink.bg, tint = dev.chrisbanes.haze.HazeTint(face.copy(alpha = 0.55f)),
-                        blurRadius = 26.dp, noiseFactor = 0.06f, fallbackTint = dev.chrisbanes.haze.HazeTint(face.copy(alpha = 0.92f)),
+                        backgroundColor = Ink.bg, tint = dev.chrisbanes.haze.HazeTint(face.copy(alpha = if (Ink.isDark) 0.82f else 0.55f)),
+                        blurRadius = 26.dp, noiseFactor = 0.06f, fallbackTint = dev.chrisbanes.haze.HazeTint(face.copy(alpha = if (Ink.isDark) 0.97f else 0.92f)),
                     ),
                 ) else Modifier.background(face).grain(),
             )
@@ -749,7 +751,7 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
     ) {
         tabs().chunked(4).forEachIndexed { i, row ->
             // Between the two rows: a thin, quiet line, short of the panel's edges (the owner's choice: 90% wide).
-            if (i > 0) Box(Modifier.fillMaxWidth(0.9f).height(1.dp).background(Ink.text.copy(alpha = 0.08f)))
+            if (i > 0) Box(Modifier.fillMaxWidth(0.9f).height(1.dp).background(Ink.text.copy(alpha = if (Ink.isDark) 0.05f else 0.08f)))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 row.forEach { t ->
                     val on = t == tab
@@ -763,7 +765,7 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                                     .then(if (on && NavActive.style != "Accent") Modifier.grain() else Modifier)
                                     .padding(horizontal = 20.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center,
-                            ) { Lc(t.icon, tint = if (on) NavActive.tint else Ink.muted, size = 22.dp) }
+                            ) { Lc(t.icon, tint = if (on) NavActive.tint else if (Ink.isDark) NAV_DARK_ICON else Ink.muted, size = 22.dp) }
                         }
                     }
                 }
@@ -772,6 +774,12 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
         }
     }
 }
+
+/** The floating tab bar in the dark theme: near pitch black, just above the page's #0A0A0A so it still reads apart. */
+private val NAV_DARK = Color(0xFF0E0E0E)
+
+/** Its tabs' icons in the dark theme: a muted grey, quieter than the app's usual muted text on the near-black bar. */
+private val NAV_DARK_ICON = Color(0xFF6E6E6E)
 
 /** A tab announced but not built yet: its icon, its name, and a line saying it's coming. */
 @Composable
