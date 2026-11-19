@@ -25,8 +25,20 @@ private fun canonicalWords(s: String): List<String> {
     return simplify(s).split(' ').filter { it.isNotEmpty() && it !in ARTICLES }.map { numbers[it] ?: it }
 }
 
-/** A year typed with the name ("dune 2021"), to rank that year's release first. */
-fun yearIn(query: String): String? = YEAR.find(query)?.value
+/**
+ * A year typed with the name ("dune 2021"), to rank that year's release first. Not when the number is all that was
+ * typed ("1923", "1917", "2012": those are the names), nor when it's part of [title]'s own name ("Blade Runner 2049").
+ */
+fun yearIn(query: String, title: String? = null): String? {
+    val y = YEAR.find(query)?.value ?: return null
+    if (canonicalWords(YEAR.replace(query, "")).isEmpty()) return null
+    if (title != null && y in canonicalWords(title)) return null
+    return y
+}
+
+/** [query] without the year typed with it ([yearIn]); a name that is a number keeps it. */
+private fun withoutYear(query: String, title: String? = null): String =
+    if (yearIn(query, title) == null) query else YEAR.replace(query, " ")
 
 /**
  * What to ask the catalogues for [query], most likely first, no repeats: as typed; without a year; without
@@ -37,7 +49,7 @@ fun searchVariants(query: String): List<String> {
     if (typed.isEmpty()) return emptyList()
     val out = LinkedHashSet<String>()
     out += typed
-    val noYear = YEAR.replace(typed, "").replace(Regex("\\s+"), " ").trim()
+    val noYear = withoutYear(typed).replace(Regex("\\s+"), " ").trim()
     if (noYear.length >= 2) out += noYear
     val base = noYear.ifEmpty { typed }
     val words = simplify(base).split(' ').filter { it.isNotEmpty() }
@@ -58,15 +70,18 @@ fun searchVariants(query: String): List<String> {
  * others to find the title by. Longest words first; at most five.
  */
 fun partialQueries(query: String): List<String> {
-    val words = canonicalWords(YEAR.replace(query, "")).filter { it.isNotEmpty() }
+    val words = canonicalWords(withoutYear(query)).filter { it.isNotEmpty() }
+    // A word's first part ("intersteller" → "inters", "throns" → "thro"): a typo late in a word still finds it by prefix.
+    fun prefix(w: String) = w.take(maxOf(3, Math.round(w.length * 0.6).toInt()))
     if (words.size < 2) {
-        // One word, perhaps misspelt: its first part ("intersteller" → "interst") still finds it by prefix.
         val w = words.firstOrNull() ?: return emptyList()
-        return if (w.length >= 6) listOf(w.take((w.length * 0.6).toInt())) else emptyList()
+        return if (w.length >= 4) listOf(prefix(w)) else emptyList()
     }
     val singles = words.filter { it.length >= 4 }.sortedByDescending { it.length }
     val pairs = words.zipWithNext { a, b -> "$a $b" }
-    return (pairs + singles).distinct().take(5)
+    // Every word may be misspelt ("gam of throns"): the longest word's start too.
+    val starts = singles.filter { it.length >= 5 }.take(1).map(::prefix)
+    return (pairs + singles + starts).distinct().take(6)
 }
 
 /** Edits (insert, delete, change, swap neighbours) between [a] and [b]. */
@@ -101,10 +116,11 @@ private fun wordLikeness(a: String, b: String): Double {
  * adds a little; an exact name tops everything.
  */
 fun fuzzyScore(title: String, query: String, year: String? = null): Double {
-    val q = canonicalWords(YEAR.replace(query, ""))
+    val typedYear = yearIn(query, title)
+    val q = canonicalWords(withoutYear(query, title))
     val t = canonicalWords(title)
     if (q.isEmpty() || t.isEmpty()) return 0.0
-    if (q == t) return 1.0 + if (year != null && yearIn(query) == year) 0.05 else 0.0
+    if (q == t) return 1.0 + if (year != null && typedYear == year) 0.05 else 0.0
     val joinedQ = q.joinToString("")
     val joinedT = t.joinToString("")
     // "spiderman" / "spider man", "xmen" / "x-men": the same letters, spaced differently.
@@ -118,7 +134,6 @@ fun fuzzyScore(title: String, query: String, year: String? = null): Double {
     // The words in the order typed, from the start: "dark knight" for "The Dark Knight Rises" beats "Knight of the Dark".
     if (t.take(q.size).zip(q).all { (a, b) -> wordLikeness(b, a) >= 0.8 }) score += 0.1
     score = maxOf(score, glued)
-    val typedYear = yearIn(query)
     if (typedYear != null && year != null) score += if (year == typedYear) 0.08 else -0.05
     return score.coerceIn(0.0, 1.0)
 }

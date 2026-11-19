@@ -43,4 +43,21 @@ class FuzzySearchTest {
         assertEquals(1, editDistance("abc", "acb"))
         assertEquals(3, editDistance("kitten", "sitting"))
     }
+
+    /** "1923", "1917", "2012": a name that is a number isn't a year typed with a name. */
+    @Test fun aNameThatIsAYear() {
+        assertTrue(fuzzyScore("1923", "1923", "2022") >= 1.0)
+        assertTrue(fuzzyScore("1917", "1917") >= 1.0)
+        assertTrue(fuzzyScore("Blade Runner 2049", "blade runner 2049") >= 1.0)
+        assertTrue(fuzzyScore("1923", "1923") > fuzzyScore("1883", "1923"))
+        assertEquals(null, yearIn("1923"))
+        assertEquals("2021", yearIn("dune 2021"))
+        assertEquals(listOf("1923"), searchVariants("1923"))
+    }
+
+    @Test fun shortAndEveryWordMisspelt() {
+        assertEquals(listOf("dun"), partialQueries("dunee"))
+        assertTrue("thro" in partialQueries("gam of throns"))
+        assertTrue(fuzzyScore("Game of Thrones", "gam of throns") >= FUZZY_SHOW)
+    }
 }
