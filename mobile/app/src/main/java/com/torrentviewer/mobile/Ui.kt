@@ -407,7 +407,8 @@ fun Field(
                 onValueChange = onValue,
                 singleLine = true,
                 textStyle = Type.label.copy(fontSize = 16.sp, letterSpacing = if (secret) 8.sp else 0.sp, textAlign = align),
-                cursorBrush = SolidColor(Ink.accent),
+                // Green and blinking, as the other boxes (the owner's choice).
+                cursorBrush = SolidColor(Ink.download),
                 visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
                 keyboardOptions = KeyboardOptions(keyboardType = if (digits) KeyboardType.NumberPassword else KeyboardType.Text, imeAction = if (digits) ImeAction.Done else ImeAction.Search),
                 keyboardActions = KeyboardActions(onAny = { onSubmit() }),
