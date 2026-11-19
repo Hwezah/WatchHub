@@ -309,7 +309,7 @@ object Downloads {
         val file = safe(path.replace('\\', '/').split('/').last { it.isNotBlank() })
         // From the Browser: Grabber!/Video, Audio, Documents or Other, by what the file is, as the Grabber app sorts.
         if (job.kind == WEB_KIND) return File(File(keepDir(), webFolder(file)), file)
-        val folders = libraryFolders(job.titleName ?: torrentName, file, job.kind, job.season)
+        val folders = libraryFolders(job.titleName ?: torrentName, file, job.kind, job.season?.takeIf { it >= 0 })
         return File(folders.fold(keepDir()) { dir, part -> File(dir, part) }, file)
     }
 
@@ -1098,7 +1098,11 @@ object Downloads {
 
     /** A season's videos, for the pack's full list — skipped ones included, so they can be put back. */
     private fun seasonVideos(job: DownloadJob, files: List<TorrentFile>): List<Int> =
-        job.season?.let { s -> files.filter { it.isVideo && (parseEpisode(it.name)?.season == s || s in seasonsIn(it.path)) }.map { it.index } }.orEmpty()
+        job.season?.let { s ->
+            // A whole pack: every episode in it (no samples or extras: those carry no episode number).
+            if (s == WHOLE_PACK) files.filter { it.isVideo && parseEpisode(it.name) != null }.map { it.index }
+            else files.filter { it.isVideo && (parseEpisode(it.name)?.season == s || s in seasonsIn(it.path)) }.map { it.index }
+        }.orEmpty()
 
     /**
      * Episodes arrive in order: the next one unsaved at the top priority, the two after it

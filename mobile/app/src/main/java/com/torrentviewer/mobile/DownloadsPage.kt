@@ -60,8 +60,28 @@ import com.torrentviewer.core.parseEpisode
 import com.torrentviewer.core.speed
 import com.composables.icons.lucide.R as L
 
-/** A release to keep, labelled the way History labels a stream of it. */
-fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null, foundAt: Long = System.currentTimeMillis()) = DownloadJob(
+/**
+ * A release to keep, labelled the way History labels a stream of it.
+ *
+ * A whole season (or series) pack picked without an episode is downloaded as its torrent when the link names it (a
+ * debrid link carries the torrent's hash): a link is only ever one file, while the torrent holds every episode — one
+ * card with the episodes inside, each saved to Shows/<show>/Season NN. Packs with no torrent behind them stay links.
+ */
+fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null, foundAt: Long = System.currentTimeMillis()): DownloadJob {
+    val magnet = if (episode == null && hit.scope != com.torrentviewer.core.Scope.EPISODE && from?.kind != "movie" && hit.direct) magnetOf(hit) else null
+    if (magnet != null) return DownloadJob(
+        uri = magnet, title = hit.name, titleName = from?.title, poster = from?.poster, imdb = from?.imdb, kind = from?.kind ?: "tv",
+        source = hit.addon.ifEmpty { null }, linkName = hit.name, size = hit.size,
+        // One season named: its episodes; several, or none named (a complete series): every episode ([WHOLE_PACK]).
+        season = com.torrentviewer.core.seasonsIn(hit.name).singleOrNull() ?: WHOLE_PACK,
+    )
+    return downloadLinkJob(hit, from, episode, foundAt)
+}
+
+/** A pack's job wanting every episode in it, whatever its season: not a real season number. */
+const val WHOLE_PACK = -1
+
+private fun downloadLinkJob(hit: Hit, from: Title?, episode: Episode?, foundAt: Long) = DownloadJob(
     fetchedAt = if (hit.direct) foundAt else 0,
     link = hit.direct,
     headers = if (hit.direct) hit.headers else emptyMap(),
