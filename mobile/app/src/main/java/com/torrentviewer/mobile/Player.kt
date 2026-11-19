@@ -118,6 +118,7 @@ import com.torrentviewer.core.NeedsVlc
 import com.torrentviewer.core.TORBOX_STALL_NOTE
 import com.torrentviewer.core.Ep
 import com.torrentviewer.core.Episode
+import com.torrentviewer.core.Hit
 import com.torrentviewer.core.History
 import com.torrentviewer.core.Stremio
 import com.torrentviewer.core.WatchedEverywhere
@@ -224,7 +225,7 @@ private const val SEEK_CHECK_MS = 2500L
 /** A seek that has not landed: the player goes on reporting the old time until it does. */
 private class Seeking(val target: Double, val from: Double, val since: Long, val connections: Long)
 
-private enum class Panel { TRACKS, SPEED, ASPECT, FIND, LANG, MORE, EPISODES }
+private enum class Panel { TRACKS, SPEED, ASPECT, FIND, LANG, MORE, EPISODES, SOURCES }
 
 private data class Flash(val seconds: Int, val id: Long)
 
@@ -426,6 +427,16 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
             return
         }
         findEpisode(onlineNext ?: return) { noNext = true }
+    }
+
+    /** Picked in the Sources panel: that release instead, from this very spot. */
+    fun switchSource(hit: Hit) {
+        panel = null
+        if (advanced || hit.uri == watch.item?.uri) return
+        advanced = true
+        if (at > 0) watch.savePosition(at)
+        say("Switching source…")
+        watch.switchTo(hit, title, episode, at)
     }
 
     /** Picked from the list: from this torrent if it holds the episode, else found online. */
@@ -1022,6 +1033,8 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                                 pipParams()?.let { p -> runCatching { activity?.enterPictureInPictureMode(p) } }
                             }
                             BarButton(L.drawable.lucide_ic_ellipsis, "More", on = scale != 0 || SLEEP[sleep] != 0 || wholeFile) { panel = Panel.MORE }
+                            // Another release of what's playing, from the same spot (a title to search for, or a list Play kept).
+                            if (title != null || watch.sources != null) BarButton(L.drawable.lucide_ic_server, "Sources") { panel = Panel.SOURCES }
                             if (title?.episodes.orEmpty().isNotEmpty()) BarButton(L.drawable.lucide_ic_list, "Episodes") { panel = Panel.EPISODES }
                             if (next != null || onlineNext != null) BarButton(L.drawable.lucide_ic_skip_forward, "Next episode", onClick = ::goNext)
                         }
@@ -1275,7 +1288,103 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                 onDismiss = { panel = Panel.FIND },
             )
             Panel.EPISODES -> title?.let { EpisodesPanel(it, episode, ::playEpisode) { panel = null } }
+            Panel.SOURCES -> SourcesPanel(watch, title, episode, ::switchSource) { panel = null }
             null -> Unit
+        }
+    }
+}
+
+/**
+ * The releases of what's playing down the right of the picture, as the Episodes list is: by resolution (that of the
+ * one playing first), links before torrents ([sourceOrder]), the one playing marked; picking one plays it from the same
+ * spot. The list Play kept for this title and episode, or — opened without one (Continue Watching, a downloaded copy) —
+ * found here, filling in as the sites answer. ↻ asks every site again.
+ */
+@Composable
+private fun SourcesPanel(watch: Watch, title: Title?, episode: Episode?, onPick: (Hit) -> Unit, onDismiss: () -> Unit) {
+    BackHandler(onBack = onDismiss)
+    val kept = watch.sources?.takeIf { it.imdb == title?.imdb && it.episodeId == episode?.id }?.hits
+    var found by remember { mutableStateOf(kept.orEmpty()) }
+    var busy by remember { mutableStateOf(false) }
+    /** Searches asked for: one at once when there's no list to show; each ↻ another, from the sites themselves. */
+    var ask by remember { mutableIntStateOf(if (kept.isNullOrEmpty()) 1 else 0) }
+    var again by remember { mutableStateOf(false) }
+    // Searched as the title page does: the addons and the plugins side by side, shown as they come.
+    LaunchedEffect(ask) {
+        val t = title ?: return@LaunchedEffect
+        if (ask == 0) return@LaunchedEffect
+        busy = true
+        try {
+            if (again) {
+                com.torrentviewer.core.forgetStreams()
+                com.torrentviewer.mobile.cs.CsPlugins.forgetPages()
+            }
+            val all = com.torrentviewer.mobile.cs.CsStreams.withPlugins(t, episode, { partial -> found = allowedHits(partial) }) { fromAddons ->
+                if (episode != null) com.torrentviewer.core.searchEpisode(t, episode.season, episode.episode, fromAddons)
+                else com.torrentviewer.core.searchStreams(t.title, t.imdb, t.year?.take(4), onHits = fromAddons, type = t.type)
+            }
+            found = allowedHits(all).distinctBy { it.id }
+            watch.keepSources(com.torrentviewer.core.SourceList(t.imdb, episode?.id, found))
+        } finally {
+            busy = false
+        }
+    }
+    val playing = watch.item?.uri
+    val resolutions = remember(found) { com.torrentviewer.core.sourceResolutions(found) }
+    // The playing release's resolution to start with: the usual reason to switch is another copy of the same.
+    var quality by remember { mutableStateOf(found.find { it.uri == playing }?.quality?.takeIf { it in resolutions }) }
+    // One row per release: a list with the same release twice would break the list's keys.
+    val shown = remember(found, quality) { com.torrentviewer.core.sourceOrder(found.distinctBy { it.id }, quality) }
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume(); onDismiss() } })
+        Column(
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().widthIn(max = 400.dp).fillMaxWidth(0.9f)
+                .background(Color.Black.copy(alpha = 0.92f)).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
+                .windowInsetsPadding(WindowInsets.safeDrawing).padding(start = 16.dp, end = 12.dp, top = 12.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Sources", Modifier.weight(1f), style = Type.title.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                Tap(onDismiss, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Color.White, size = 22.dp) }
+            }
+            BarChoices(
+                listOf("All") + resolutions, quality?.let { resolutions.indexOf(it) + 1 }?.takeIf { it > 0 } ?: 0,
+                Modifier.padding(bottom = 4.dp),
+                leading = {
+                    if (title != null) Tap({ if (!busy) { again = true; ask++ } }, Modifier.semantics { contentDescription = "Ask every site again" }, CircleShape) {
+                        ReloadArrow(busy, Color.White, 20.dp, Modifier.padding(8.dp))
+                    }
+                },
+            ) { i -> quality = if (i == 0) null else resolutions[i - 1] }
+            if (shown.isEmpty()) Text(
+                when {
+                    busy -> "Finding sources…"
+                    title == null -> "No other sources kept for this."
+                    else -> "Nothing found${quality?.let { " at $it" } ?: ""}."
+                },
+                Modifier.padding(top = 16.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f)),
+            )
+            else if (busy) Text("${found.size} so far · finding more…", Modifier.padding(top = 2.dp, bottom = 4.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp))
+            LazyColumn(Modifier.padding(top = 4.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(shown, key = { it.id }) { hit -> SourceRow(hit, hit.uri == playing) { onPick(hit) } }
+            }
+        }
+    }
+}
+
+/** One release in the Sources panel: its name, then resolution · size (a torrent's seeds) · where it came from. */
+@Composable
+private fun SourceRow(hit: Hit, here: Boolean, onClick: () -> Unit) {
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
+        Column(Modifier.fillMaxWidth().background(if (here) Color.White.copy(alpha = 0.12f) else Color.Transparent).padding(horizontal = 8.dp, vertical = 9.dp)) {
+            Text(hit.name, style = Type.label.copy(color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val about = listOfNotNull(
+                hit.quality,
+                hit.size.takeIf { it > 0 }?.let(com.torrentviewer.core::bytes),
+                if (hit.direct) "Link" else "${hit.seeders} seeds",
+                hit.addon.takeIf { it.isNotBlank() },
+            ).joinToString(" · ")
+            Text(about, Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (here) Text("Now playing", Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
         }
     }
 }

@@ -420,7 +420,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     /** [line] played from its first; a note when that isn't at the resolution asked for. */
     fun playFrom(line: List<Hit>, tag: String? = null, ep: Episode? = null) {
         com.torrentviewer.core.streamNote(line.firstOrNull(), streamAim())?.let { watch.notes.tryEmit(it) }
-        watch.streamFirstOf(line, title, tag, ep)
+        // The page's whole list goes along, for the player's Sources panel (only when it's this episode's).
+        watch.streamFirstOf(line, title, tag, ep, among = kept?.takeIf { episode?.id == ep?.id }.orEmpty().ifEmpty { line })
     }
 
     fun playEpisode(ep: Episode) = scope.launch {
@@ -686,7 +687,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     )
                 }
             } else {
-                sources(title, episode, kept, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> watch.stream(hit, title) }
+                sources(title, episode, kept, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> watch.stream(hit, title, among = kept.orEmpty()) }
             }
         }
         // Over the art, a round back button; once the page scrolls under it, a solid bar with the name.
@@ -717,7 +718,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             LazyColumn {
                 sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
                     sheet = false
-                    watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
+                    watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep, among = kept.orEmpty())
                 }
             }
         }
@@ -794,7 +795,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             all = hits.orEmpty(),
             onPlay = { h ->
                 sheet = false
-                watch.stream(h, title, ep?.let { episodeTag(it.season, it.episode) }, ep)
+                watch.stream(h, title, ep?.let { episodeTag(it.season, it.episode) }, ep, among = kept.orEmpty())
             },
             onReload = { reloadSources(ep) },
             busy = busy,
