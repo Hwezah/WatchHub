@@ -976,9 +976,12 @@ object Downloads {
      */
     fun differentSource(uri: String) {
         val row = _live.value.find { it.job.uri == uri } ?: return
-        if (!row.job.link || row.job.imdb == null) return
+        if (!canSwap(row.job)) return
         val run = synchronized(lock) { links.remove(uri) }
         run?.cancel()
+        // A torrent: out of the session, with what it fetched.
+        val h = synchronized(lock) { handles.remove(uri) }
+        if (h != null) scope.launch { runCatching { session?.remove(h, SessionHandle.DELETE_FILES) } }
         // Asked for by hand: the new source starts, even on a paused download.
         val job = row.job.copy(paused = false, rejected = (row.job.rejected + uri + rejectKey(row.job.source, row.job.linkName)).distinct())
         failedLinks.merge(job.label, setOf(uri)) { a, b -> a + b }
@@ -1005,6 +1008,12 @@ object Downloads {
         }
     }
 
+    /**
+     * Whether "Different Source" can help: a film or one episode the sources can be asked for again (a link or a torrent).
+     * Not a whole pack — there's no single thing to search for — nor a page's or YouTube's download.
+     */
+    fun canSwap(job: DownloadJob) = job.imdb != null && job.season == null
+
     private fun replaceLink(old: DownloadJob, hit: Hit, failed: Boolean = true) {
         if (failed) failedLinks.merge(old.label, setOf(old.uri)) { a, b -> a + b }
         // Paused (or cancelled) while the fresh link was being found: kept as asked — the new link is recorded, not started.
@@ -1024,6 +1033,10 @@ object Downloads {
             size = if (hit.size > 0) hit.size else old.size,
             refreshes = old.refreshes + 1,
             fetchedAt = System.currentTimeMillis(),
+            // A torrent's files were that torrent's: the new one's are chosen afresh (by the episode tag).
+            files = if (old.link) old.files else emptyList(),
+            saved = if (old.link) old.saved else emptyList(),
+            skipped = if (old.link) old.skipped else emptyList(),
         )
         Log.i(TAG, "fresh link for ${old.label} from ${hit.addon}")
         // What's saved so far goes along to the new link: the file's parts (or the playlist's segments) carry on

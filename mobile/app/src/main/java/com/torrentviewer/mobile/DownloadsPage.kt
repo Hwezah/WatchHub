@@ -351,8 +351,9 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                     row.state == DlState.WIFI -> Unit
                     else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
                 }
-                // A link that looks wrong: swapped for a different source, by hand (not while one is being looked for).
-                if (row.job.link && row.job.imdb != null && !(row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") != true)) {
+                // A source that looks wrong — a link or a torrent — swapped for a different one, by hand (not while a link is being looked for).
+                // A torrent stuck finding peers can be swapped too.
+                if (Downloads.canSwap(row.job) && !(row.job.link && row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") != true)) {
                     Tap(onSwap, shape = CircleShape) { Lc(L.drawable.lucide_ic_shuffle, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 20.dp) }
                 }
                 // Inside the card's padding (the owner's choice: a notch of room from the edge).
