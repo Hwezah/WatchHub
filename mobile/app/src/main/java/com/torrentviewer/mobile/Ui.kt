@@ -633,8 +633,8 @@ fun TitleCard(
 ) {
     Column(modifier) {
         Tap(onClick, Modifier.fillMaxWidth().aspectRatio(2f / 3f), POSTER_SHAPE, onLongClick) {
+            // No outline round the art (the owner's choice): the poster's own edge is the card's.
             Artwork(art, name, Modifier.fillMaxSize())
-            Box(Modifier.matchParentSize().border(1.dp, Ink.stroke, POSTER_SHAPE))
             rating?.takeIf { it.isNotBlank() }?.let { ImdbMark(it, Modifier.align(Alignment.BottomStart).padding(6.dp)) }
             badge?.let {
                 Text(
@@ -666,13 +666,12 @@ fun CardPlaceholder(modifier: Modifier = Modifier) {
     }
 }
 
-/** Continue watching's art: the time left and how far over a fade at its foot, a hairline round it as [TitleCard] has; the name sits under the card. */
+/** Continue watching's art: the time left and how far over a fade at its foot, no outline (as [TitleCard]); the name sits under the card. */
 @Composable
 fun LandscapeCard(art: String?, name: String, stamp: String? = null, progress: Float? = null) {
     Box(Modifier.fillMaxSize()) {
         Artwork(art, name, Modifier.fillMaxSize())
         Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().fillMaxHeight(0.6f).background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.8f))))
-        Box(Modifier.matchParentSize().border(1.dp, Ink.stroke, RoundedCornerShape(5.dp)))
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = if (progress != null) 6.dp else 7.dp)) {
             // Over the artwork's dark fade: white on either page.
             stamp?.let { Text(it, style = Type.meta.copy(fontSize = 11.sp, color = Color.White.copy(alpha = 0.75f)), maxLines = 1) }
