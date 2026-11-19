@@ -482,7 +482,12 @@ fun <T> Sheet(
 
 /** The frame every sheet shares: scrim, rounded top, a grab handle and a heading. */
 @Composable
-fun BottomSheet(title: String, onDismiss: () -> Unit, trailing: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) {
+fun BottomSheet(
+    title: String, onDismiss: () -> Unit, trailing: (@Composable () -> Unit)? = null,
+    /** An icon (or anything) heading the sheet in place of the title's words, when [title] is empty. */
+    leading: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
     BackHandler(LocalShown.current, onDismiss)
     androidx.compose.runtime.DisposableEffect(Unit) {
         OpenSheets.count++
@@ -548,8 +553,9 @@ fun BottomSheet(title: String, onDismiss: () -> Unit, trailing: (@Composable () 
                     Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp).size(36.dp, 4.dp).clip(CircleShape).background(Ink.stroke))
                     // The title, and beside it at the far right whatever the sheet puts there (a Reload…).
                     // No title (a menu that heads itself, as Tube's): just room under the handle.
-                    if (title.isEmpty() && trailing == null) Spacer(Modifier.height(14.dp))
+                    if (title.isEmpty() && trailing == null && leading == null) Spacer(Modifier.height(14.dp))
                     else Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        leading?.invoke()
                         Text(title, Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         trailing?.invoke()
                     }

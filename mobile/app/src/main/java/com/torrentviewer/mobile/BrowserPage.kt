@@ -74,7 +74,8 @@ fun BrowserScreen() {
     LaunchedEffect(Browser.vpnAdded) { if (Browser.vpnAdded > 0) menu = true }
     LaunchedEffect(Browser.url, typing, Browser.current) { if (!typing) input = Browser.url }
     val shown = LocalShown.current
-    BackHandler(shown && Browser.canBack && !Browser.fullScreen) { Browser.back() }
+    // Back: the page before; on a tab's first page that a link of another tab opened, that tab closes and its opener shows.
+    BackHandler(shown && (Browser.canBack || Browser.tab.opener != null) && !Browser.fullScreen) { Browser.back() }
     BackHandler(shown && Browser.fullScreen) { Browser.exitFull?.invoke() }
     val site = Browser.url.isNotBlank() && Media.looksLikeSite(Browser.url)
 
@@ -159,7 +160,8 @@ fun BrowserScreen() {
     }
 
     // The VPN switch beside the title (the owner's choice), then the page's bookmark mark.
-    if (menu) BottomSheet("Browser", { menu = false }, trailing = {
+    // A globe heads it in place of the word (the owner's choice), leaving the line to the buttons.
+    if (menu) BottomSheet("", { menu = false }, leading = { Lc(L.drawable.lucide_ic_globe, tint = Ink.text, size = 24.dp) }, trailing = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Back, forward and reload between the title and the VPN switch (the owner's choice).
             listOf(

@@ -61,6 +61,12 @@ class BTab(val id: Long, val incognito: Boolean = false) {
     @Volatile var openedAt = 0L
     /** When the viewer last tapped a link on the page: the site's own redirects after it (an "/out?l=" hop) go through. */
     @Volatile var tappedAt = 0L
+    /**
+     * The tab whose link opened this one ([catchPopup]): Back on this tab's first page closes it and shows that tab again,
+     * as a phone's browser does.
+     */
+    var opener: BTab? = null
+
     /** The window a page opened for this tab ([catchPopup]), already loading: taken as the tab's own page, not reloaded. */
     @SuppressLint("StaticFieldLeak")
     var adopt: WebView? = null
@@ -814,6 +820,7 @@ object Browser {
                         // incognito), still loading, its redirects let through.
                         kept = true
                         newTab(incognito = t.incognito)
+                        tab.opener = t
                         tab.tappedAt = System.currentTimeMillis()
                         tab.url = url
                         tab.adopt = probe
@@ -889,7 +896,18 @@ object Browser {
         }
     }
 
-    fun back() = tab.web?.takeIf { it.canGoBack() }?.goBack()
+    /**
+     * The page before; on the first page of a tab another tab's link opened, that tab closes and its opener is shown
+     * again (the owner's choice: backing out of a link's tab ends it).
+     */
+    fun back() {
+        val t = tab
+        val w = t.web
+        if (w != null && w.canGoBack()) { w.goBack(); return }
+        val from = t.opener?.takeIf { it in tabs } ?: return
+        close(tabs.indexOf(t))
+        select(tabs.indexOf(from))
+    }
     fun forward() = tab.web?.takeIf { it.canGoForward() }?.goForward()
     fun reload() = tab.web?.reload()
 
