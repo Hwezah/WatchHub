@@ -275,6 +275,21 @@ fun trustRank(hit: Hit): Int {
 /** A link from one of the trusted sites ([trustRank]). */
 fun trustedSource(hit: Hit) = trustRank(hit) > 0
 
+/**
+ * Whether a season scan should ask about an episode once more: its pick ([seasonPick]) isn't from MoviesMod or
+ * MoviesDrive (the owner's first two sites), or there's none. Those come through StreamPlay, whose links hop through
+ * several sites and miss the time limit when the scan is busy; an episode then fell to HDHub's 515 MB over MoviesDrive's
+ * 394 MB, which a second, quieter look finds.
+ */
+fun wantsTrustedAgain(hits: List<Hit>, prefs: DownloadPrefs): Boolean = seasonPick(hits, prefs)?.let { trustRank(it) < 2 } ?: true
+
+/**
+ * An episode's links so far, with [newer] ones added: every link it has been seen with is kept (a later list — a plugin
+ * out of time on a second look — can lack one an earlier list had), and a newer reading of the same link (its file name
+ * learned) takes the older's place.
+ */
+fun mergedHits(older: List<Hit>, newer: List<Hit>): List<Hit> = (newer + older).distinctBy { it.id }
+
 private fun preferredAmong(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     val candidates = prefs.usable(hits).filter(::batchable)
     if (candidates.isEmpty()) return null

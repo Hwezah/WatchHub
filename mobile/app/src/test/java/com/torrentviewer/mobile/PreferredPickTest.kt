@@ -3,7 +3,9 @@ package com.torrentviewer.mobile
 import com.torrentviewer.core.Hit
 import com.torrentviewer.core.Scope
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PreferredPickTest {
@@ -146,5 +148,25 @@ class PreferredPickTest {
         assertEquals(mod, preferredPick(listOf(hub, drive, mod), defaults))
         assertEquals(drive, preferredPick(listOf(hub, drive), defaults))
         assertEquals(mod, batchPick(listOf(hub, drive, mod), BatchFilter(quality = "720p")))
+    }
+
+    /** The owner's E03: HDHub's 515 MB MKV and MoviesDrive's 394 MB, whose name doesn't say MKV — MoviesDrive's is taken. */
+    @Test fun moviesDriveOverHdHubInASeason() {
+        val hub = link("Hdhub4u [HubCloud [BuzzServer]] WEB-DL x264 720p .mkv", "720p", 515 * mb, "https://h.x/e3").copy(addon = "CineStream")
+        val drive = link("MoviesDrive GDFlix [Instant Download] WEB-DL X264 [394.04MB]", "720p", 394 * mb, "https://d.x/e3").copy(addon = "StreamPlay")
+        assertEquals(drive, seasonPick(listOf(hub, drive), defaults))
+        // Only HDHub's: asked about again, for MoviesMod's or MoviesDrive's; with MoviesDrive's, not.
+        assertTrue(wantsTrustedAgain(listOf(hub), defaults))
+        assertFalse(wantsTrustedAgain(listOf(hub, drive), defaults))
+        assertTrue(wantsTrustedAgain(emptyList(), defaults))
+    }
+
+    /** A link seen on a first look stays when a second look's list lacks it; a newer reading replaces the older. */
+    @Test fun mergedHitsKeepEveryLink() {
+        val drive = link("MoviesDrive GDFlix", "720p", 394 * mb, "https://d.x/e3")
+        val hub = link("Hdhub4u", "720p", 515 * mb, "https://h.x/e3")
+        val read = drive.copy(release = "Neagley.S01E03.720p.x264.mkv")
+        assertEquals(listOf(hub, drive), mergedHits(listOf(drive), listOf(hub)))
+        assertEquals(listOf(read, hub), mergedHits(listOf(drive, hub), listOf(read)))
     }
 }

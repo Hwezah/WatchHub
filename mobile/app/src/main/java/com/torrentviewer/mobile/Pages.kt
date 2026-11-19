@@ -366,7 +366,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                 try {
                     // An episode the show's list doesn't have (yet): the addons alone, rather than the plugins searching films.
                     if (episode != null && ep == null) addons { hits = it }
-                    else com.torrentviewer.mobile.cs.CsStreams.withPlugins(title, ep, { hits = it }, addons)
+                    else com.torrentviewer.mobile.cs.CsStreams.withPlugins(title, ep, { hits = it }, addons = addons)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {

@@ -55,7 +55,7 @@ object CsStreams {
      * like StreamPlay ask dozens of sites; nearly all their links are in within the first minute, and what a hung site
      * might add after that wasn't worth the spinner turning on (2.5 minutes was too long a wait).
      */
-    private const val PROVIDER_MS = 60_000L
+    const val PROVIDER_MS = 60_000L
 
     /** The sources list hears of new links at most this often. */
     private const val TELL_MS = 350L
@@ -105,13 +105,13 @@ object CsStreams {
      * The addons' streams ([addons], as Detail asks them) and the plugins' together: plugin links first —
      * they play at once, with no swarm to wait on — each list in its own order. [onHits] hears every update.
      */
-    suspend fun withPlugins(title: Title, ep: Episode?, onHits: OnHits, addons: suspend (OnHits) -> List<Hit>): List<Hit> = coroutineScope {
+    suspend fun withPlugins(title: Title, ep: Episode?, onHits: OnHits, providerMs: Long = PROVIDER_MS, addons: suspend (OnHits) -> List<Hit>): List<Hit> = coroutineScope {
         val lock = Any()
         var fromAddons = emptyList<Hit>()
         var fromPlugins = emptyList<Hit>()
         // One row per link: a plugin and an addon can both find the same file (a list can't hold two rows with one id).
         fun now() = synchronized(lock) { (fromPlugins + fromAddons).distinctBy { it.id } }
-        val plugins = async { find(title, ep) { list -> synchronized(lock) { fromPlugins = list }; onHits(now()) } }
+        val plugins = async { find(title, ep, providerMs) { list -> synchronized(lock) { fromPlugins = list }; onHits(now()) } }
         val got = addons { list -> synchronized(lock) { fromAddons = list }; onHits(now()) }
         synchronized(lock) { fromAddons = got }
         val mine = plugins.await()
@@ -119,8 +119,12 @@ object CsStreams {
         now()
     }
 
-    /** Every installed provider's links for [title] ([ep] for an episode), best quality first. */
-    suspend fun find(title: Title, ep: Episode?, onHits: OnHits = {}): List<Hit> {
+    /**
+     * Every installed provider's links for [title] ([ep] for an episode), best quality first. Each provider is given
+     * [providerMs] (longer if the plugin asks): a season scan's second look gives StreamPlay longer, as its MoviesMod and
+     * MoviesDrive links hop through several sites and come last.
+     */
+    suspend fun find(title: Title, ep: Episode?, providerMs: Long = PROVIDER_MS, onHits: OnHits = {}): List<Hit> {
         CsPlugins.hideScreen()
         val series = ep != null
         val providers = CsPlugins.providers().filter { serves(it, series) }
@@ -138,7 +142,7 @@ object CsStreams {
         coroutineScope {
             for (p in providers) launch(Dispatchers.IO) { providerSlots.withPermit {
                 val start = System.currentTimeMillis()
-                val limit = maxOf(PROVIDER_MS, (p.loadLinksTimeoutMs ?: 0L) + 15_000L)
+                val limit = maxOf(providerMs, (p.loadLinksTimeoutMs ?: 0L) + 15_000L)
                 var links = 0
                 val done = withTimeoutOrNull(limit) {
                     runCatching {

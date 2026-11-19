@@ -43,6 +43,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.async
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -96,12 +97,12 @@ object SeasonBatch {
      * An episode's sources, as the title page finds them — but not waited on to the end ([gather]). Waiting on
      * every plugin (up to minutes each, per episode) made a season take many minutes for links nobody needed.
      */
-    suspend fun sources(title: Title, ep: Episode, onPartial: (List<Hit>) -> Unit = {}): List<Hit> = kotlinx.coroutines.coroutineScope {
+    suspend fun sources(title: Title, ep: Episode, providerMs: Long = CsStreams.PROVIDER_MS, onPartial: (List<Hit>) -> Unit = {}): List<Hit> = kotlinx.coroutines.coroutineScope {
         // Links are checked as they arrive, not all at the end: by the time the last site answers, most are known.
         var checking: Job? = null
         var lastCheck = 0L
         val search: suspend (com.torrentviewer.core.OnHits) -> List<Hit> = { onHits ->
-            CsStreams.withPlugins(title, ep, onHits) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) }
+            CsStreams.withPlugins(title, ep, onHits, providerMs) { fromAddons -> searchEpisode(title, ep.season, ep.episode, fromAddons) }
         }
         val watch: (List<Hit>) -> Unit = { partial ->
             onPartial(partial)
@@ -260,24 +261,52 @@ object SeasonBatch {
         job?.cancel()
         // Asked again: from the sites themselves, not answers or pages kept from the last scan.
         if (again) com.torrentviewer.core.forgetStreams()
-        _scan.value = SeasonScan(title.imdb, season, episodes)
+        val mine = SeasonScan(title.imdb, season, episodes)
+        _scan.value = mine
         val gate = Semaphore(AT_ONCE)
+        /** [hits] added to what [ep] has ([mergedHits]: a link once seen stays); [final] marks it answered, else asked again. */
+        fun put(ep: Episode, hits: List<Hit>, final: Boolean) = synchronized(this@SeasonBatch) {
+            // This scan's only: one cancelled for a new one ("Ask Every Source Again") never writes into it.
+            _scan.value = _scan.value?.takeIf { it.titleImdb == title.imdb && it.season == season && it.at == mine.at }?.let {
+                it.copy(found = it.found + (ep.id to mergedHits(it.found[ep.id].orEmpty(), hits)), finished = if (final) it.finished + ep.id else it.finished - ep.id)
+            }
+        }
         // Off the main thread: ranking and filtering hundreds of releases per episode there made the app stutter.
         job = AppScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             if (again) com.torrentviewer.mobile.cs.CsPlugins.forgetPages()
             kotlinx.coroutines.coroutineScope {
                 for (ep in episodes) launch {
-                    fun put(hits: List<Hit>, final: Boolean) = synchronized(this@SeasonBatch) {
-                        _scan.value = _scan.value?.takeIf { it.titleImdb == title.imdb && it.season == season }
-                            ?.let { it.copy(found = it.found + (ep.id to hits), finished = if (final) it.finished + ep.id else it.finished) }
-                    }
                     // Each answer shown as it comes: the sheet picks from it at once, and swaps in better ones as they arrive.
-                    val hits = gate.withPermit { sources(title, ep) { partial -> put(partial, final = false) } }
-                    put(hits, final = true)
+                    val hits = gate.withPermit { sources(title, ep, providerMs = SCAN_PROVIDER_MS) { partial -> put(ep, partial, final = false) } }
+                    put(ep, hits, final = true)
                 }
+            }
+            // A second look, one episode at a time, for each that didn't get a MoviesMod or MoviesDrive file
+            // ([wantsTrustedAgain]): with nothing else running and each plugin given longer, StreamPlay reaches the sites it
+            // ran out of time for (the owner's E03 fell to HDHub's 515 MB over MoviesDrive's 394 MB). What comes is added
+            // to what the episode had; it shows "still looking" meanwhile.
+            val prefs = downloadPrefs()
+            for (ep in episodes) {
+                ensureActive()
+                val had = _scan.value?.takeIf { it.at == mine.at }?.found?.get(ep.id) ?: break
+                if (!wantsTrustedAgain(had, prefs)) continue
+                put(ep, emptyList(), final = false)
+                val more = sources(title, ep, providerMs = SECOND_LOOK_MS) { partial -> put(ep, partial, final = false) }
+                ensureActive()
+                put(ep, more, final = true)
             }
         }
     }
+
+    /**
+     * Each plugin's time per episode in a season scan, against a minute on a title page: nobody sits waiting on a season,
+     * and the owner's rule is that its sources come through in full before the picks are made — StreamPlay's MoviesMod and
+     * MoviesDrive links hop through several sites and came in after a minute. A plugin done sooner is done sooner.
+     */
+    private const val SCAN_PROVIDER_MS = 150_000L
+
+    /** Each plugin's time on the second look ([begin]), with nothing else running: longer still. */
+    private const val SECOND_LOOK_MS = 240_000L
 
 
     /** Queues every picked release; how many went. */
