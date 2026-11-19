@@ -144,8 +144,8 @@ fun batchPick(hits: List<Hit>, filter: BatchFilter, preferDirect: Boolean = fals
     compareByDescending<Hit> { alive(it) }
         // A link before a torrent (the owner's rule: torrents aren't the priority).
         .thenByDescending { it.direct }
-        // Then MoviesMod, MoviesDrive, HDHub (the owner's trusted sites).
-        .thenByDescending { trustedSource(it) }
+        // Then MoviesMod, MoviesDrive, HDHub, in that order (the owner's trusted sites), before any size.
+        .thenByDescending { trustRank(it) }
         .thenByDescending { it in links }
         .thenByDescending { quick(it) }
         .thenByDescending { !(it.direct && isPlaylist(it)) }
@@ -236,10 +236,13 @@ fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? = linksFirst(hits
  */
 fun linksFirst(hits: List<Hit>, wanted: String, pick: (List<Hit>) -> Hit?): Hit? {
     val (links, torrents) = hits.partition { it.direct }
-    // Among links, the trusted sites first ([trustedSource]) when they have the resolution as near as any.
+    // Among links, the trusted sites first, in the owner's order ([trustRank]: MoviesMod, MoviesDrive, HDHub), when one has
+    // the resolution as near as any; within a site, [pick]'s own order (the lightest).
     val any = pick(links)
-    val trusted = pick(links.filter(::trustedSource))
-    val link = if (trusted != null && any != null && resolutionDistance(trusted.quality, wanted) <= resolutionDistance(any.quality, wanted)) trusted else any
+    val trusted = (3 downTo 1).firstNotNullOfOrNull { r ->
+        pick(links.filter { trustRank(it) == r })?.takeIf { t -> any != null && resolutionDistance(t.quality, wanted) <= resolutionDistance(any.quality, wanted) }
+    }
+    val link = trusted ?: any
     val torrent = pick(torrents)
     return when {
         link == null -> torrent
@@ -249,11 +252,28 @@ fun linksFirst(hits: List<Hit>, wanted: String, pick: (List<Hit>) -> Hit?): Hit?
     }
 }
 
-/** Sites whose links are good small 720p files with good codecs, from experience (the owner's): MoviesMod, MoviesDrive, HDHub. */
-private val TRUSTED = Regex("(?i)movies?\\W?mod|movies?\\W?drive|hd\\W?hub")
+/** Sites whose links are good small 720p files with good codecs, from experience (the owner's), in the owner's order. */
+private val MOVIESMOD = Regex("(?i)movies?\\W?mod")
+private val MOVIESDRIVE = Regex("(?i)movies?\\W?drive")
+private val HDHUB = Regex("(?i)hd\\W?hub")
 
-/** A link from a trusted site ([TRUSTED]), by its name, release or the addon or plugin it came through. */
-fun trustedSource(hit: Hit) = hit.direct && (TRUSTED.containsMatchIn(hit.name) || TRUSTED.containsMatchIn(hit.release) || TRUSTED.containsMatchIn(hit.addon))
+/**
+ * How trusted a link's site is, by its name, release or the addon or plugin it came through: MoviesMod 3, MoviesDrive 2,
+ * HDHub 1 (the owner's order of preference), any other site or a torrent 0.
+ */
+fun trustRank(hit: Hit): Int {
+    if (!hit.direct) return 0
+    fun says(r: Regex) = r.containsMatchIn(hit.name) || r.containsMatchIn(hit.release) || r.containsMatchIn(hit.addon)
+    return when {
+        says(MOVIESMOD) -> 3
+        says(MOVIESDRIVE) -> 2
+        says(HDHUB) -> 1
+        else -> 0
+    }
+}
+
+/** A link from one of the trusted sites ([trustRank]). */
+fun trustedSource(hit: Hit) = trustRank(hit) > 0
 
 private fun preferredAmong(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     val candidates = prefs.usable(hits).filter(::batchable)

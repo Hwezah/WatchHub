@@ -134,4 +134,17 @@ class PreferredPickTest {
         // Not at the cost of the resolution.
         assertEquals(other, preferredPick(listOf(other, mod.copy(quality = "1080p")), defaults))
     }
+
+    /** The trusted sites in the owner's order — MoviesMod, then MoviesDrive, then HDHub — whatever their sizes. */
+    @Test fun trustedSitesInOrder() {
+        val hub = link("HDHub4u 720p [250MB]", "720p", 250 * mb, "https://h.x/e1")
+        val drive = link("MoviesDrive 720p [290MB]", "720p", 290 * mb, "https://d.x/e1").copy(addon = "StreamPlay")
+        val mod = link("Moviesmod Driveseed [320MB]", "720p", 320 * mb, "https://m.x/e1").copy(addon = "StreamPlay")
+        assertEquals(3, trustRank(mod))
+        assertEquals(2, trustRank(drive))
+        assertEquals(1, trustRank(hub))
+        assertEquals(mod, preferredPick(listOf(hub, drive, mod), defaults))
+        assertEquals(drive, preferredPick(listOf(hub, drive), defaults))
+        assertEquals(mod, batchPick(listOf(hub, drive, mod), BatchFilter(quality = "720p")))
+    }
 }

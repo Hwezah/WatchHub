@@ -112,8 +112,8 @@ object SeasonBatch {
             }
         }
         // Every source, the slow sites too (the owner's rule): the light 720p MKV links are often the last to answer. The
-        // one exception, on any network: an episode that already holds a confirmed 720p MKV of 250 MB or less
-        // ([confirmed]) stops there — nothing later would be meaningfully lighter.
+        // one exception, on any network: an episode that already holds a confirmed MoviesMod 720p MKV of 400 MB or less
+        // ([confirmed]) stops there — the owner's first site, and nothing later would be meaningfully lighter.
         val all = gatherUntil(EPISODE_CAP_MS, watch, search)
         // The checks under way finish (they're most of the work), then whatever came after them is checked.
         checking?.join()
@@ -122,22 +122,22 @@ object SeasonBatch {
     }
 
     /**
-     * A pick that needs nothing more: the preferred resolution and format, a direct file whose size is known and at most
-     * [LIGHT_EPISODE_BYTES]. An episode that has one stops asking the slower sites; any other waits for every site.
+     * A pick that needs nothing more: from MoviesMod (the owner's first site, [trustRank]), the preferred resolution and
+     * format, a direct file whose size is known and at most [LIGHT_EPISODE_BYTES]. An episode that has one stops asking
+     * the slower sites; any other waits for every site, since MoviesMod's files come late through StreamPlay.
      */
     private fun confirmed(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
         val pick = seasonPick(hits, prefs) ?: return false
         // Light too: a 1 GB 720p from a quick site stopped the scan before the slow sites' 300 MB ones came in.
         val light = (LIGHT_EPISODE_BYTES * if (pick.kind == "movie") 2.5 else 1.0).toLong()
-        return pick.direct && !isPlaylist(pick) && pick.size in 1..light && onTarget(listOf(pick), prefs, ::seasonPick)
+        return pick.direct && trustRank(pick) == 3 && !isPlaylist(pick) && pick.size in 1..light && onTarget(listOf(pick), prefs, ::seasonPick)
     }
 
     /**
-     * An episode stops early only on a confirmed pick this light (a film: 2.5 times). It was 400 MB, and a quick site's
-     * 365 MB 720p stopped an episode before Moviesmod's 271 MB one came in through StreamPlay (the owner caught it): the
-     * light files are the slow sites', so only a pick lighter than theirs usually are ends the wait.
+     * An episode stops early only on a confirmed MoviesMod pick this light (a film: 2.5 times). Any site's used to stop
+     * it, and a quick site's 365 MB 720p ended an episode before MoviesMod's 271 MB one came in (the owner caught it).
      */
-    private const val LIGHT_EPISODE_BYTES = 250L * 1024 * 1024
+    private const val LIGHT_EPISODE_BYTES = 400L * 1024 * 1024
 
     /** [gatherAll], but done as soon as what has come holds a [confirmed] pick (after a short floor for the quick sources). */
     private suspend fun gatherUntil(capMs: Long, onPartial: (List<Hit>) -> Unit, search: suspend (com.torrentviewer.core.OnHits) -> List<Hit>): List<Hit> = runCatching {
