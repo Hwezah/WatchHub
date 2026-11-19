@@ -819,12 +819,17 @@ object Downloads {
                             if (e is LinkExpiredException || attempt >= DROPPED_RETRIES) throw e
                             attempt++
                             // A playlist never fetched more than LinkFetch's cap at once: halved from what it really used.
-                            conns = maxOf(MIN_CONNECTIONS, (if (job.playlist) minOf(conns, LinkFetch.HLS_MAX) else conns) / 2)
+                            // The last tries of a single file over one connection: some hosts (Driveseed's instant links among
+                            // them) drop every request but one, however few the others.
+                            conns = if (!job.playlist && attempt >= DROPPED_RETRIES - 1) 1
+                            else maxOf(MIN_CONNECTIONS, (if (job.playlist) minOf(conns, LinkFetch.HLS_MAX) else conns) / 2)
                             // Stopped meanwhile (paused, cancelled, its source swapped): it says nothing more.
                             kotlinx.coroutines.currentCoroutineContext().ensureActive()
                             hostConns[host] = conns
                             Log.w(TAG, "${job.label}: ${e.message}; again with $conns connections")
-                            update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Connection dropped — trying again", speed = 0) }
+                            // What the server said, briefly, so a host that keeps refusing can be told from a flaky line.
+                            val why = e.message?.removePrefix("A part kept failing: ")?.take(40)?.let { " ($it)" }.orEmpty()
+                            update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Connection dropped$why — trying again" + if (conns == 1) " over one connection" else "", speed = 0) }
                             kotlinx.coroutines.delay(3000L * attempt)
                         }
                     }
