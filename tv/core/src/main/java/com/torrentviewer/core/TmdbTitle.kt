@@ -12,8 +12,48 @@ data class CastMember(val id: Int, val name: String, val role: String?, val phot
 /** A title known by TMDB's id: its IMDb id, which the app goes by, is asked for only when it's opened. */
 data class TmdbCard(val id: Int, val kind: String, val title: String, val poster: String?, val year: String?)
 
-/** [directors]: who made it, for their pages — a film's director, a series' creators. */
-data class TmdbTitle(val certificate: String?, val cast: List<CastMember>, val similar: List<TmdbCard>, val directors: List<CastMember> = emptyList())
+/**
+ * [directors]: who made it, for their pages — a film's director, a series' creators. [cinemas] and [digital]: a film's first
+ * cinema and home (digital or disc) release dates, yyyy-MM-dd, so the page can say whether it's out to watch yet.
+ */
+data class TmdbTitle(
+    val certificate: String?,
+    val cast: List<CastMember>,
+    val similar: List<TmdbCard>,
+    val directors: List<CastMember> = emptyList(),
+    val cinemas: String? = null,
+    val digital: String? = null,
+)
+
+/** TMDB's release types: 2 limited and 3 wide in cinemas; 4 digital, 5 disc and 6 TV are all at home. */
+private val CINEMA_TYPES = setOf(2, 3)
+private val HOME_TYPES = setOf(4, 5, 6)
+
+/**
+ * The earliest release of [types] in any country: a copy turns up online once a film is out at home anywhere, and
+ * premieres and festivals (type 1) don't count as being out.
+ */
+private fun firstRelease(o: JSONObject, types: Set<Int>): String? =
+    o.optJSONObject("release_dates")?.optJSONArray("results")?.objects().orEmpty()
+        .flatMap { it.optJSONArray("release_dates")?.objects().orEmpty() }
+        .filter { it.optInt("type") in types }
+        .mapNotNull { it.str("release_date")?.take(10)?.takeIf { d -> d.length == 10 } }
+        .minOrNull()
+
+/**
+ * The line saying whether a film can be watched at home yet, for its page: "Digital Since Mar 4, 2026" once it's out,
+ * "In Cinemas Since …" while it's only in cinemas (with its home date when one is set), and the dates to come otherwise.
+ * [today] is yyyy-MM-dd; null when TMDB has no dates.
+ */
+fun releaseLine(cinemas: String?, digital: String?, today: String): String? {
+    if (digital != null && digital <= today) return "Digital Since ${prettyDate(digital)}"
+    val home = digital?.let { "Digital ${prettyDate(it)}" }
+    return when {
+        cinemas != null && cinemas <= today -> listOfNotNull("In Cinemas Since ${prettyDate(cinemas)}", home).joinToString("  •  ")
+        cinemas != null -> listOfNotNull("In Cinemas ${prettyDate(cinemas)}", home).joinToString("  •  ")
+        else -> home
+    }
+}
 
 /** "Jonathan Demme" and "jonathan demme" are one name: only letters and digits count. */
 fun sameName(a: String, b: String): Boolean {
@@ -95,7 +135,7 @@ fun parseTmdbTitle(json: String, kind: String): TmdbTitle {
     val directors = (o.optJSONObject("credits")?.optJSONArray("crew")?.objects().orEmpty().filter { it.optString("job") == "Director" } +
         o.optJSONArray("created_by")?.objects().orEmpty())
         .map { CastMember(it.optInt("id"), it.optString("name"), null, null) }.distinctBy { it.id }
-    return TmdbTitle(certificateOf(o, kind), cast, similar, directors)
+    return TmdbTitle(certificateOf(o, kind), cast, similar, directors, firstRelease(o, CINEMA_TYPES), firstRelease(o, HOME_TYPES))
 }
 
 /** /person with combined_credits appended: what they're in, best known first, each title once. */

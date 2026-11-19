@@ -83,4 +83,23 @@ class PickTrailerTest {
         org.junit.Assert.assertEquals("teaser1", pickTrailer("""{"results":[{"site":"YouTube","key":"teaser1","type":"Teaser"},{"site":"YouTube","key":"c","type":"Clip"}]}"""))
         org.junit.Assert.assertNull(pickTrailer("""{"results":[]}"""))
     }
+
+    @Test fun aFilmsFirstCinemaAndHomeDatesFromAnyCountry() {
+        val json = """{"release_dates":{"results":[
+          {"iso_3166_1":"US","release_dates":[{"type":1,"release_date":"2026-01-02T00:00:00.000Z"},{"type":3,"release_date":"2026-03-06T00:00:00.000Z"}]},
+          {"iso_3166_1":"FR","release_dates":[{"type":3,"release_date":"2026-03-04T00:00:00.000Z"},{"type":4,"release_date":"2026-05-20T00:00:00.000Z"}]}]}}"""
+        val t = parseTmdbTitle(json, "movie")
+        assertEquals("2026-03-04", t.cinemas)
+        assertEquals("2026-05-20", t.digital)
+        assertNull(parseTmdbTitle("{}", "movie").digital)
+    }
+
+    @Test fun theReleaseLineSaysWhetherItsOutAtHome() {
+        assertEquals("Digital Since May 20, 2026", releaseLine("2026-03-04", "2026-05-20", "2026-11-19"))
+        assertEquals("In Cinemas Since Mar 4, 2026  •  Digital May 20, 2026", releaseLine("2026-03-04", "2026-05-20", "2026-04-01"))
+        assertEquals("In Cinemas Since Mar 4, 2026", releaseLine("2026-03-04", null, "2026-04-01"))
+        assertEquals("In Cinemas Mar 4, 2026", releaseLine("2026-03-04", null, "2026-01-01"))
+        assertEquals("Digital May 20, 2026", releaseLine(null, "2026-05-20", "2026-01-01"))
+        assertNull(releaseLine(null, null, "2026-01-01"))
+    }
 }

@@ -144,6 +144,10 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     // Rating, cast and what's like it. Without a key or a connection the page is as it was.
     val tmdb by produceState<com.torrentviewer.core.TmdbTitle?>(null, initial.imdb) { value = com.torrentviewer.core.Tmdb.title(initial.imdb, initial.kind) }
     val certificate = tmdb?.certificate
+    // Whether a film is out at home yet or still in cinemas, under its facts (series run by episode, so not for them).
+    val release = tmdb?.takeUnless { initial.isSeries }?.let {
+        com.torrentviewer.core.releaseLine(it.cinemas, it.digital, java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date()))
+    }
     if (com.torrentviewer.core.Kids.on && com.torrentviewer.core.tooOldForKids(certificate)) {
         TooOldForKids(title, certificate.orEmpty(), onBack)
         return
@@ -419,7 +423,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 16.dp).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
                         }
                         // The facts and certificate on the page, under the picture's edge, not over the picture (the owner's choice).
-                        Facts(title.copy(genres = title.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone())
+                        Facts(title.copy(genres = title.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone(), release = release)
                         badges(Modifier.padding(top = 10.dp))
                     }
                 } else if (!wide) {
@@ -435,8 +439,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     ),
                 ) {
                     if (wide) TitleMark(title, Modifier.widthIn(max = 320.dp).padding(bottom = 12.dp), maxHeight = 80.dp, style = Type.display)
-                    if (wide) Facts(title.copy(genres = title.genres.take(2)))
-                    else if (!clean) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Facts(title.copy(genres = title.genres.take(2))) }
+                    if (wide) Facts(title.copy(genres = title.genres.take(2)), release = release)
+                    else if (!clean) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Facts(title.copy(genres = title.genres.take(2)), centred = isPortraitPhone(), release = release) }
                     if (!clean) badges(Modifier.padding(top = 12.dp))
                     // The list first, as someone chose its order; TMDB for any other film. A series has its seasons.
                     val inOrder by produceState(com.torrentviewer.core.WatchOrders.of(title.imdb), title.imdb) {

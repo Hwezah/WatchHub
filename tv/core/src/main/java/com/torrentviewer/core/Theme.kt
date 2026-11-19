@@ -315,21 +315,32 @@ fun ImdbBadge(rating: String) {
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun Facts(title: Title, modifier: Modifier = Modifier, centred: Boolean = false) {
-    // [centred]: each line in the middle when it wraps (the phone's centred headers), rather than from the left.
-    androidx.compose.foundation.layout.FlowRow(
-        modifier, horizontalArrangement = if (centred) Arrangement.Center else Arrangement.Start, verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        title.rating?.let {
-            Row(Modifier.align(Alignment.CenterVertically).padding(end = 14.dp)) { ImdbBadge(it) }
+fun Facts(title: Title, modifier: Modifier = Modifier, centred: Boolean = false, release: String? = null) {
+    // [release]: whether a film is out at home or still in cinemas, on a line of its own under the facts.
+    Column(modifier, horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
+        // [centred]: each line in the middle when it wraps (the phone's centred headers), rather than from the left.
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = if (centred) Arrangement.Center else Arrangement.Start, verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            title.rating?.let {
+                Row(Modifier.align(Alignment.CenterVertically).padding(end = 14.dp)) { ImdbBadge(it) }
+            }
+            title.facts().forEachIndexed { i, fact ->
+                Text(
+                    (if (i > 0) "  •  " else "") + fact,
+                    Modifier.align(Alignment.CenterVertically),
+                    style = Type.meta.copy(color = Ink.text.copy(alpha = 0.85f)),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
         }
-        title.facts().forEachIndexed { i, fact ->
+        release?.let {
             Text(
-                (if (i > 0) "  •  " else "") + fact,
-                Modifier.align(Alignment.CenterVertically),
+                it,
+                Modifier.padding(top = 6.dp),
                 style = Type.meta.copy(color = Ink.text.copy(alpha = 0.85f)),
-                maxLines = 1,
-                softWrap = false,
+                textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
             )
         }
     }
