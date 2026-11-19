@@ -999,9 +999,16 @@ private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?,
                     }
                 }
             }
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text("$number. ${ep.name}", style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Beside the picture, as tall as it: the name across the whole width at the top (one line, scrolling when long),
+            // the date at the foot, and the buttons centred at the right as before (the owner's choice).
+            Box(Modifier.weight(1f).height(74.dp).padding(start = 12.dp)) {
+                Text(
+                    "$number. ${ep.name}",
+                    Modifier.align(Alignment.TopStart).padding(top = 2.dp).basicMarquee(),
+                    style = Type.label.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                )
+                Row(Modifier.align(Alignment.BottomStart).padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Watched as Stremio is told: an anime's ending song isn't worth waiting through for the tick.
                     if (seen >= com.torrentviewer.core.WATCHED_AT) {
                         Lc(L.drawable.lucide_ic_check, tint = Ink.good, size = 13.dp)
@@ -1009,11 +1016,13 @@ private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?,
                     }
                     ep.released?.take(10)?.let { Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp)) }
                 }
+                Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically) {
+                    // The episode's full summary ([StorySheet]).
+                    Tap(onStory, shape = CircleShape) { Lc(L.drawable.lucide_ic_info, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
+                    // Every release for this episode, to pick one by hand.
+                    Tap(onSources, shape = CircleShape) { Lc(L.drawable.lucide_ic_list_video, Modifier.padding(10.dp), tint = Ink.muted, size = 22.dp) }
+                }
             }
-            // The episode's full summary ([StorySheet]).
-            Tap(onStory, shape = CircleShape) { Lc(L.drawable.lucide_ic_info, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
-            // Every release for this episode, to pick one by hand.
-            Tap(onSources, shape = CircleShape) { Lc(L.drawable.lucide_ic_list_video, Modifier.padding(10.dp), tint = Ink.muted, size = 22.dp) }
             // No ⬇ of its own (the owner's choice): the sources' list has one on every release, and the season its Download.
         }
         ep.overview?.let { Text(it, Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 2, overflow = TextOverflow.Ellipsis) }
