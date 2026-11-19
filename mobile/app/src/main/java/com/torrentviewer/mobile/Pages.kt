@@ -506,7 +506,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                         recents.forEach { r -> Chip(r, false, onClick = { query = r }, icon = L.drawable.lucide_ic_history) }
                     }
                 }
-                if (!aiShown) heading?.let { Text(it, Modifier.padding(top = 24.dp), style = headingStyle(it)) }
+                if (!aiShown) heading?.let { Text(it, Modifier.fillMaxWidth().padding(top = 24.dp), style = headingStyle(it, isPortraitPhone())) }
                 // Centred on an upright phone, as the hint above it.
                 else Row(
                     Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically,
@@ -535,7 +535,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
             }
             // "Nothing found" says nothing while the AI is still answering, or once it has found something.
             val quiet = !torrents && titles.isNullOrEmpty() && (aiBusy || !aiTitles.isNullOrEmpty())
-            if (!quiet) heading?.let { h -> item(span = { GridItemSpan(maxLineSpan) }) { Text(h, Modifier.padding(top = 16.dp), style = headingStyle(h)) } }
+            if (!quiet) heading?.let { h -> item(span = { GridItemSpan(maxLineSpan) }) { Text(h, Modifier.fillMaxWidth().padding(top = 16.dp), style = headingStyle(h, isPortraitPhone())) } }
         }
         if (torrents) {
             if (hiddenFew > 0) item(span = { GridItemSpan(maxLineSpan) }) {
@@ -579,9 +579,13 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
     }
 }
 
-/** A results heading is bold; "Nothing found…" and the like are a quiet note, not a headline. */
-private fun headingStyle(text: String) =
-    if (text.startsWith("No")) Type.label.copy(fontWeight = FontWeight.Normal, color = Ink.muted) else Type.title.copy(fontWeight = FontWeight.Bold)
+/**
+ * A results heading is bold; "Nothing found…" and the like are a quiet note, not a headline — in the middle on an
+ * upright phone ([centred], the owner's choice), as the app's other empty notes are.
+ */
+private fun headingStyle(text: String, centred: Boolean = false) =
+    if (text.startsWith("No")) Type.label.copy(fontWeight = FontWeight.Normal, color = Ink.muted, textAlign = if (centred) TextAlign.Center else TextAlign.Start)
+    else Type.title.copy(fontWeight = FontWeight.Bold)
 
 /* -------------------------------------------------------------- library */
 
