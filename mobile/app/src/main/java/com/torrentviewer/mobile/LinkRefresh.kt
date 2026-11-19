@@ -2,6 +2,7 @@ package com.torrentviewer.mobile
 
 import com.torrentviewer.core.Hit
 import com.torrentviewer.core.Meta
+import com.torrentviewer.core.Title
 import com.torrentviewer.core.forgetStreams
 import com.torrentviewer.core.searchStreams
 import com.torrentviewer.mobile.cs.CsStreams
@@ -50,13 +51,19 @@ object LinkRefresh {
      */
     suspend fun fresh(job: DownloadJob, tried: Set<String> = emptySet(), allowSame: Boolean = false, wide: Boolean = false): Hit? {
         val imdb = job.imdb ?: return null
-        val title = Meta.title(imdb, job.kind ?: "movie") ?: return null
+        // The title's details if they come; else enough to search by (its id, kind and name) — a slow or missing
+        // listing never stops the search.
+        val name = job.titleName?.substringBefore(" · ") ?: job.title
+        val title = runCatching { Meta.title(imdb, job.kind ?: "movie") }.getOrNull() ?: Title(imdb, job.kind ?: "movie", name)
         // The addons' answers are kept for the session; this needs new ones.
         forgetStreams()
         com.torrentviewer.mobile.cs.CsPlugins.forgetPages()
         val season = job.epSeason
         val number = job.epNumber
-        val ep = if (season != null && number != null) title.episodes.find { it.season == season && it.episode == number } ?: return null else null
+        // The episode as the listing has it, or — not listed (yet, or at all) — made from its own numbers: the sources
+        // are asked for "S01E04" all the same, rather than the search giving up before it starts.
+        val ep = if (season != null && number != null) title.episodes.find { it.season == season && it.episode == number }
+            ?: com.torrentviewer.core.Episode("$imdb:$season:$number", season, number, "", null, null, null) else null
         val st = com.torrentviewer.core.SettingsStore.value.value
         val prefs = downloadPrefs()
         // [allowSame]: renewing a link that hasn't failed, so the same address (when it doesn't expire) is fine.
