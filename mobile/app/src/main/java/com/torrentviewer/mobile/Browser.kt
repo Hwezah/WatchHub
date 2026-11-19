@@ -32,8 +32,11 @@ data class Sniffed(
     val detail: String = "",
 )
 
-/** One browser tab: its own page, history and finds. */
-class BTab(val id: Long) {
+/**
+ * One browser tab: its own page, history and finds. [incognito]: its pages aren't kept in history, and its cookies,
+ * sign-ins, site storage and cache live apart from the other tabs' and are forgotten when the last such tab closes.
+ */
+class BTab(val id: Long, val incognito: Boolean = false) {
     @SuppressLint("StaticFieldLeak")
     var web: WebView? = null
     var url by mutableStateOf("")
@@ -120,6 +123,28 @@ object Browser {
             s.javaScriptCanOpenWindowsAutomatically = true // windows are caught and judged ([catchPopup]), not refused
             darken(s)
         }
+    }
+
+    /* ------------------------------------------------------------ incognito */
+
+    /** The WebView profile incognito tabs share: its own cookies, storage and cache, deleted with the last such tab. */
+    private const val PRIVATE = "watchhub-incognito"
+
+    /**
+     * Whether this phone's WebView keeps incognito tabs' cookies and storage apart (its "profiles", recent WebViews).
+     * Without it an incognito tab still keeps no history or cache, but shares sign-ins with the other tabs.
+     */
+    val trulyPrivate: Boolean by lazy { runCatching { androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.MULTI_PROFILE) }.getOrDefault(false) }
+
+    /** The cookies [t] sees: the incognito profile's for an incognito tab (where kept apart), else everyone's. */
+    private fun cookiesOf(t: BTab): CookieManager =
+        if (t.incognito && trulyPrivate) runCatching { androidx.webkit.ProfileStore.getInstance().getOrCreateProfile(PRIVATE).cookieManager }.getOrNull() ?: CookieManager.getInstance()
+        else CookieManager.getInstance()
+
+    /** The last incognito tab closed: everything it kept goes ([PRIVATE] deleted once its pages are gone). */
+    private fun forgetIncognito() {
+        if (!trulyPrivate) return
+        main.postDelayed({ runCatching { if (tabs.none { it.incognito }) androidx.webkit.ProfileStore.getInstance().deleteProfile(PRIVATE) } }, 1500)
     }
 
     /** Settings: forget cookies, history and the cache, and go back to a blank start. */
@@ -391,7 +416,7 @@ object Browser {
         t0.ua.takeIf { it.isNotBlank() }?.let { h["User-Agent"] = it }
         // What the page itself sent wins: an embedded player checks its own Referer and Origin.
         s.headers.forEach { (k, v) -> if (k.lowercase() !in setOf("range", "accept-encoding", "host")) h[k] = v }
-        CookieManager.getInstance().getCookie(s.url)?.takeIf { it.isNotBlank() }?.let { h["Cookie"] = it }
+        cookiesOf(t0).getCookie(s.url)?.takeIf { it.isNotBlank() }?.let { h["Cookie"] = it }
         return h
     }
 
@@ -412,6 +437,14 @@ object Browser {
         t.web?.let { return it }
         CookieManager.getInstance().setAcceptCookie(true)
         val w = WebView(context)
+        // Incognito: the private profile, set before anything loads; nothing cached to disk.
+        if (t.incognito) {
+            if (trulyPrivate) runCatching {
+                androidx.webkit.ProfileStore.getInstance().getOrCreateProfile(PRIVATE)
+                androidx.webkit.WebViewCompat.setProfile(w, PRIVATE)
+            }
+            w.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+        }
         w.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -431,7 +464,7 @@ object Browser {
             runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, SHIELD_SCRIPT, setOf("*")) }
         }
         t.ua = w.settings.userAgentString.orEmpty()
-        CookieManager.getInstance().setAcceptThirdPartyCookies(w, true)
+        cookiesOf(t).setAcceptThirdPartyCookies(w, true)
         w.webViewClient = object : WebViewClient() {
             // Runs on a background thread for every request: it must never throw.
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? = try {
@@ -498,7 +531,8 @@ object Browser {
                 t.loading = false
                 t.title = view.title.orEmpty()
                 nav(t, view)
-                visited(t.url, t.title)
+                // Incognito keeps no history.
+                if (!t.incognito) visited(t.url, t.title)
             }
 
             override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
@@ -602,8 +636,8 @@ object Browser {
         return true
     }
 
-    fun newTab() {
-        tabs.add(BTab((tabs.maxOfOrNull { it.id } ?: 0) + 1))
+    fun newTab(incognito: Boolean = false) {
+        tabs.add(BTab((tabs.maxOfOrNull { it.id } ?: 0) + 1, incognito))
         current = tabs.lastIndex
     }
 
@@ -611,8 +645,13 @@ object Browser {
 
     fun close(i: Int) {
         val t = tabs.getOrNull(i) ?: return
-        t.web?.apply { (parent as? ViewGroup)?.removeView(this); destroy() }
+        t.web?.apply {
+            if (t.incognito) { clearHistory(); clearCache(true) }
+            (parent as? ViewGroup)?.removeView(this)
+            destroy()
+        }
         tabs.removeAt(i)
+        if (t.incognito && tabs.none { it.incognito }) forgetIncognito()
         if (tabs.isEmpty()) tabs.add(BTab(1))
         current = when {
             i < current -> current - 1

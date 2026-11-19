@@ -89,7 +89,9 @@ fun BrowserScreen() {
                 // Tabs: a squircle with how many are open.
                 Tap({ tabsOpen = true }, Modifier.size(42.dp), RoundedCornerShape(10.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Box(Modifier.size(28.dp).border(1.6.dp, Ink.text, RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
+                        // Incognito: the mask in place of the count, so it's plain which kind of tab this is.
+                        if (Browser.tab.incognito) Lc(L.drawable.lucide_ic_venetian_mask, tint = Ink.accent, size = 26.dp)
+                        else Box(Modifier.size(28.dp).border(1.6.dp, Ink.text, RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
                             Text("${Browser.tabs.size}", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.Bold))
                         }
                     }
@@ -145,7 +147,12 @@ fun BrowserScreen() {
                 )
                 // Nothing open yet: the bare frosted page and one line; bookmarks live in ⋮ → Bookmarks only (the owner's choice).
                 if (Browser.url.isEmpty()) Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
-                    EmptyNote("Search or type an address above. Videos a page plays show up under the green download mark.", Modifier.padding(horizontal = 18.dp, vertical = 14.dp))
+                    EmptyNote(
+                        if (Browser.tab.incognito) "Incognito. Pages you visit here aren't kept in history" +
+                            if (Browser.trulyPrivate) ", and their cookies and sign-ins are forgotten when you close the last incognito tab." else ". This phone's WebView can't keep sign-ins apart: they're shared with your other tabs."
+                        else "Search or type an address above. Videos a page plays show up under the green download mark.",
+                        Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                    )
                 }
             }
         }
@@ -178,6 +185,7 @@ fun BrowserScreen() {
             Browser.note?.let { Text(it, Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint)) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button("New Tab", { Browser.newTab(); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_plus, compact = true)
+                Button("Incognito", { Browser.newTab(incognito = true); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_venetian_mask, compact = true)
                 Button("Close Tab", { Browser.close(Browser.current); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_x, compact = true)
             }
             Spacer(Modifier.height(8.dp))
@@ -217,17 +225,22 @@ fun BrowserScreen() {
         }
     }
 
-    if (tabsOpen) BottomSheet("Tabs", { tabsOpen = false }) {
+    // The incognito mask on the heading's line, at the far end (the owner's choice): a new incognito tab.
+    if (tabsOpen) BottomSheet("Tabs", { tabsOpen = false }, trailing = {
+        Tap({ Browser.newTab(incognito = true); tabsOpen = false }, shape = CircleShape) {
+            Lc(L.drawable.lucide_ic_venetian_mask, Modifier.padding(8.dp), tint = Ink.text, size = 24.dp)
+        }
+    }) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
             Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                 Browser.tabs.forEachIndexed { i, t ->
                     val on = i == Browser.current
                     Tap({ Browser.select(i); tabsOpen = false }, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) {
                         Row(Modifier.background(if (on) Ink.text.copy(alpha = 0.07f) else Color.Transparent).padding(start = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Lc(L.drawable.lucide_ic_globe, tint = if (on) Ink.accent else Ink.muted, size = 18.dp)
+                            Lc(if (t.incognito) L.drawable.lucide_ic_venetian_mask else L.drawable.lucide_ic_globe, tint = if (on) Ink.accent else Ink.muted, size = 18.dp)
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(t.title.ifBlank { if (t.url.isBlank()) "New Tab" else t.url }, style = Type.label.copy(fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(t.title.ifBlank { if (t.url.isBlank()) (if (t.incognito) "Incognito Tab" else "New Tab") else t.url }, style = Type.label.copy(fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 if (t.url.isNotBlank()) Text(t.url, style = Type.meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             BarIcon(L.drawable.lucide_ic_x) { Browser.close(i) }
