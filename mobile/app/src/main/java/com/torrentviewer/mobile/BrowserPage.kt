@@ -143,15 +143,9 @@ fun BrowserScreen() {
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
-                // Nothing open yet: the frosted page, with the bookmarks a tap away.
+                // Nothing open yet: the bare frosted page and one line; bookmarks live in ⋮ → Bookmarks only (the owner's choice).
                 if (Browser.url.isEmpty()) Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 14.dp)) {
-                        if (Browser.bookmarks.isEmpty()) EmptyNote("Search or type an address above. Videos a page plays show up under the green download mark.")
-                        else {
-                            Text("Bookmarks", Modifier.padding(start = 4.dp, bottom = 6.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
-                            Browser.bookmarks.toList().forEach { p -> PlaceRow(p, onOpen = { Browser.go(p.url) }, onRemove = null) }
-                        }
-                    }
+                    EmptyNote("Search or type an address above. Videos a page plays show up under the green download mark.", Modifier.padding(horizontal = 18.dp, vertical = 14.dp))
                 }
             }
         }
