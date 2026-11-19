@@ -86,6 +86,7 @@ import com.torrentviewer.core.bytes
 import com.torrentviewer.core.playedSize
 import com.torrentviewer.core.remoteArt
 import com.torrentviewer.core.TOP_SHELF
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.composables.icons.lucide.R as L
@@ -114,8 +115,14 @@ private val SHELVES = listOf(
     Shelf("Crime Series", "tv", "Crime"),
 )
 
-/** How many titles of the lead shelf the hero swipes through. */
-private const val HEROES = 6
+/** How many titles the hero swipes through (the owner's choice: a fuller pool). */
+private const val HEROES = 15
+
+/**
+ * How long a title's picture waits for its full entry's art before showing the row's: the full entry's is usually
+ * another, better one, and showing the row's first meant a visible swap (the owner's choice: start on the better one).
+ */
+internal const val ART_WAIT_MS = 2500L
 
 /** The viewer's latest titles that suggestions are drawn from, and how many of the best to show. */
 private const val FOR_YOU_SEEDS = 4
@@ -249,9 +256,12 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         val heading = if (settings.genres.isEmpty()) "Top $word on IMDb" else "Top IMDb $word in your genres"
         Triple(kind, heading, com.torrentviewer.core.mixTop(parts.map { state.loaded[it.key].orEmpty() }, CHART_SIZE))
     }
-    // What's suggested, then every chosen genre in turn, so one genre doesn't fill the hero.
-    val mixed = com.torrentviewer.core.interleave(listOf(picks.map { it.title }) + chosen.map { state.loaded[it.key].orEmpty() }).filter { it.imdb !in watched }
-    val heroes = mixed.ifEmpty { shelves.firstNotNullOfOrNull { state.loaded[it.key]?.takeIf { l -> l.isNotEmpty() } }.orEmpty() }.take(HEROES)
+    // The hero's pool: what's suggested, each chosen genre, the charts, then every other row (the addons' lists, the
+    // built-in ones) — one title from each in turn, so no one list fills it and there's plenty to swipe through.
+    val heroes = com.torrentviewer.core.interleave(
+        listOf(picks.map { it.title }) + chosen.map { state.loaded[it.key].orEmpty() } + charts.map { it.third } +
+            shelves.filter { it !in chosen }.map { state.loaded[it.key].orEmpty() },
+    ).filter { it.imdb !in watched }.take(HEROES)
     SideEffect { state.heroCount = heroes.size }
     // A title shows once, in the first row it lands in: genre rows overlap, and the week's
     // big film otherwise led half the page. "See all" still lists a shelf in full. What's been
@@ -520,8 +530,19 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
     Box(Modifier.fillMaxWidth().height(height)) {
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { titles.getOrNull(it)?.imdb ?: it }) { page ->
             val start = titles.getOrNull(page) ?: return@HorizontalPager
-            // The shelf row carries no logo or runtime; the full entry does.
-            val t by produceState(start, start.imdb) { Meta.title(start.imdb, start.kind)?.let { value = it } }
+            // The shelf row carries no logo or runtime; the full entry does, and often other, better art. The picture
+            // waits a moment for the full entry's ([ART_WAIT_MS]) rather than showing the row's and then swapping it.
+            val cached = remember(start.imdb) { Meta.peekTitle(start.imdb, start.kind) }
+            var t by remember(start.imdb) { mutableStateOf(cached ?: start) }
+            var art by remember(start.imdb) { mutableStateOf(cached?.wide) }
+            LaunchedEffect(start.imdb) {
+                if (cached != null) return@LaunchedEffect
+                val full = async { Meta.title(start.imdb, start.kind) }
+                art = (kotlinx.coroutines.withTimeoutOrNull(ART_WAIT_MS) { full.await() } ?: start).wide
+                full.await()?.let { t = it }
+            }
+            // The next title's entry fetched meanwhile, so it opens on its own picture straight away.
+            LaunchedEffect(start.imdb) { titles.getOrNull((page + 1) % count)?.let { n -> Meta.title(n.imdb, n.kind) } }
             // Out at home yet, or only in cinemas: as on the title's page (TMDB's answer is kept, so opening it asks again for nothing).
             val tmdb by produceState<com.torrentviewer.core.TmdbTitle?>(null, start.imdb) { value = com.torrentviewer.core.Tmdb.title(start.imdb, start.kind) }
             val release = releaseOf(tmdb, t.isSeries)
@@ -531,7 +552,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
             val open = Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) { onOpen(t) }
             if (wide) {
                 Box(open) {
-                    Artwork(t.wide, t.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.72f).fillMaxHeight().then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false)
+                    art?.let { Artwork(it, t.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.72f).fillMaxHeight().then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false) }
                     Column(Modifier.align(Alignment.CenterStart).padding(start = EDGE + 8.dp, top = 40.dp).widthIn(max = 380.dp)) {
                         TitleMark(t, Modifier.widthIn(max = 300.dp), maxHeight = 72.dp, style = Type.display)
                         Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp), release = release)
@@ -545,7 +566,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                 Column(open, horizontalAlignment = Alignment.CenterHorizontally) {
                     // The picture runs down to where the buttons start: the logo and facts sit on its foot.
                     Box(Modifier.fillMaxWidth().weight(1f)) {
-                        Artwork(t.wide, t.title, Modifier.fillMaxSize(), fill = false)
+                        art?.let { Artwork(it, t.title, Modifier.fillMaxSize(), fill = false) }
                         Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
                                 TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
@@ -558,7 +579,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                 }
             } else {
                 Box(open) {
-                    Artwork(t.wide, t.title, Modifier.fillMaxSize().bottomScrim(0.35f), fill = false)
+                    art?.let { Artwork(it, t.title, Modifier.fillMaxSize().bottomScrim(0.35f), fill = false) }
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = EDGE, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
                             TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)

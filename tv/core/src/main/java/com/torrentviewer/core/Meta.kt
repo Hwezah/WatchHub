@@ -169,6 +169,9 @@ object Meta {
     @Suppress("UNCHECKED_CAST")
     fun peekCatalog(kind: String, genre: String?): List<Title>? = memory["shelf:$kind:${genre.orEmpty()}"] as List<Title>?
 
+    /** A title's full entry when it's already in memory ([title]): a screen starts on the picture it will end on. */
+    fun peekTitle(imdb: String, kind: String): Title? = memory["title:$kind:$imdb"] as Title?
+
     /** A [genre] starting [ADDON_SHELF] is one of the viewer's addons' catalogues, by [Addons.shelves]' key. */
     suspend fun catalog(kind: String, genre: String? = null): List<Title> = runCatching {
         remember("shelf:$kind:${genre.orEmpty()}", ::titlesFrom, ::titlesJson) {

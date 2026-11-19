@@ -130,6 +130,13 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var title by remember(initial.imdb) { mutableStateOf(initial) }
+    // The page's picture: the full entry's, as it will end up, rather than the card's and then a swap (the owner's
+    // choice). Straight away when it's already in memory, else once it's in, or the card's after [ART_WAIT_MS].
+    var art by remember(initial.imdb) { mutableStateOf(Meta.peekTitle(initial.imdb, initial.kind)?.wide) }
+    LaunchedEffect(initial.imdb) {
+        kotlinx.coroutines.delay(ART_WAIT_MS)
+        if (art == null) art = title.wide
+    }
     /** The episode list's lookups are done: a series still without one is searched as a whole, and its releases name the episodes. */
     var episodesChecked by remember(initial.imdb) { mutableStateOf(false) }
     LaunchedEffect(initial.imdb) {
@@ -139,6 +146,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             if (initial.kind == "movie" && f.runtime == null && com.torrentviewer.core.Tmdb.isSeries(initial.imdb)) Meta.title(initial.imdb, "tv")?.takeIf { it.isSeries } ?: f else f
         } ?: if (initial.kind == "movie") Meta.title(initial.imdb, "tv")?.takeIf { it.isSeries } else null
         found?.let { title = it }
+        if (art == null) art = title.wide
         // A new series Cinemeta lists no episodes for yet: TMDB's, so it has episodes and a season download.
         val t = title
         if (t.isSeries && t.episodes.isEmpty()) com.torrentviewer.core.Tmdb.episodes(t.imdb).takeIf { it.isNotEmpty() }?.let { title = t.copy(episodes = it) }
@@ -407,7 +415,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
 
     val wide = isWide()
     Box(Modifier.fillMaxSize()) {
-        if (wide) Artwork(title.wide, title.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.7f).fillMaxHeight(0.9f).then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false)
+        if (wide) art?.let { Artwork(it, title.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.7f).fillMaxHeight(0.9f).then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false) }
 
         LazyColumn(state = list, contentPadding = PaddingValues(bottom = NAV_CLEARANCE), modifier = Modifier.fillMaxSize()) {
             item(key = "head") {
@@ -431,7 +439,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 if (clean) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.fillMaxWidth().aspectRatio(0.88f)) {
-                            Artwork(title.wide, title.title, Modifier.fillMaxSize(), fill = false)
+                            art?.let { Artwork(it, title.title, Modifier.fillMaxSize(), fill = false) }
                             TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 16.dp).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
                         }
                         // The facts and certificate on the page, under the picture's edge, not over the picture (the owner's choice).
@@ -440,7 +448,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     }
                 } else if (!wide) {
                     Box(Modifier.fillMaxWidth().aspectRatio(1.1f)) {
-                        Artwork(title.wide, title.title, Modifier.fillMaxSize().bottomScrim(0.6f), fill = false)
+                        art?.let { Artwork(it, title.title, Modifier.fillMaxSize().bottomScrim(0.6f), fill = false) }
                         // Centred under the art, which is cropped from its centre.
                         TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
                     }
