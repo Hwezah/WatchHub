@@ -8,8 +8,15 @@ internal const val RELEASE_REPO = "Hwezah/WatchHub"
 /** Where this project's release files are. An update from anywhere else is not offered. */
 internal const val RELEASE_FILES = "https://github.com/$RELEASE_REPO/releases/download/"
 
-/** A published version, and the one file of it for this device. */
-data class AppRelease(val version: String, val url: String, val size: Long, val sha256: String?)
+/** A published version, and the one file of it for this device; [summary]: what the build changed, in a line (phone builds). */
+data class AppRelease(val version: String, val url: String, val size: Long, val sha256: String?, val summary: String? = null)
+
+/**
+ * A phone build's one-line summary from its commit's subject, as the build publishes it: the area prefix ("Phone: ",
+ * "Core: ") dropped. Null when there's none.
+ */
+fun buildSummary(subject: String?): String? =
+    subject?.lineSequence()?.firstOrNull()?.trim()?.replace(Regex("""^(Phone|Core|CI)\s*:\s*""", RegexOption.IGNORE_CASE), "")?.takeIf { it.isNotBlank() }
 
 /** "v2.4.1" against "2.4.0", number by number: 2.10 is newer than 2.9. */
 fun isNewerVersion(latest: String, current: String): Boolean {
@@ -48,7 +55,11 @@ fun parsePhoneBuild(json: String, abis: List<String>, prefix: String): Pair<Int,
     val assets = o.getJSONArray("assets").objects().filter { it.optString("name").startsWith(prefix) }
     (abis + "universal").firstNotNullOfOrNull { abi -> assets.find { it.optString("name").endsWith("-$abi.apk") } }
         ?.takeIf { it.optString("browser_download_url").startsWith(RELEASE_FILES) && it.str("digest") != null }
-        ?.let { code to AppRelease("build ${code - 100}", it.getString("browser_download_url"), it.optLong("size"), it.str("digest")?.removePrefix("sha256:")) }
+        ?.let {
+            // The notes' "Summary: …" line, when the build wrote one.
+            val summary = buildSummary(Regex("""^Summary: (.+)$""", RegexOption.MULTILINE).find(o.optString("body"))?.groupValues?.get(1))
+            code to AppRelease("build ${code - 100}", it.getString("browser_download_url"), it.optLong("size"), it.str("digest")?.removePrefix("sha256:"), summary)
+        }
 }.getOrNull()
 
 /**
@@ -72,5 +83,5 @@ fun parsePhoneVersion(json: String, abis: List<String>, prefix: String): Pair<In
     val name = (abis + "universal").map { "$prefix$it.apk" }.firstOrNull(files::has) ?: return null
     val f = files.getJSONObject(name)
     val sha = f.optString("sha256").ifEmpty { null } ?: return null
-    code to AppRelease("build ${code - 100}", "${RELEASE_FILES}phone-latest/$name", f.optLong("size"), sha)
+    code to AppRelease("build ${code - 100}", "${RELEASE_FILES}phone-latest/$name", f.optLong("size"), sha, buildSummary(o.str("summary")))
 }.getOrNull()

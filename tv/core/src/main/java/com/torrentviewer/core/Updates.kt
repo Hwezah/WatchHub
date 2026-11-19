@@ -45,6 +45,59 @@ object Updates {
 
     private var job: Job? = null
 
+    private val _ready = MutableStateFlow<AppRelease?>(null)
+    /** A newer phone build downloaded in the background ([prepare]), waiting for "Install". */
+    val ready: StateFlow<AppRelease?> = _ready
+
+    private val _failed = MutableStateFlow<String?>(null)
+    /** The version whose background download failed, for the strip to offer a retry; the next check tries again too. */
+    val failed: StateFlow<String?> = _failed
+
+    /** The strip's ✕ was tapped: no build is offered again until the app is next opened (or asked for in Settings). */
+    private var dismissed = false
+
+    /** The phone strip's ✕: hidden until the app is next opened; a download under way carries on. */
+    fun dismiss() {
+        dismissed = true
+        _hidden.value = true
+    }
+
+    /**
+     * [r] downloaded in the background as soon as it's found, the phone strip's way, so "Install" is instant: [ready] once
+     * it's whole and checked. Quiet when it fails ([failed]): the strip offers a retry.
+     */
+    fun prepare(context: Context, r: AppRelease) {
+        if (_ready.value == r || job?.isActive == true) return
+        val app = context.applicationContext
+        _ready.value = null
+        _failed.value = null
+        job = AppScope.launch {
+            _progress.value = 0f
+            try {
+                withContext(Dispatchers.IO) { fetch(r, file(app)) }
+                _ready.value = r
+            } catch (e: CancellationException) {
+                file(app).delete()
+                throw e
+            } catch (e: Exception) {
+                file(app).delete()
+                _failed.value = r.version
+            } finally {
+                _progress.value = null
+            }
+        }
+    }
+
+    /** The build [prepare] downloaded, handed to Android's installer; downloaded again if the file has gone. */
+    fun installReady(context: Context) {
+        val app = context.applicationContext
+        val r = _ready.value ?: return
+        if (file(app).isFile) install(app, file(app)) else {
+            _ready.value = null
+            prepare(app, r)
+        }
+    }
+
     private fun file(context: Context) = File(context.filesDir, "update.apk")
 
     private suspend fun latest(): AppRelease? {
@@ -105,8 +158,9 @@ object Updates {
             if (build == null) return@launch say?.invoke("Couldn't reach GitHub to check — try again in a minute") ?: Unit
             val (code, found) = build
             if (code <= versionCode) return@launch say?.invoke("You're on the latest build (${versionCode - 100})") ?: Unit
-            // Asked for from Settings: shown even if it was put off with "Not now".
-            _hidden.value = !force && Kv.global(SKIPPED) == found.version
+            // Asked for from Settings: shown even if it was put off with "Not now" or the strip's ✕.
+            if (force) dismissed = false
+            _hidden.value = !force && (dismissed || Kv.global(SKIPPED) == found.version)
             _release.value = found
             say?.invoke("Build ${code - 100} is ready — see the update card")
         }

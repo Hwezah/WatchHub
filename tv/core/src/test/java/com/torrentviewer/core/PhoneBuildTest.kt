@@ -20,6 +20,17 @@ class PhoneBuildTest {
         assertEquals("${files}WatchHub-phone-universal.apk", parsePhoneBuild(json("versionCode 157"), listOf("x86_64"), "WatchHub-phone-")!!.second.url)
     }
 
+    @Test fun summaryFromTheNotesAndTheVersionFile() {
+        // The notes' "Summary:" line (a JSON "\n" in the body), its area prefix dropped.
+        assertEquals("Posters without the outline", parsePhoneBuild(json("versionCode 157. Most phones.\\n\\nSummary: Phone: Posters without the outline"), listOf("arm64-v8a"), "WatchHub-phone-")!!.second.summary)
+        assertNull(parsePhoneBuild(json("versionCode 157"), listOf("arm64-v8a"), "WatchHub-phone-")!!.second.summary)
+        val v = """{"versionCode":168,"summary":"Core: Layout under Video","files":{"WatchHub-phone-arm64-v8a.apk":{"size":50,"sha256":"cc"}}}"""
+        assertEquals("Layout under Video", parsePhoneVersion(v, listOf("arm64-v8a"), "WatchHub-phone-")!!.second.summary)
+        assertEquals("Fix the dock", buildSummary("Fix the dock"))
+        assertNull(buildSummary("  "))
+        assertNull(buildSummary(null))
+    }
+
     @Test fun notesWithoutACodeOfferNothing() {
         assertNull(parsePhoneBuild(json("Latest phone build"), listOf("arm64-v8a"), "WatchHub-phone-"))
     }
