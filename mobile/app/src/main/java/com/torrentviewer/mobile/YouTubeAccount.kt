@@ -194,7 +194,7 @@ object YouTubeAccount {
             val m = it.message.orEmpty()
             // YouTube doesn't see a signed-in account: one way out, said plainly.
             _problem.value = if ("login" in m.lowercase() || "sign in" in m.lowercase() || "cookies" in m.lowercase())
-                "YouTube doesn't see you signed in. Settings → Accounts: switch YouTube off, then sign in again."
+                "YouTube doesn't see you signed in. Settings → YouTube: switch the account off, then sign in again."
             else "Your YouTube account's feed didn't load: ${m.ifBlank { "unknown error" }}"
         }.getOrThrow()
 

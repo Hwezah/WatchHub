@@ -563,6 +563,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                     pillShown && OpenSheets.count == 0, Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
                 ) { PillBar(tab, choose, haze = haze) }
+                // A Tube video dropped down keeps playing here, above the bar; a tap opens it again in Tube.
+                if (TubeSession.playing.isEmpty()) TubeMiniPlayer(onOpen = { tab = Tab.YOUTUBE; TubeSession.expand() })
             }
         } else {
             Column(Modifier.fillMaxSize()) {

@@ -123,7 +123,7 @@ fun TubeScreen(watch: Watch) {
     }
     val routes = remember { mutableStateListOf<TubeRoute>() }
     /** The videos opened, the newest on top: Back from a related video returns to the one before. */
-    val playing = remember { mutableStateListOf<TubeVideo>() }
+    val playing = TubeSession.playing
     var menu by remember { mutableStateOf<TubeVideo?>(null) }
     var saving by remember { mutableStateOf<TubeVideo?>(null) }
     /** Download pressed: this app's downloader or another app first, as everywhere else in the app. */
@@ -141,7 +141,7 @@ fun TubeScreen(watch: Watch) {
         Tube.reopened = true
     }
 
-    val open: (TubeVideo) -> Unit = { playing.add(it) }
+    val open: (TubeVideo) -> Unit = { TubeSession.open(it) }
     val openChannel: (String, String) -> Unit = { url, name ->
         playing.clear()
         routes.add(TubeRoute.Channel(url, name))
@@ -194,7 +194,11 @@ fun TubeScreen(watch: Watch) {
         androidx.compose.runtime.key(v.id + playing.size) {
             WatchPage(
                 v,
-                onClose = { playing.removeAt(playing.lastIndex) },
+                // Dropped down: into the mini player (Settings → YouTube), or closed; a related video back to the one before.
+                onClose = {
+                    if (playing.size > 1) playing.removeAt(playing.lastIndex)
+                    else if (TubeSession.miniEnabled) TubeSession.minimize(v) else playing.clear()
+                },
                 onOpen = open,
                 onChannel = openChannel,
                 onDownload = { downloading = it },
@@ -774,33 +778,45 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
         }.onFailure { error = tubeError(it) }
     }
 
+    // The phone turned sideways is full screen too, with its controls (as YouTube does); turned back, it isn't.
+    val landscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val showFull = full || landscape
+    /** Full screen left while the phone is sideways: held upright until it's turned back, then free again. */
+    var exitLock by remember { mutableStateOf(false) }
+    LaunchedEffect(landscape) { if (!landscape) exitLock = false }
+    val leaveFull = { full = false; if (landscape) exitLock = true }
     Dialog(onClose, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        DisposableEffect(full) {
-            activity?.requestedOrientation = if (full) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        DisposableEffect(full, exitLock, showFull) {
+            activity?.requestedOrientation = when {
+                full -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                exitLock -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                // Free to turn: sideways goes full screen by itself.
+                else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
             window?.let { w ->
                 WindowCompat.setDecorFitsSystemWindows(w, false)
                 // The window re-fits the screen as it turns, so nothing of the page sits past its edges.
                 w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                 val c = WindowInsetsControllerCompat(w, w.decorView)
                 c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                if (full) c.hide(WindowInsetsCompat.Type.systemBars()) else c.show(WindowInsetsCompat.Type.systemBars())
+                if (showFull) c.hide(WindowInsetsCompat.Type.systemBars()) else c.show(WindowInsetsCompat.Type.systemBars())
                 c.isAppearanceLightStatusBars = false
             }
             onDispose { }
         }
-        DisposableEffect(Unit) { onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT } }
-        BackHandler { if (full) full = false else onClose() }
+        DisposableEffect(Unit) { onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } }
+        BackHandler { if (showFull) leaveFull() else onClose() }
 
         val d = details
-        Column(Modifier.fillMaxSize().background(if (full) Color.Black else Ink.bg).then(if (full) Modifier else Modifier.grain())) {
+        Column(Modifier.fillMaxSize().background(if (showFull) Color.Black else Ink.bg).then(if (showFull) Modifier else Modifier.grain())) {
             Box(
-                (if (full) Modifier.fillMaxSize() else Modifier.statusBarsPadding().fillMaxWidth().aspectRatio(16f / 9f)).background(Color.Black),
+                (if (showFull) Modifier.fillMaxSize() else Modifier.statusBarsPadding().fillMaxWidth().aspectRatio(16f / 9f)).background(Color.Black),
                 contentAlignment = Alignment.Center,
             ) {
                 val q = quality
                 when {
-                    q != null && d != null -> TubePlayer(d.video, q, speed, autoplay = !resumed, full = full, onEnded = { d.related.firstOrNull()?.let(onOpen) })
+                    q != null && d != null -> TubePlayer(d.video, q, speed, autoplay = !resumed, full = showFull, onEnded = { d.related.firstOrNull()?.let(onOpen) })
                     error != null -> Artwork(start.thumb, start.title, Modifier.fillMaxSize())
                     else -> {
                         Artwork(start.thumb, start.title, Modifier.fillMaxSize())
@@ -809,21 +825,21 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
                 }
                 // Over the picture: back (or out of full screen), quality, full screen.
                 // Full screen: kept inside the screen's safe area (clear of the cutout and the hidden bars' edges).
-                Row(Modifier.align(Alignment.TopStart).fillMaxWidth().then(if (full) Modifier.safeDrawingPadding() else Modifier).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Tap({ if (full) full = false else onClose() }, shape = CircleShape) {
-                        Lc(if (full) L.drawable.lucide_ic_arrow_left else L.drawable.lucide_ic_chevron_down, Modifier.padding(10.dp), tint = Color.White, size = 22.dp)
+                Row(Modifier.align(Alignment.TopStart).fillMaxWidth().then(if (showFull) Modifier.safeDrawingPadding() else Modifier).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Tap({ if (showFull) leaveFull() else onClose() }, shape = CircleShape) {
+                        Lc(if (showFull) L.drawable.lucide_ic_arrow_left else L.drawable.lucide_ic_chevron_down, Modifier.padding(10.dp), tint = Color.White, size = 22.dp)
                     }
                     Spacer(Modifier.weight(1f))
                     // One quiet mark for the player's menu (quality, speed) instead of words on the picture.
                     if (d != null) Tap({ settingsOpen = true }, shape = CircleShape) {
                         Lc(L.drawable.lucide_ic_settings, Modifier.padding(10.dp), tint = Color.White, size = 20.dp)
                     }
-                    Tap({ full = !full }, shape = CircleShape) {
-                        Lc(if (full) L.drawable.lucide_ic_minimize else L.drawable.lucide_ic_maximize, Modifier.padding(10.dp), tint = Color.White, size = 20.dp)
+                    Tap({ if (showFull) leaveFull() else full = true }, shape = CircleShape) {
+                        Lc(if (showFull) L.drawable.lucide_ic_minimize else L.drawable.lucide_ic_maximize, Modifier.padding(10.dp), tint = Color.White, size = 20.dp)
                     }
                 }
             }
-            if (!full) {
+            if (!showFull) {
                 val v = d?.video ?: start
                 LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), state = watchList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 40.dp)) {
                     item {
@@ -941,6 +957,12 @@ private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boo
     var shown by remember(v.id) { mutableStateOf(false) }
     val ended = androidx.compose.runtime.rememberUpdatedState(onEnded)
     LaunchedEffect(q) {
+        // Back from the mini player: the same video is still playing in the one player; carried on, not reloaded.
+        if (!loaded && player.currentMediaItem?.mediaId == v.id && player.playbackState != androidx.media3.common.Player.STATE_IDLE) {
+            loaded = true
+            shown = true
+            return@LaunchedEffect
+        }
         val at = if (loaded) player.currentPosition else Tube.spot(v.id) * 1000
         // Its name, channel and picture: what the notification and the lock screen show.
         val meta = androidx.media3.common.MediaMetadata.Builder().setTitle(v.title).setArtist(v.channel)
@@ -992,9 +1014,12 @@ private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boo
             val length = player.duration.takeIf { it > 0 } ?: 0L
             if (!v.live && player.currentPosition > 0) Tube.setSpot(v.id, player.currentPosition / 1000, length / 1000)
             player.removeListener(listener)
-            player.clearVideoSurface()
-            // The video page closed (or another video took its place): playback and its notification end.
-            TubeEngine.stop(ctx)
+            // Dropped into the mini player: it keeps playing (the strip takes the picture). Else playback ends.
+            if (TubeSession.keepPlaying) TubeSession.keepPlaying = false
+            else {
+                player.clearVideoSurface()
+                TubeEngine.stop(ctx)
+            }
         }
     }
     Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {

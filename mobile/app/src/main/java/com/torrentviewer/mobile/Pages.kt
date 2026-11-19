@@ -892,7 +892,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_radio, "Streaming", "Storage, buffer and trackers", "cache magnet") { page = "Streaming" },
                         Entry(L.drawable.lucide_ic_play, "Playback", "Player, languages and subtitles", "vlc media3 skip intro audio") { page = "Playback" },
                         Entry(L.drawable.lucide_ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
-                        Entry(L.drawable.lucide_ic_user, "Accounts", "YouTube sign-in for Tube and downloads", "youtube google login sign in account subscriptions") { page = "Accounts" },
+                        Entry(L.drawable.lucide_ic_youtube, "YouTube", "Sign-in and the mini player", "youtube google login sign in account subscriptions tube mini player") { page = "YouTube" },
                         Entry(L.drawable.lucide_ic_shield, "VPN", "WireGuard: Mullvad, Proton… for this app or the whole phone", "vpn wireguard mullvad proton privacy") { page = "VPN" },
                         Entry(L.drawable.lucide_ic_globe, "Browser", "Search engine, ads, pop-ups, redirects", "google duckduckgo bing brave ads popups redirects dark cookies") { page = "Browser" },
                         Entry(L.drawable.lucide_ic_shield, "Secure DNS", "For plugins: look sites up past your provider's blocks", "doh dns over https cloudflare google blocked network") { page = "Secure DNS" },
@@ -1316,9 +1316,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 VpnSettings { watch.notes.tryEmit(it) }
             }
         }
-        if (page == "Accounts") Panel {
-            Section("YouTube", "Signed in, Tube's Home starts with your own subscriptions and downloads can save videos shown only to signed-in accounts. The session stays on this phone.") {
+        if (page == "YouTube") Panel {
+            Section("Account", "Signed in, Tube's Home starts with your own subscriptions and downloads can save videos shown only to signed-in accounts. The session stays on this phone.") {
                 YouTubeAccountCard()
+            }
+            ToggleSection("Mini Player", "A video you drop down keeps playing in a strip above the tab bar; drag it anywhere, tap it to open the video again.", TubeSession.miniEnabled) {
+                TubeSession.setMiniEnabled(it)
             }
         }
         if (page == "Browser") Panel {
