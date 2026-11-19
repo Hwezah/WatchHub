@@ -59,6 +59,8 @@ class BTab(val id: Long, val incognito: Boolean = false) {
      * way in for a few seconds after (its redirects, to www. or a regional address) isn't a jump to stop.
      */
     @Volatile var openedAt = 0L
+    /** When the viewer last tapped a link on the page: the site's own redirects after it (an "/out?l=" hop) go through. */
+    @Volatile var tappedAt = 0L
 }
 
 /** A page bookmarked or visited. */
@@ -282,14 +284,17 @@ object Browser {
     private fun stopJump(t: BTab, request: WebResourceRequest): Boolean {
         if (!blockRedirects || !request.isForMainFrame) return false
         if (openedByViewer(t)) return false
+        val now = System.currentTimeMillis()
         val to = request.url.toString()
         if (t.pass == to) { t.pass = null; return false }
         val from = siteOf(android.net.Uri.parse(t.url).host)
         val dest = siteOf(request.url.host)
         if (from.isEmpty() || from == dest || from in allowJumps) return false
         val bad = BAD_JUMP.containsMatchIn(request.url.host.orEmpty().lowercase())
-        // A server's own redirect (sign-ins, short links) and a real tap go through, unless it's to an ad or betting site.
-        return bad || (!request.hasGesture() && !request.isRedirect)
+        if (bad) return true
+        // A server's own redirect (sign-ins, short links), a real tap, and whatever the site does for a few seconds after
+        // a tap (a link through its "/out?l=" page, a script's hop) go through; a jump nobody asked for doesn't.
+        return !request.hasGesture() && !request.isRedirect && now - t.tappedAt > 10_000
     }
 
     /** Whether [t]'s page was opened by the viewer in the last few seconds: its own redirects then go through. */
@@ -611,6 +616,8 @@ object Browser {
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                // A tap on a link: what the site does on the way (its redirects) follows for a few seconds.
+                if (request.isForMainFrame && request.hasGesture()) t.tappedAt = System.currentTimeMillis()
                 val u = request.url
                 // A link straight to a file (video, audio, archive, document): offered for download.
                 val k = kindOf(u.toString())
@@ -756,6 +763,8 @@ object Browser {
     private fun catchPopup(opener: WebView, t: BTab, tapped: Boolean, msg: android.os.Message): Boolean {
         if (blockPopups && !tapped) { t.blocked++; return false }
         val probe = WebView(opener.context)
+        // An incognito tab's windows are read in its private profile: nothing of them reaches the other tabs.
+        if (t.incognito && trulyPrivate) runCatching { androidx.webkit.WebViewCompat.setProfile(probe, PRIVATE) }
         probe.webViewClient = object : WebViewClient() {
             private var done = false
             private fun decide(url: String) {
@@ -765,7 +774,12 @@ object Browser {
                 val ad = url.startsWith("about:") || host.isEmpty() || (blockAds && blockedHost(host)) || BAD_JUMP.containsMatchIn(host)
                 main.post {
                     runCatching { probe.stopLoading(); probe.destroy() }
-                    if (ad) t.blocked++ else { newTab(); tab.url = url }
+                    // A tapped link to a real page: a new tab of the same kind (incognito stays incognito), its redirects let through.
+                    if (ad) t.blocked++ else {
+                        newTab(incognito = t.incognito)
+                        tab.tappedAt = System.currentTimeMillis()
+                        tab.url = url
+                    }
                 }
             }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean { decide(request.url.toString()); return true }

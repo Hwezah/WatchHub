@@ -184,7 +184,8 @@ fun BrowserScreen() {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
             Browser.note?.let { Text(it, Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint)) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button("New Tab", { Browser.newTab(); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_plus, compact = true)
+                // In incognito, a new tab is incognito too (the owner's choice).
+                Button("New Tab", { Browser.newTab(incognito = Browser.tab.incognito); menu = false }, Modifier.weight(1f).height(42.dp), icon = if (Browser.tab.incognito) L.drawable.lucide_ic_venetian_mask else L.drawable.lucide_ic_plus, compact = true)
                 Button("Close Tab", { Browser.close(Browser.current); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_x, compact = true)
             }
             Spacer(Modifier.height(8.dp))
@@ -248,7 +249,9 @@ fun BrowserScreen() {
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Button("New Tab", { Browser.newTab(); tabsOpen = false }, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_plus)
+            // In incognito, a new tab is incognito too (the owner's choice); a normal tab is one tap away in the list.
+            val privateTab = Browser.tab.incognito
+            Button(if (privateTab) "New Incognito Tab" else "New Tab", { Browser.newTab(incognito = privateTab); tabsOpen = false }, Modifier.fillMaxWidth(), icon = if (privateTab) L.drawable.lucide_ic_venetian_mask else L.drawable.lucide_ic_plus)
         }
     }
 
