@@ -50,6 +50,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.size
@@ -390,6 +392,21 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
      * What Play tries, in turn, until one plays: the preferred resolution's (720p) first — in the list's own order, plugin
      * links first — then the rest; never another app's or a dead torrent. A dozen at most.
      */
+    // What's downloaded: Play opens a saved copy of the film or an episode rather than streaming it — at once, no data used.
+    val savedFiles by Downloads.finished.collectAsState()
+    val savedEps = remember(savedFiles, title.imdb) { Downloads.savedEpisodes(title.imdb) }
+    val savedFilm = remember(savedFiles, title.imdb, title.isSeries) { if (title.isSeries) null else Downloads.copyOf(title.imdb, null) }
+
+    /** [f] played from where the title was left (whichever copy played it), or from the start. */
+    fun playSaved(f: Finished, fromStart: Boolean = false) = watch.playFile(f.path, f.label, title, f.poster ?: title.poster, fromStart)
+
+    /** The saved copy of what [item] (Continue Watching's last play of this title) was: its episode, for a series. */
+    fun savedCopyOf(item: com.torrentviewer.core.Item): Finished? {
+        val ep = if (!title.isSeries) null
+        else item.files?.find { it.index == item.lastFileIndex }?.name?.let { com.torrentviewer.core.parseEpisode(it) } ?: item.titleName?.let { com.torrentviewer.core.parseEpisode(it) } ?: return null
+        return Downloads.copyOf(title.imdb, ep)
+    }
+
     /** The resolution Play aims for now: the preferred streaming one (Settings → Playback), Auto by the connection. */
     fun streamAim() = com.torrentviewer.core.streamTarget(com.torrentviewer.core.SettingsStore.value.value.streamQuality, Downloads.metered())
 
@@ -407,6 +424,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     }
 
     fun playEpisode(ep: Episode) = scope.launch {
+        // Downloaded: the saved copy, no search.
+        Downloads.copyOf(title.imdb, Ep(ep.season, ep.episode))?.let { playSaved(it); return@launch }
         val ready = if (episode?.id == ep.id && shown.isNotEmpty()) shown else findSources(ep).await()
         val line = playLine(ready)
         if (line.isNotEmpty()) playFrom(line, episodeTag(ep.season, ep.episode), ep)
@@ -474,7 +493,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         last != null && last.ratio > 0.02 && last.ratio < (if (title.isSeries) com.torrentviewer.core.WATCHED_AT else 0.95) -> {
                             Button(
                                 "Resume" + (whereLeft(last)?.let { "  ·  $it" } ?: ""),
-                                { watch.resume(last) },
+                                { savedCopyOf(last)?.let { playSaved(it) } ?: watch.resume(last) },
                                 Modifier.fillMaxWidth(),
                                 icon = L.drawable.lucide_ic_play,
                                 primary = true,
@@ -483,17 +502,22 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                             Button("Start over", {
                                 val i = last.lastFileIndex ?: 0
                                 History.setPosition(last.uri, i, 0.0)
-                                watch.resume(History.find(last.uri) ?: last)
+                                savedCopyOf(last)?.let { playSaved(it, fromStart = true) } ?: watch.resume(History.find(last.uri) ?: last)
                             }, Modifier.fillMaxWidth().padding(top = 8.dp), icon = L.drawable.lucide_ic_rotate_ccw)
                         }
                         // Left part-way on Stremio, never here: still Resume — the release picked starts at that spot.
                         !title.isSeries -> Button(
                             label = when {
+                                savedFilm != null -> com.torrentviewer.core.resumeLabel(title.imdb, history, stremio) ?: "Play Downloaded"
                                 shown.isNotEmpty() -> com.torrentviewer.core.resumeLabel(title.imdb, history, stremio) ?: "Play"
                                 busy -> "Finding sources…"
                                 else -> "No sources"
                             },
-                            onClick = { playLine(shown).takeIf { it.isNotEmpty() }?.let { playFrom(it) } ?: watch.notes.tryEmit(if (busy) "Still finding sources…" else noneFound(title.title)) },
+                            onClick = {
+                                savedFilm?.let { playSaved(it) }
+                                    ?: playLine(shown).takeIf { it.isNotEmpty() }?.let { playFrom(it) }
+                                    ?: watch.notes.tryEmit(if (busy) "Still finding sources…" else noneFound(title.title))
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             icon = L.drawable.lucide_ic_play,
                             primary = true,
@@ -587,6 +611,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         busy = busy && episode?.id == ep.id,
                         selected = episode?.id == ep.id,
                         seen = progress[Ep(ep.season, ep.episode)] ?: 0.0,
+                        saved = Ep(ep.season, ep.episode) in savedEps,
                         modifier = Modifier.widthIn(max = 720.dp),
                         onPlay = { playEpisode(ep) },
                         onSources = {
@@ -641,6 +666,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         busy = busy && episode?.id == ep.id,
                         selected = episode?.id == ep.id,
                         seen = progress[Ep(ep.season, ep.episode)] ?: 0.0,
+                        saved = Ep(ep.season, ep.episode) in savedEps,
                         modifier = Modifier.widthIn(max = 720.dp),
                         onPlay = { playEpisode(ep) },
                         onSources = {
@@ -1007,7 +1033,7 @@ private fun Pill(text: String, tint: Color) {
  * it plays the episode (the owner's choice); the ⓘ and sources buttons keep their own taps.
  */
 @Composable
-private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?, busy: Boolean, selected: Boolean, seen: Double, modifier: Modifier, onPlay: () -> Unit, onSources: () -> Unit, onDownload: () -> Unit, onStory: () -> Unit) {
+private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?, busy: Boolean, selected: Boolean, seen: Double, saved: Boolean = false, modifier: Modifier, onPlay: () -> Unit, onSources: () -> Unit, onDownload: () -> Unit, onStory: () -> Unit) {
     Tap(onPlay, modifier.fillMaxWidth(), RoundedCornerShape(0.dp)) {
         Column(Modifier.padding(horizontal = EDGE, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1031,6 +1057,8 @@ private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?,
                     Text("$number. ${ep.name}", style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            // On the phone: it plays from the saved copy, with no searching and no data.
+                            if (saved) Lc(L.drawable.lucide_ic_hard_drive, Modifier.padding(end = 6.dp).semantics { contentDescription = "Downloaded" }, tint = Ink.download, size = 13.dp)
                             // Watched as Stremio is told: an anime's ending song isn't worth waiting through for the tick.
                             if (seen >= com.torrentviewer.core.WATCHED_AT) {
                                 Lc(L.drawable.lucide_ic_check, tint = Ink.good, size = 13.dp)

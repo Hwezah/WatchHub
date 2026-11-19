@@ -396,6 +396,17 @@ object Downloads {
         moved(from, dest)
     }
 
+    /**
+     * The newest saved copy of the film [imdb] ([ep] null) or of its episode [ep] that's still on the phone: Play opens
+     * it rather than streaming — at once, with no data used.
+     */
+    fun copyOf(imdb: String, ep: com.torrentviewer.core.Ep?): Finished? =
+        _finished.value.filter { com.torrentviewer.core.isCopyOf(it.imdb, it.kind, it.label, it.name, imdb, ep) && it.file.isFile }.maxByOrNull { it.at }
+
+    /** The episodes of [imdb] saved on the phone, for their rows' Downloaded mark. */
+    fun savedEpisodes(imdb: String): Set<com.torrentviewer.core.Ep> =
+        _finished.value.filter { it.imdb == imdb && it.file.isFile }.mapNotNull { com.torrentviewer.core.episodeOfFile(it.name, it.label) }.toSet()
+
     /** [from] moved or renamed to [to] (a file, or a folder and all in it): the downloads list and Continue Watching follow it there. */
     fun moved(from: File, to: File) {
         val list = _finished.value
