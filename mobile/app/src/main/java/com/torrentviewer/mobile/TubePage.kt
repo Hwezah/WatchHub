@@ -746,9 +746,27 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
     val activity = LocalActivity.current
     val context = LocalContext.current
 
+    // Up Next without an end (the owner's choice): near its foot, the videos related to the last one are added,
+    // and so on — as YouTube's own list keeps going.
+    val upNext = remember(start.id) { mutableStateListOf<TubeVideo>() }
+    var moreLoading by remember(start.id) { mutableStateOf(false) }
+    val watchList = rememberLazyListState()
+    val nearEnd by remember(start.id) { derivedStateOf { watchList.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= watchList.layoutInfo.totalItemsCount - 4 } ?: false } }
+    LaunchedEffect(nearEnd, upNext.size) {
+        if (!nearEnd || moreLoading || upNext.isEmpty()) return@LaunchedEffect
+        moreLoading = true
+        val seen = upNext.map { it.id }.toSet() + start.id
+        // From the last few, the first whose related videos bring something new.
+        for (v in upNext.takeLast(3).reversed()) {
+            val fresh = runCatching { Tube.details(v.id).related }.getOrDefault(emptyList()).filter { it.id !in seen }.distinctBy { it.id }
+            if (fresh.isNotEmpty()) { upNext += fresh; break }
+        }
+        moreLoading = false
+    }
     LaunchedEffect(start.id, round) {
         error = null
         runCatching { Tube.details(start.id) }.onSuccess { d ->
+            upNext.clear(); upNext += d.related.filter { it.id != start.id }
             details = d
             // 720p or the nearest below: sharp on a phone, half 1080p's data. Live: its HLS.
             quality = d.qualities.firstOrNull { it.hls } ?: d.qualities.filter { it.height in 1..720 }.maxByOrNull { it.height } ?: d.qualities.firstOrNull()
@@ -807,7 +825,7 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
             }
             if (!full) {
                 val v = d?.video ?: start
-                LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 40.dp)) {
+                LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), state = watchList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 40.dp)) {
                     item {
                         Column(Modifier.fillMaxWidth().clickable(remember { MutableInteractionSource() }, indication = null) { more = !more }) {
                             Text(v.title, style = Type.title.copy(fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 24.sp), maxLines = if (more) 6 else 2, overflow = TextOverflow.Ellipsis)
@@ -849,9 +867,10 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
                         )
                     }
                     error?.let { e -> item { Retry(e) { round++ } } }
-                    if (d != null && d.related.isNotEmpty()) {
+                    if (d != null && upNext.isNotEmpty()) {
                         item { Text("Up Next", Modifier.padding(top = 20.dp, bottom = 12.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) }
-                        items(d.related, key = { "rel-" + it.id }) { SmallVideoRow(it, onOpen, onMenu) }
+                        items(upNext, key = { "rel-" + it.id }) { SmallVideoRow(it, onOpen, onMenu) }
+                        if (moreLoading) item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { Spinner(size = 28.dp) } }
                     }
                 }
             }
@@ -1071,7 +1090,8 @@ private fun MenuRow(icon: Int, label: String, hint: String? = null, tint: Color 
 @Composable
 private fun Above(over: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
     if (!over) return content()
-    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Box(Modifier.fillMaxSize()) { content() }
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnClickOutside = true)) {
+        // A tap anywhere the sheet isn't closes it (the owner's rule for every modal), whatever the sheet itself does.
+        Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)) { content() }
     }
 }
