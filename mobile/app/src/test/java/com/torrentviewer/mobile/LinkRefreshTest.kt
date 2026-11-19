@@ -57,4 +57,28 @@ class LinkRefreshTest {
         // Only the big one left: still better than nothing.
         assertEquals(torrent, refreshPick(listOf(torrent), old, "HDhub4u", "HubCloud 720p", "720p", oldSize = 449 * mb))
     }
+
+    /** "Different Source": a source turned down by hand stays out, even renewed under a new address. */
+    @Test fun aRejectedSourceNeverComesBack() {
+        val hits = listOf(
+            link("HubCloud 720p", "HDhub4u", "720p", "https://hubcloud.example/new?token=3"),
+            link("Other 720p", "MoviesMod", "720p", "https://mm.example/720.mkv"),
+        )
+        val pick = refreshPick(hits, old, "HDhub4u", "HubCloud 720p", "720p", rejected = setOf(rejectKey("HDhub4u", "HubCloud 720p")))
+        assertEquals("https://mm.example/720.mkv", pick!!.uri)
+    }
+
+    /** A 1.2 GB film isn't swapped for a 300 MB copy while one of about its size is there. */
+    @Test fun notFarSmallerEither() {
+        val tiny = link("Tiny 720p", "A", "720p", "https://a.example/300.mkv", 300 * mb)
+        val near = link("Near 720p", "B", "720p", "https://b.example/1000.mkv", 1000 * mb)
+        assertEquals(near, refreshPick(listOf(tiny, near), old, null, null, "720p", oldSize = 1200 * mb))
+        assertEquals(tiny, refreshPick(listOf(tiny), old, null, null, "720p", oldSize = 1200 * mb))
+    }
+
+    @Test fun aDownloadsTags() {
+        assertEquals(listOf("720p", "MKV", "x265"), downloadTags("720p", "In.the.Grey.2025.720p.WEB.x265.mkv", "https://a.example/f", false))
+        assertEquals(listOf("1080p", "MP4"), downloadTags("1080p", "Pixeldrain 1080p", "https://a.example/film.mp4?t=1", false))
+        assertEquals(listOf("720p", "HLS"), downloadTags("720p", "Server 1", "https://a.example/master.m3u8", true))
+    }
 }

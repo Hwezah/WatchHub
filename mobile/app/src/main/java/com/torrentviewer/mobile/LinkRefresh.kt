@@ -19,14 +19,17 @@ import kotlinx.coroutines.launch
  */
 fun refreshPick(
     hits: List<Hit>, oldUri: String, source: String?, name: String?, quality: String?, tried: Set<String> = emptySet(),
-    oldSize: Long = 0, prefs: DownloadPrefs = DownloadPrefs(),
+    oldSize: Long = 0, prefs: DownloadPrefs = DownloadPrefs(), rejected: Set<String> = emptySet(),
 ): Hit? {
-    val ok = prefs.usable(hits).filter { it.uri != oldUri && it.uri !in tried && batchable(it) }
+    val ok = prefs.usable(hits).filter { it.uri != oldUri && it.uri !in tried && rejectKey(it.addon, it.name) !in rejected && batchable(it) }
     renewal(ok, source, name)?.let { return it }
     val atQuality = ok.filter { quality == null || it.quality == quality }
     if (atQuality.isEmpty()) return null
     val near = if (oldSize <= 0) atQuality else
-        atQuality.filter { it.size in 1..(oldSize * GROWTH).toLong() }.ifEmpty { atQuality.filter { it.size <= (oldSize * GROWTH).toLong() } }.ifEmpty { atQuality }
+        // Not far smaller either: a 1.2 GB film swapped for a 300 MB one is usually a worse copy, not a better codec.
+        atQuality.filter { it.size in (oldSize * SHRINK).toLong()..(oldSize * GROWTH).toLong() }
+            .ifEmpty { atQuality.filter { it.size in 1..(oldSize * GROWTH).toLong() } }
+            .ifEmpty { atQuality.filter { it.size <= (oldSize * GROWTH).toLong() } }.ifEmpty { atQuality }
     // The smallest that will work at that resolution, MKV first: codec and the rest of the preferences don't come into a rescue.
     val pick = prefs.copy(quality = quality ?: prefs.quality, codec = "", subs = false, source = "")
     return near.filter { source != null && it.addon == source }.let { preferredPick(it, pick) } ?: preferredPick(near, pick)
@@ -38,6 +41,12 @@ fun renewal(hits: List<Hit>, source: String?, name: String?): Hit? =
 
 /** A fresh link may be up to this many times the size of the one it replaces, when anything that size is found. */
 const val GROWTH = 1.3
+
+/** …and, when anything that size is found, no less than this share of it. */
+const val SHRINK = 0.5
+
+/** How a source turned down by hand is remembered: its addon and link name, so the same file under a new address stays out too. */
+fun rejectKey(addon: String?, name: String?) = "${addon.orEmpty()}|${name.orEmpty()}"
 
 object LinkRefresh {
     /** The longest a fresh link is looked for: plugins like StreamPlay keep answering for minutes, and a download can't wait that long. */
@@ -69,10 +78,13 @@ object LinkRefresh {
         // [allowSame]: renewing a link that hasn't failed, so the same address (when it doesn't expire) is fine.
         val old = if (allowSame) "" else job.uri
         val quality = job.quality ?: prefs.quality.ifEmpty { null }
-        fun pick(hits: List<Hit>) = refreshPick(allowedHits(hits), old, job.source, job.linkName, quality, tried, job.size, prefs)
+        // Sources turned down by hand ("Different Source") never come back for this download, under any address.
+        val rejected = job.rejected.toSet()
+        fun allowed(hits: List<Hit>) = allowedHits(hits).filter { rejectKey(it.addon, it.name) !in rejected && it.uri !in rejected }
+        fun pick(hits: List<Hit>) = refreshPick(allowed(hits), old, job.source, job.linkName, quality, tried, job.size, prefs)
         // Only the same file renewed ends the search early: anything else waits for every source (or FRESH_MS), so a fast
         // source's first answer — often a far bigger torrent — doesn't win over a better one still on its way.
-        fun sameFile(hits: List<Hit>) = renewal(prefs.usable(allowedHits(hits)).filter { it.uri != old && it.uri !in tried && batchable(it) }, job.source, job.linkName)
+        fun sameFile(hits: List<Hit>) = renewal(prefs.usable(allowed(hits)).filter { it.uri != old && it.uri !in tried && batchable(it) }, job.source, job.linkName)
         var latest = emptyList<Hit>()
         val early = kotlinx.coroutines.CompletableDeferred<Hit?>()
         val found = kotlinx.coroutines.withTimeoutOrNull(FRESH_MS) {
@@ -93,8 +105,8 @@ object LinkRefresh {
         }
         // Out of time with sources still answering: the best of what came. Nothing at that resolution: the nearest the
         // preferences allow, from whatever was found.
-        return found ?: pick(latest) ?: preferredPick(allowedHits(latest).filter { it.uri != old && it.uri !in tried }, prefs)
-            ?: if (wide) packPick(latest, old, tried, season, prefs) else null
+        return found ?: pick(latest) ?: preferredPick(allowed(latest).filter { it.uri != old && it.uri !in tried }, prefs)
+            ?: if (wide) packPick(allowed(latest), old, tried, season, prefs) else null
     }
 
     /**

@@ -107,8 +107,13 @@ data class DownloadJob(
     val fetchedAt: Long = 0,
     /** The release's size when it was picked (0 unknown): a fresh link for it should be about the same, not a far bigger file. */
     val size: Long = 0,
+    /** Sources turned down by hand ("Different Source"): their addresses and [rejectKey]s, never picked again for this download. */
+    val rejected: List<String> = emptyList(),
 ) {
     val label get() = titleName ?: title
+
+    /** Up to three tags for its card ("720p", "MKV", "x265"), from its link's name and address. */
+    val tags3 get() = downloadTags(quality, listOfNotNull(linkName, title).joinToString(" "), uri, playlist)
 
     fun toJson(): JSONObject = JSONObject().put("uri", uri).put("title", title).put("titleName", titleName).put("poster", poster)
         .put("imdb", imdb).put("kind", kind).put("tags", JSONArray(tags)).put("season", season)
@@ -116,6 +121,7 @@ data class DownloadJob(
         .put("skipped", JSONArray(skipped))
         .put("link", link).put("playlist", playlist).put("quality", quality)
         .put("source", source).put("linkName", linkName).put("epSeason", epSeason).put("epNumber", epNumber).put("refreshes", refreshes).put("fetchedAt", fetchedAt).put("size", size)
+        .put("rejected", JSONArray(rejected))
         .put("headers", JSONObject().also { o -> headers.forEach { (k, v) -> o.put(k, v) } })
 
     companion object {
@@ -148,6 +154,7 @@ data class DownloadJob(
                 refreshes = o.optInt("refreshes"),
                 fetchedAt = o.optLong("fetchedAt"),
                 size = o.optLong("size"),
+                rejected = o.optJSONArray("rejected")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty(),
             )
         }
     }
@@ -955,6 +962,42 @@ object Downloads {
                     if (_live.value.any { it.job.uri == uri && it.state == DlState.FAILED }) retry(uri)
                 }
             }
+        }
+    }
+
+    /**
+     * "Different Source" on a download that looks wrong (too small for its resolution, the wrong codec): its link is
+     * stopped, what it fetched is thrown away, and the source is turned down for good — by address and by its addon and
+     * link name, so the same file renewed doesn't come back. The sources are then asked again, as ↻ does, for the next
+     * one at the resolution; nothing found leaves it failed, its ↻ asking again later.
+     */
+    fun differentSource(uri: String) {
+        val row = _live.value.find { it.job.uri == uri } ?: return
+        if (!row.job.link || row.job.imdb == null) return
+        val run = synchronized(lock) { links.remove(uri) }
+        run?.cancel()
+        val job = row.job.copy(rejected = (row.job.rejected + uri + rejectKey(row.job.source, row.job.linkName)).distinct())
+        failedLinks.merge(job.label, setOf(uri)) { a, b -> a + b }
+        fun mark() = synchronized(lock) {
+            _live.value = _live.value.map { if (it.job.uri == uri) LiveDownload(job, DlState.RESOLVING, error = "Finding a different source…") else it }
+            writeQueue(jobs())
+        }
+        mark()
+        scope.launch {
+            // The stopped run winds down first: whatever it says on its way out (a failure, a retry) is then overwritten.
+            run?.join()
+            if (_live.value.none { it.job.uri == uri }) return@launch
+            mark()
+            // A different file: nothing of this one carries over.
+            linkWork(uri).deleteRecursively()
+            com.torrentviewer.core.forgetStreams()
+            runCatching { com.torrentviewer.mobile.cs.CsPlugins.forgetPages() }
+            // Any size: the one turned down may have been the odd one out. Not the same source's same link renewed either.
+            val fresh = runCatching { LinkRefresh.fresh(job.copy(size = 0, linkName = null), tried(job) + uri, wide = true) }
+                .onFailure { Log.w(TAG, "different source: ${it.message}") }.getOrNull()
+            if (fresh != null) replaceLink(job.copy(refreshes = -1), fresh)
+            else update(uri) { it.copy(state = DlState.FAILED, speed = 0, error = "No other ${job.quality ?: ""} source found · tap ↻ to look again".replace("  ", " ")) }
+            settle()
         }
     }
 

@@ -108,6 +108,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     val live by Downloads.live.collectAsState()
     val finished by Downloads.finished.collectAsState()
     var cancelling by remember { mutableStateOf<LiveDownload?>(null) }
+    var swapping by remember { mutableStateOf<LiveDownload?>(null) }
     var deleting by remember { mutableStateOf<Finished?>(null) }
     var deletingAll by remember { mutableStateOf(false) }
 
@@ -147,6 +148,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 onResume = { Downloads.resume(row.job.uri) },
                 onRetry = { Downloads.retry(row.job.uri, byHand = true) },
                 onCancel = { cancelling = row },
+                onSwap = { swapping = row },
                 onWanted = { index, on -> Downloads.setWanted(row.job.uri, index, on) },
                 onOrder = { Downloads.setOrder(row.job.uri, it) },
             )
@@ -164,6 +166,22 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
         }
     }
 
+    // Asked first: what has arrived is thrown away.
+    swapping?.let { row ->
+        Sheet(
+            title = "Use a different source for ${row.job.label}?",
+            options = listOf(
+                Option(true, "Find a different source", "Stops this one, deletes what arrived, and never picks it again", icon = L.drawable.lucide_ic_shuffle, iconTint = Ink.download),
+                Option(false, "Keep this one", icon = L.drawable.lucide_ic_download),
+            ),
+            selected = null,
+            onPick = {
+                if (it) Downloads.differentSource(row.job.uri)
+                swapping = null
+            },
+            onDismiss = { swapping = null },
+        )
+    }
     cancelling?.let { row ->
         Sheet(
             title = "Stop downloading ${row.job.label}?",
@@ -267,7 +285,7 @@ private fun Label(text: String) {
  * listed in episode order, each with its own progress and a circle to skip it or put it back.
  */
 @Composable
-private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Unit, onRetry: () -> Unit, onCancel: () -> Unit, onWanted: (Int, Boolean) -> Unit, onOrder: (Boolean) -> Unit) {
+private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Unit, onRetry: () -> Unit, onCancel: () -> Unit, onSwap: () -> Unit, onWanted: (Int, Boolean) -> Unit, onOrder: (Boolean) -> Unit) {
     val pct = (row.ratio * 100).toInt()
     val pack = row.files.size > 1
     val wanted = row.files.filter { it.wanted }
@@ -287,7 +305,19 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             Row(verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 // One line; a name too long for it scrolls slowly across (the owner's choice), a short one stays still.
-                Text(row.job.label, Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1)
+                // Beside it, what the file is ("720p · MKV · x265"), to judge a size that looks wrong for its resolution.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(row.job.label, Modifier.weight(1f, fill = false).basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1)
+                    row.job.tags3.forEach { tag ->
+                        Text(
+                            tag,
+                            Modifier.padding(start = 5.dp).background(Ink.text.copy(alpha = 0.1f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
+                            style = Type.meta.copy(fontSize = 10.sp, color = Ink.muted, fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                }
                 // A link being renewed says nothing (the owner's choice): the spinner beside it is enough.
                 val status = when (row.state) {
                         DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) }?.let { if (it.startsWith("Waiting for its turn")) "Queued — starts when one finishes" else it } else "Finding peers…"
@@ -317,6 +347,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
                 row.state == DlState.WIFI -> Unit
                 else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
+            }
+            // A link that looks wrong: swapped for a different source, by hand (not while one is being looked for).
+            if (row.job.link && row.job.imdb != null && !(row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") != true)) {
+                Tap(onSwap, shape = CircleShape) { Lc(L.drawable.lucide_ic_shuffle, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 20.dp) }
             }
             // Inside the card's padding (the owner's choice: a notch of room from the edge).
             Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 22.dp) }

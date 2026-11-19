@@ -69,6 +69,22 @@ private fun readTraits(hit: Hit): Traits {
     return Traits(hit.quality, codec, format, SUBS.containsMatchIn(text), if (hit.direct) "Link" else "Torrent")
 }
 
+/**
+ * Up to three short tags for a download's card — resolution, container, codec ("720p", "MKV", "x265") — read from its
+ * link's name, release and address, so a file that looks too small for its resolution can be judged at a glance.
+ * What the name doesn't say is left out rather than guessed.
+ */
+fun downloadTags(quality: String?, text: String, uri: String, playlist: Boolean): List<String> {
+    val codec = when {
+        HEVC.containsMatchIn(text) -> "x265"
+        AV1.containsMatchIn(text) -> "AV1"
+        AVC.containsMatchIn(text) -> "x264"
+        else -> null
+    }
+    val format = if (playlist) "HLS" else (FORMAT.find(text) ?: FORMAT.find(uri.substringBefore('?')))?.groupValues?.get(1)?.uppercase()
+    return listOfNotNull(quality, format, codec)
+}
+
 /** The viewer's choices; null (or false) is "any". */
 data class BatchFilter(
     val quality: String? = null,
