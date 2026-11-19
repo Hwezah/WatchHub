@@ -309,9 +309,23 @@ private fun HomeFeed(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, o
     val subs by Tube.subscriptions.collectAsState()
     val signedIn by YouTubeAccount.signedIn.collectAsState()
     val problem by YouTubeAccount.problem.collectAsState()
+    // Shown for a minute, then gone (the owner's choice); a new problem shows afresh.
+    var shownProblem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(problem) {
+        shownProblem = problem
+        if (problem != null) { delay(60_000); shownProblem = null }
+    }
+    val centred = isPortraitPhone()
     Loaded(subs.size to signedIn, { Tube.home(it) }, "Nothing from YouTube right now.", header = {
         // Signed in, but the account's own feed didn't come: said (with why), not hidden behind other videos.
-        problem?.let { p -> item { Text(p, Modifier.padding(bottom = 12.dp), style = Type.meta.copy(color = Ink.danger), maxLines = 3) } }
+        shownProblem?.let { p ->
+            item {
+                Text(
+                    p, Modifier.fillMaxWidth().padding(bottom = 12.dp), style = Type.meta.copy(color = Ink.danger), maxLines = 3,
+                    textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                )
+            }
+        }
     }) { VideoCard(it, onOpen, onMenu, onChannel) }
 }
 

@@ -169,11 +169,16 @@ object Tube {
      */
     private suspend fun accountFeed(fresh: Boolean): List<TubeVideo> {
         accountCache?.let { (at, list) -> if (!fresh && System.currentTimeMillis() - at < FEED_MS) return list }
+        // Either half is enough: an error is kept (and said) only when neither the recommendations nor the
+        // Subscriptions feed came — one failing alone isn't the account being signed out.
         val list = YouTubeAccount.noted {
             coroutineScope {
-                val rec = async { runCatching { YouTubeAccount.recommended() }.getOrDefault(emptyList()) }
-                val subs = async { YouTubeAccount.feed() }
-                com.torrentviewer.core.interleave(listOf(rec.await(), subs.await()))
+                val rec = async { runCatching { YouTubeAccount.recommended() } }
+                val subs = async { runCatching { YouTubeAccount.feed() } }
+                val r = rec.await()
+                val s = subs.await()
+                if (r.isFailure && s.isFailure) throw s.exceptionOrNull() ?: r.exceptionOrNull()!!
+                com.torrentviewer.core.interleave(listOf(r.getOrDefault(emptyList()), s.getOrDefault(emptyList())))
             }
         }
         return list.also { accountCache = System.currentTimeMillis() to it }
