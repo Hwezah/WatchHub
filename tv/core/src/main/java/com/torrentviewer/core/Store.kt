@@ -181,6 +181,11 @@ data class Settings(
     val dlSource: String = "",
     /** One-tap and season downloads: a direct link before a torrent, unless it's over 1.5× the lightest torrent's size. */
     val dlDirect: Boolean = true,
+    /**
+     * What Play streams at (Settings → Playback), apart from [dlQuality]: "4K", "1080p", "720p", "480p", or "" for
+     * Auto — 1080p on Wi-Fi, 720p on mobile data ([streamTarget]). The nearest is taken when there's none at it.
+     */
+    val streamQuality: String = "",
     /** The phone's AI search: which service ([AiProvider] id, "" for none) and its model ("" for the service's default). */
     val aiProvider: String = "",
     val aiModel: String = "",
@@ -265,6 +270,7 @@ object SettingsStore {
         dlSubs = o.optBoolean("dlSubs"),
         dlSource = o.optString("dlSource"),
         dlDirect = o.optBoolean("dlDirect", true),
+        streamQuality = o.optString("streamQuality").takeIf { it in STREAM_QUALITIES }.orEmpty(),
         aiProvider = o.optString("aiProvider"),
         aiModel = o.optString("aiModel"),
         secureDns = o.optString("secureDns"),
@@ -282,7 +288,7 @@ object SettingsStore {
             .put("subSize", next.subtitles.size).put("subColor", if (next.subtitles.yellow) "yellow" else "white").put("subBackground", next.subtitles.box)
             .put("playbackRate", next.playbackRate.toDouble()).put("playerScale", next.playerScale).put("streamWholeFile", next.wholeFile).put("themeMode", next.themeMode).put("autoSkipIntro", next.autoSkipIntro).put("navStyle", next.navStyle).put("accent", next.accent)
             .put("builtInHome", next.builtInHome).put("hiddenShelves", JSONArray(next.hiddenShelves))
-            .put("dlQuality", next.dlQuality).put("dlCodec", next.dlCodec).put("dlFormat", next.dlFormat).put("dlSubs", next.dlSubs).put("dlSource", next.dlSource).put("dlDirect", next.dlDirect).put("aiProvider", next.aiProvider).put("aiModel", next.aiModel)
+            .put("dlQuality", next.dlQuality).put("dlCodec", next.dlCodec).put("dlFormat", next.dlFormat).put("dlSubs", next.dlSubs).put("dlSource", next.dlSource).put("dlDirect", next.dlDirect).put("streamQuality", next.streamQuality).put("aiProvider", next.aiProvider).put("aiModel", next.aiModel)
             .put("secureDns", next.secureDns).put("hideFewSeeds", next.hideFewSeeds).put("leaveOut", JSONArray(next.leaveOut))
         Kv.setGlobal("settings", o.toString())
         Kv.set(GENRES_KEY, JSONArray(next.genres).toString())
