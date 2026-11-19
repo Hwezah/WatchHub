@@ -46,6 +46,12 @@ class CsMatchTest {
         assertEquals("4K", qualityLabel(2160))
         assertEquals("1080p", qualityLabel(1080))
         assertEquals("480p", qualityLabel(480))
+        // Widescreen heights, bars cut off: placed by the width they imply.
+        assertEquals("720p", qualityLabel(640))
+        assertEquals("720p", qualityLabel(536))
+        assertEquals("1080p", qualityLabel(800))
+        assertEquals("480p", qualityLabel(376))
+        assertEquals("4K", qualityLabel(1600))
         // CloudStream's Unknown is 400; plugins also send 0 and -1.
         assertNull(qualityLabel(400))
         assertNull(qualityLabel(0))

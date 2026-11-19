@@ -71,15 +71,36 @@ fun pickEpisode(episodes: List<Pair<Int?, Int?>>, season: Int, episode: Int, abs
 /** CloudStream's Qualities.Unknown. */
 private const val UNKNOWN_QUALITY = 400
 
-/** A plugin's quality number (2160, 1080…; CloudStream's Qualities) as the label the sources list sorts by. */
-fun qualityLabel(q: Int): String? = when {
-    q == UNKNOWN_QUALITY -> null
+/** The usual heights: taken as they are. */
+private val STANDARD_HEIGHTS = setOf(2160, 1440, 1080, 720, 576, 480, 360, 240, 144)
+
+/**
+ * A plugin's quality number (2160, 1080…; CloudStream's Qualities) as the label the sources list sorts by.
+ * Some plugins report a widescreen film's real height, its black bars cut off (1536×640, 1920×800, 900×376): an
+ * odd height is placed by the width it implies at the cinema shape (2.4:1), so 640 files under 720p and 800 under
+ * 1080p rather than tabs of their own.
+ */
+fun qualityLabel(q: Int): String? {
+    if (q == UNKNOWN_QUALITY || q < 100) return null
+    if (q in STANDARD_HEIGHTS || q > 2160) return bucket(q)
+    val width = q * 2.4
+    return when {
+        width >= 3600 -> "4K"
+        width >= 1800 -> "1080p"
+        width >= 1200 -> "720p"
+        width >= 800 -> "480p"
+        width >= 560 -> "360p"
+        else -> "${q}p"
+    }
+}
+
+/** A standard height's label: 4K at 2160 and up. */
+private fun bucket(q: Int) = when {
     q >= 2160 -> "4K"
     q >= 1440 -> "1440p"
     q >= 1080 -> "1080p"
     q >= 720 -> "720p"
-    q in 100..719 -> "${q}p"
-    else -> null
+    else -> "${q}p"
 }
 
 /** A plugin subtitle's language ("English", "en", "eng") as this app's two-letter code, else as given. */
