@@ -820,13 +820,14 @@ fun Modifier.frosted(shape: androidx.compose.ui.graphics.Shape, color: Color = S
 
 /**
  * Choices as words in a row, Grabber's way: no pills, a short coloured bar between each, the chosen one in the accent
- * colour with a dot before it. Spread across the width as the pill rows were (bars midway between the words), scrolling
+ * colour with a dot before it. In plain flow from the start, a little apart — not spread across the width (the owner's choice) — scrolling
  * sideways when there are more than fit. [leading] goes first, as it is (a reload button).
  */
 @Composable
 fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier, leading: (@Composable () -> Unit)? = null, onPick: (Int) -> Unit) {
     val bars = listOf(Ink.accent, Ink.download, Ink.muted, Ink.good)
-    // Spread only with three or more, as the pill rows: two stay side by side ("Any | With subs").
+    // In plain flow from the start, a little apart, never spread across the width (the owner's choice, everywhere these
+    // rows are); a row longer than the screen scrolls sideways rather than being cut off.
     val content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
         leading?.invoke()
         labels.forEachIndexed { i, label ->
@@ -841,8 +842,10 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
             }
         }
     }
-    if (labels.size + (if (leading != null) 1 else 0) >= 3) SpreadRow(modifier, content = content)
-    else Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, content = content)
+    Row(
+        modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, content = content,
+    )
 }
 
 /** A list card's colour (downloads, sources): nearly the page's own, a breath lighter, grain over it (the owner's choice). */
