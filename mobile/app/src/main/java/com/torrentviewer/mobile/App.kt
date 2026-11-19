@@ -575,14 +575,17 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                     }
                 }
             }
-            // What the bar's "Glass" look blurs: everything drawn under it.
+            // What the bar's "Glass" look blurs: everything drawn under it — except on the Browser's tab. The blur draws the
+            // screen a second time, off-screen, every frame, and a web page drawn that way comes out as blank frames on many
+            // phones: the Browser's flicker. There the bar is its solid frosted self.
             val haze = dev.chrisbanes.haze.rememberHazeState()
+            val glass = NavGlass.glass && tab != Tab.BROWSER
             Box(Modifier.fillMaxSize().nestedScroll(watchScroll)) {
-                Box(Modifier.fillMaxSize().then(if (NavGlass.glass) Modifier.hazeSource(haze) else Modifier)) { host(body) }
+                Box(Modifier.fillMaxSize().then(if (glass) Modifier.hazeSource(haze) else Modifier)) { host(body) }
                 AnimatedVisibility(
                     pillShown && OpenSheets.count == 0, Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
-                ) { PillBar(tab, choose, haze = haze) }
+                ) { PillBar(tab, choose, haze = haze.takeIf { glass }) }
                 // A Tube video dropped down keeps playing here, above the bar; a tap opens it again in Tube.
                 if (TubeSession.playing.isEmpty()) TubeMiniPlayer(onOpen = { tab = Tab.YOUTUBE; TubeSession.expand() })
             }
