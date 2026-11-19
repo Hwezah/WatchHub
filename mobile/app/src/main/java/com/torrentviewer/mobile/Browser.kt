@@ -54,6 +54,11 @@ class BTab(val id: Long, val incognito: Boolean = false) {
     var stopped by mutableStateOf<String?>(null)
     /** One address let through after "Open anyway". */
     var pass: String? = null
+    /**
+     * When an address was last opened by the viewer (typed and Go, a bookmark, history): what the page does on its
+     * way in for a few seconds after (its redirects, to www. or a regional address) isn't a jump to stop.
+     */
+    @Volatile var openedAt = 0L
 }
 
 /** A page bookmarked or visited. */
@@ -276,6 +281,7 @@ object Browser {
     /** Whether this page jump should be stopped: to another site, and either untapped or to an ad or betting site. */
     private fun stopJump(t: BTab, request: WebResourceRequest): Boolean {
         if (!blockRedirects || !request.isForMainFrame) return false
+        if (openedByViewer(t)) return false
         val to = request.url.toString()
         if (t.pass == to) { t.pass = null; return false }
         val from = siteOf(android.net.Uri.parse(t.url).host)
@@ -286,12 +292,17 @@ object Browser {
         return bad || (!request.hasGesture() && !request.isRedirect)
     }
 
+    /** Whether [t]'s page was opened by the viewer in the last few seconds: its own redirects then go through. */
+    private fun openedByViewer(t: BTab) = System.currentTimeMillis() - t.openedAt < 10_000
+
     /** Opens a jump that was stopped. */
     fun openStopped() {
         val t = tab
         val u = t.stopped ?: return
         t.stopped = null
         t.pass = u
+        // As if typed: through the block list too.
+        t.openedAt = System.currentTimeMillis()
         t.web?.loadUrl(u)
     }
 
@@ -609,7 +620,12 @@ object Browser {
                     return true
                 }
                 if (u.scheme != "http" && u.scheme != "https") return true
-                if (blockAds && blockedHost(u.host.orEmpty())) { t.blocked++; return true }
+                // The block list stops a page too, but says so ("Open anyway"), and never what the viewer just opened.
+                if (blockAds && !openedByViewer(t) && blockedHost(u.host.orEmpty())) {
+                    t.blocked++
+                    if (request.isForMainFrame) t.stopped = u.toString()
+                    return true
+                }
                 if (stopJump(t, request)) { t.stopped = u.toString(); return true }
                 return false
             }
@@ -801,6 +817,8 @@ object Browser {
             else -> (ENGINES.firstOrNull { it.first == engine } ?: ENGINES.first()).second + java.net.URLEncoder.encode(t, "UTF-8")
         }
         val w = tab.web
+        tab.openedAt = System.currentTimeMillis()
+        tab.stopped = null
         if (w != null) w.loadUrl(target) else tab.url = target
     }
 
