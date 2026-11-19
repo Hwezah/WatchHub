@@ -66,7 +66,7 @@ import com.composables.icons.lucide.R as L
  *
  * A whole season (or series) pack picked without an episode is downloaded as its torrent when the link names it (a
  * debrid link carries the torrent's hash): a link is only ever one file, while the torrent holds every episode — one
- * card with the episodes inside, each saved to Shows/<show>/Season NN. Packs with no torrent behind them stay links.
+ * card with the episodes inside, each saved to Video/Shows/<show>/Season N. Packs with no torrent behind them stay links.
  */
 fun downloadJob(hit: Hit, from: Title?, episode: Episode? = null, foundAt: Long = System.currentTimeMillis()): DownloadJob {
     val magnet = if (episode == null && hit.scope != com.torrentviewer.core.Scope.EPISODE && from?.kind != "movie" && hit.direct) magnetOf(hit) else null

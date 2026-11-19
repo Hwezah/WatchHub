@@ -55,7 +55,7 @@ import com.composables.icons.lucide.R as L
 /**
  * The Browser tab, laid out as the Grabber app's (same owner): a bar with the tabs' count, the address, what the
  * page has to download (green, with a count) and ⋮; the page under it, on the app's frosted background. Downloads
- * go to the app's own downloader (Grabber!/Video, Audio…) or to the Grabber app, and "Grab this page's video"
+ * go to the app's own downloader (Grabber!/Browser/Video, Audio…) or to the Grabber app, and "Grab this page's video"
  * hands the page to yt-dlp in the Snaptube-style format sheet.
  */
 @Composable
@@ -301,7 +301,7 @@ fun BrowserScreen() {
             Sheet(
                 title = o.title.take(70),
                 options = listOfNotNull(
-                    if (o.kind == "Stream (DASH)") null else Option("here", "Download Here", if (hls) "Joined into one video · Grabber!/Video" else "To Grabber! in this app", icon = L.drawable.lucide_ic_download, iconTint = Ink.download),
+                    if (o.kind == "Stream (DASH)") null else Option("here", "Download Here", if (hls) "Joined into one video · Grabber!/Browser/Video" else "To Grabber! in this app", icon = L.drawable.lucide_ic_download, iconTint = Ink.download),
                     if (o.kind == "Video" || hls || o.kind == "Stream (DASH)") Option("formats", "More Formats", "MP3, M4A, Opus… or another height", icon = L.drawable.lucide_ic_music) else null,
                     if (grabber) Option("grabber", "Send to Grabber", "The Grabber app downloads it", icon = L.drawable.lucide_ic_external_link) else null,
                     Option("copy", "Copy Link", icon = L.drawable.lucide_ic_copy),

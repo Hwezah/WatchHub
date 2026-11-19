@@ -232,7 +232,7 @@ fun TubeScreen(watch: Watch) {
                 if (handed != Handed.Failed) downloading = null
             },
             onDismiss = { downloading = null },
-            internalNote = "Pick a height, or MP3, M4A, Opus, FLAC or WAV. Saved in Grabber!/YouTube or Grabber!/Audio.",
+            internalNote = "Pick a height, or MP3, M4A, Opus, FLAC or WAV. Saved in Grabber!/Video/YouTube or Grabber!/Audio.",
             externalNote = "Grabber, Snaptube, 1DM or another app gets the video's link and saves it.",
             probe = ExternalDownloaders.sendProbe(),
         )
@@ -390,7 +390,7 @@ private fun HistoryList(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit
     )
 }
 
-/** YouTube downloads: those still coming, and those saved in Grabber!/YouTube and Grabber!/Audio. */
+/** YouTube downloads: those still coming, and those saved in Grabber!/Video/YouTube and Grabber!/Audio. */
 @Composable
 private fun TubeDownloads(watch: Watch) {
     val live by Downloads.live.collectAsState()
@@ -402,7 +402,7 @@ private fun TubeDownloads(watch: Watch) {
     val saved = finished.filter { it.kind in tube || (it.kind in media && it.path.contains("/YouTube/") || it.kind == Downloads.MEDIA_AUDIO && it.poster?.contains("ytimg") == true) }.sortedByDescending { it.at }
     var deleting by remember { mutableStateOf<Finished?>(null) }
     if (coming.isEmpty() && saved.isEmpty()) {
-        EmptyNote("Videos you download show up here, and in Files under Grabber!/YouTube.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+        EmptyNote("Videos you download show up here, and in Files under Grabber!/Video/YouTube.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
         return
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 190.dp)) {

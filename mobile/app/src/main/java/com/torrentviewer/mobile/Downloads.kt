@@ -3,6 +3,10 @@ package com.torrentviewer.mobile
 import com.torrentviewer.core.libraryFolders
 import com.torrentviewer.core.GRABBER_ROOT
 import com.torrentviewer.core.GRABBER_FOLDERS
+import com.torrentviewer.core.relaid
+import com.torrentviewer.core.rebased
+import com.torrentviewer.core.freeName
+import com.torrentviewer.core.webFolder
 import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -301,7 +305,7 @@ object Downloads {
 
     /**
      * The public Download/Grabber! folder, shared with the Grabber app and visible in the phone's Files app (the owner's
-     * layout): Movies, Shows and the rest under it ([GRABBER_FOLDERS]). The card's, if chosen; else the app's own.
+     * layout): Video (Movies, Shows, YouTube), Audio and Browser under it ([GRABBER_FOLDERS]). The card's, if chosen; else the app's own.
      */
     fun keepDir(): File {
         val root = (if (sdCard) cardRoot(Environment.DIRECTORY_DOWNLOADS)?.let { File(it, GRABBER_ROOT) } else null)
@@ -315,10 +319,10 @@ object Downloads {
 
     private fun safe(name: String) = name.replace(Regex("[\\\\/:*?\"<>|]+"), "_").trim().ifBlank { "Download" }
 
-    /** Grabber!/Movies/<film>/file.mkv, or Grabber!/Shows/<show>/Season NN/file.mkv ([libraryFolders]). */
+    /** Grabber!/Video/Movies/file.mkv, or Grabber!/Video/Shows/<show>/Season N/file.mkv ([libraryFolders]). */
     private fun destOf(job: DownloadJob, torrentName: String, path: String): File {
         val file = safe(path.replace('\\', '/').split('/').last { it.isNotBlank() })
-        // From the Browser: Grabber!/Video, Audio, Documents or Other, by what the file is, as the Grabber app sorts.
+        // From the Browser: Grabber!/Browser/Video, Audio, Documents or Other, by what the file is (the owner's layout).
         if (job.kind == WEB_KIND) return File(File(keepDir(), webFolder(file)), file)
         val folders = libraryFolders(job.titleName ?: torrentName, file, job.kind, job.season?.takeIf { it >= 0 })
         return File(folders.fold(keepDir()) { dir, part -> File(dir, part) }, file)
@@ -329,7 +333,76 @@ object Downloads {
      * list and Continue Watching following each file. A file that can't be moved stays where it is, still listed.
      * Called once a profile is open, so that profile's Continue Watching is the one updated.
      */
-    fun moveOldDownloads() = scope.launch { runCatching { moveOld() } }
+    fun moveOldDownloads() = scope.launch {
+        runCatching { moveOld() }
+        runCatching { relayout() }.onFailure { Log.w(TAG, "relayout: ${it.message}") }
+    }
+
+    /**
+     * Once: the last layout's Grabber! folders moved into the owner's new one — Movies, Shows and YouTube into Video,
+     * "Season 01" renamed "Season 1", and what the list knows the Browser saved out of the shared Video, Audio… folders
+     * into Browser's — the list and Continue Watching following. Whatever can't be moved stays where it is, still listed.
+     */
+    private fun relayout() {
+        if (!::app.isInitialized || Kv.global(LAYOUT_KEY) != null) return
+        val root = keepDir()
+        fun under(path: List<String>) = path.fold(root) { dir, part -> File(dir, part) }
+        // Whole folders first: Movies, Shows and YouTube, all in them.
+        listOf("Movies", "Shows", "YouTube").forEach { top ->
+            val from = File(root, top)
+            if (from.isDirectory) relaid(listOf(top), false)?.let { runCatching { moveInto(from, under(it)) }.onFailure { e -> Log.w(TAG, "relayout $top: ${e.message}") } }
+        }
+        // Each show's "Season 01" folder as "Season 1".
+        File(root, "Video/Shows").listFiles().orEmpty().filter { it.isDirectory }.forEach { show ->
+            show.listFiles().orEmpty().filter { it.isDirectory }.forEach { season ->
+                com.torrentviewer.core.renumbered(season.name)?.let { runCatching { moveInto(season, File(show, it)) } }
+            }
+        }
+        // The Browser's own files, straight in the shared folders the Grabber app uses too: into Browser's.
+        _finished.value.filter { it.kind == WEB_KIND || it.kind == MEDIA_KIND }.forEach { f ->
+            val folder = f.file.parentFile?.takeIf { it.parentFile?.path == root.path } ?: return@forEach
+            val to = relaid(listOf(folder.name), true) ?: return@forEach
+            if (f.file.isFile) runCatching { moveInto(f.file, File(under(to), f.file.name)) }
+        }
+        // The last layout's Documents, Images and Other, left empty.
+        listOf("Documents", "Images", "Other").forEach { File(root, it).takeIf { d -> d.isDirectory && d.list().isNullOrEmpty() }?.delete() }
+        Kv.setGlobal(LAYOUT_KEY, "1")
+    }
+
+    /** Set once the Grabber! folders were moved into the Video / Browser layout ([relayout]). */
+    private const val LAYOUT_KEY = "downloads-layout-video-browser"
+
+    /**
+     * [from] (a file, or a folder and all in it) moved to [to], merged into a folder already there of the same name (a
+     * clashing file's name numbered): renamed where it can be, else copied across and the original deleted (another
+     * drive). The downloads list and Continue Watching follow. Throws when a file can't be moved; what moved stays moved.
+     */
+    fun moveInto(from: File, to: File) {
+        if (from.path == to.path || !from.exists()) return
+        to.parentFile?.mkdirs()
+        if (from.isDirectory && to.isDirectory) {
+            // An empty one (made up front) is moved out of the way so the whole folder goes in one rename.
+            if (to.list().isNullOrEmpty() && to.delete() && from.renameTo(to)) return moved(from, to)
+            to.mkdirs()
+            from.listFiles().orEmpty().forEach { moveInto(it, File(to, it.name)) }
+            if (from.list().isNullOrEmpty()) from.delete()
+            return
+        }
+        val dest = if (to.exists()) File(to.parentFile, freeName(to.name, to.parentFile?.list().orEmpty().toList(), from.isDirectory)) else to
+        if (!from.renameTo(dest)) {
+            from.copyRecursively(dest)
+            from.deleteRecursively()
+        }
+        moved(from, dest)
+    }
+
+    /** [from] moved or renamed to [to] (a file, or a folder and all in it): the downloads list and Continue Watching follow it there. */
+    fun moved(from: File, to: File) {
+        val list = _finished.value
+        val next = list.map { f -> rebased(f.file.path, from.path, to.path)?.let { f.copy(path = it, name = File(it).name) } ?: f }
+        if (next != list) writeFinished(next)
+        History.movedTree(from.path, to.path)
+    }
 
     /** [moveOldDownloads]'s work, off the main thread. */
     private fun moveOld() {
@@ -342,7 +415,7 @@ object Downloads {
             if ("/Watchly/" !in f.file.path && !inMovieFolder) return@map f
             runCatching {
                 val folders = libraryFolders(f.titleName ?: f.name, f.file.name, f.kind, null)
-                if (folders.firstOrNull() != "Movies" && inMovieFolder) return@runCatching f
+                if (folders.getOrNull(1) != "Movies" && inMovieFolder) return@runCatching f
                 val dest = File(folders.fold(root) { dir, part -> File(dir, part) }, f.file.name)
                 if (dest.path == f.file.path) return@runCatching f
                 dest.parentFile?.mkdirs()
@@ -556,12 +629,13 @@ object Downloads {
         settle()
     }
 
-    fun delete(f: Finished) {
+    /** [f] deleted and forgotten; with [prune], the show and season folders it leaves empty go too. */
+    fun delete(f: Finished, prune: Boolean = true) {
         runCatching { f.file.delete() }
         // Leaves no empty show folder behind.
-        var dir = f.file.parentFile
-        // Not the Grabber! folder itself or its Movies, Shows… folders: only a film's or show's own.
-        val keep = GRABBER_FOLDERS.toSet() + GRABBER_ROOT + "Watchly"
+        var dir = f.file.parentFile?.takeIf { prune }
+        // Not the Grabber! folder itself or its Video, Movies, Shows… folders: only a show's or season's own.
+        val keep = GRABBER_FOLDERS.map { it.substringAfterLast('/') }.toSet() + GRABBER_ROOT + "Watchly"
         while (dir != null && dir.name !in keep && dir.listFiles().isNullOrEmpty()) {
             dir.delete()
             dir = dir.parentFile
@@ -572,7 +646,7 @@ object Downloads {
 
     /* ---------------------------------------------------------- YouTube */
 
-    /** A YouTube video downloaded from the Tube tab: saved to Grabber!/YouTube. */
+    /** A YouTube video downloaded from the Tube tab: saved to Grabber!/Video/YouTube. */
     const val TUBE_KIND = "youtube"
 
     /** A YouTube video's sound alone: saved to Grabber!/Audio. */
@@ -612,7 +686,7 @@ object Downloads {
         val video = picture?.let { fetch(it, "v").also { r -> before = r.file.length() } }
         val audio = fetch(sound, "a")
         val dest = if (video == null) File(File(keepDir(), "Audio"), safe(job.label) + ".m4a")
-        else File(File(keepDir(), "YouTube"), safe(job.label) + ".mp4")
+        else File(File(keepDir(), "Video/YouTube"), safe(job.label) + ".mp4")
         dest.parentFile?.mkdirs()
         if (video == null) {
             if (!audio.file.renameTo(dest)) audio.file.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
@@ -636,16 +710,6 @@ object Downloads {
         DownloadJob(uri = url, title = title, titleName = title, kind = WEB_KIND, link = true, headers = headers, playlist = hls),
     )
 
-    /** Which Grabber! folder a Browser download goes to, by its extension. */
-    private fun webFolder(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
-        "mp3", "m4a", "aac", "flac", "wav", "ogg", "opus" -> "Audio"
-        "pdf", "doc", "docx", "epub", "txt", "xls", "xlsx", "ppt", "pptx" -> "Documents"
-        "jpg", "jpeg", "png", "webp", "gif" -> "Images"
-        "mp4", "mkv", "webm", "avi", "mov", "m4v", "ts", "flv", "wmv", "mpg", "mpeg", "3gp", "m3u8" -> "Video"
-        // Anything else (an archive, an app, a VPN's .conf…): Other, and not checked as a video.
-        else -> "Other"
-    }
-
     /** A file a web page made (no link to fetch), written to its Grabber! folder and listed. The folder's name. */
     fun saveFile(name: String, bytes: ByteArray): String {
         val folder = webFolder(name)
@@ -656,10 +720,10 @@ object Downloads {
         return folder
     }
 
-    /** A page's video saved by yt-dlp: Grabber!/YouTube or Grabber!/Video. */
+    /** A page's video saved by yt-dlp: Grabber!/Video/YouTube, or Grabber!/Browser/Video from any other site. */
     const val MEDIA_KIND = "media"
 
-    /** A page's sound saved (and converted) by yt-dlp and FFmpeg: Grabber!/Audio. */
+    /** A page's sound saved (and converted) by yt-dlp and FFmpeg: Grabber!/Audio from YouTube, Grabber!/Browser/Audio from any other site. */
     const val MEDIA_AUDIO = "media-audio"
 
     /** Between a page's address and the format in a yt-dlp download's id: the same page in two formats is two downloads. */
@@ -685,9 +749,9 @@ object Downloads {
         }
         val youtube = Regex("""(^|\.)(youtube\.com|youtu\.be)$""").containsMatchIn(runCatching { java.net.URL(page).host }.getOrDefault(""))
         val folder = when {
-            format.startsWith("a:") -> "Audio"
-            youtube -> "YouTube"
-            else -> "Video"
+            format.startsWith("a:") -> if (youtube) "Audio" else "Browser/Audio"
+            youtube -> "Video/YouTube"
+            else -> "Browser/Video"
         }
         val dest = File(File(keepDir(), folder), safe(job.label) + "." + out.extension)
         dest.parentFile?.mkdirs()
@@ -851,7 +915,7 @@ object Downloads {
                 // Thrown away, and the link counts as dead, so a fresh one is looked for.
                 // (A Browser download of a song or a document is small, and a document can be text: only its videos are checked.)
                 val web = job.kind == WEB_KIND
-                if ((!web || webFolder("x." + result.ext) == "Video") && notVideo(result.file)) {
+                if ((!web || webFolder("x." + result.ext) == "Browser/Video") && notVideo(result.file)) {
                     work.deleteRecursively()
                     // Small and not text: a piece of a stream or a preview clip, not a page.
                     val tiny = result.file.length() in 1 until MIN_VIDEO_BYTES && !looksLikeText(runCatching { result.file.inputStream().use { i -> ByteArray(64).let { b -> b.copyOf(i.read(b).coerceAtLeast(0)) } } }.getOrDefault(ByteArray(0)))

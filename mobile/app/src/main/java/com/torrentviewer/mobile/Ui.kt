@@ -78,6 +78,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -147,6 +148,8 @@ fun Tap(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(7.dp),
     onLongClick: (() -> Unit)? = null,
+    /** What a hold does, in words, for TalkBack ("Options"): read out with "double-tap and hold to…". */
+    longClickLabel: String? = null,
     content: @Composable BoxScope.(pressed: Boolean) -> Unit,
 ) {
     val source = remember { MutableInteractionSource() }
@@ -159,7 +162,7 @@ fun Tap(
                 scaleY = s
             }
             .clip(shape)
-            .combinedClickable(source, indication = null, onLongClick = onLongClick, onClick = onClick),
+            .combinedClickable(source, indication = null, onLongClickLabel = longClickLabel, onLongClick = onLongClick, onClick = onClick),
         propagateMinConstraints = true,
     ) { content(pressed) }
 }
@@ -386,6 +389,8 @@ fun Field(
     onSubmit: () -> Unit = {},
     leading: Int? = null,
     trailing: @Composable () -> Unit = {},
+    /** To put the keyboard on it as it opens (a name to type in a sheet). */
+    focus: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     // Very faint (the owner's choice): enough to show where the typing goes, not a frame.
@@ -412,7 +417,7 @@ fun Field(
                 visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
                 keyboardOptions = KeyboardOptions(keyboardType = if (digits) KeyboardType.NumberPassword else KeyboardType.Text, imeAction = if (digits) ImeAction.Done else ImeAction.Search),
                 keyboardActions = KeyboardActions(onAny = { onSubmit() }),
-                modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+                modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier).onFocusChanged { focused = it.isFocused },
             )
         }
         trailing()
