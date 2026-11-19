@@ -906,6 +906,24 @@ object NavActive {
     }
 }
 
+/**
+ * The floating tab bar's surface (Settings → Appearance): "Frosted" (the app's grained colour, as it was) or "Glass"
+ * — what scrolls behind it blurred live and tinted, as Nuvio's bar. The bar's shape stays the same either way.
+ */
+object NavGlass {
+    private const val KEY = "navGlass"
+    val CHOICES = listOf("Frosted", "Glass")
+    var style by androidx.compose.runtime.mutableStateOf(com.torrentviewer.core.Kv.global(KEY)?.takeIf { it in CHOICES } ?: "Frosted")
+        private set
+
+    fun choose(s: String) {
+        style = s
+        com.torrentviewer.core.Kv.setGlobal(KEY, s)
+    }
+
+    val glass get() = style == "Glass"
+}
+
 object HeaderEdge {
     private const val KEY = "headerEdgeFade"
     var fade by androidx.compose.runtime.mutableStateOf(com.torrentviewer.core.Kv.global(KEY) == "1")

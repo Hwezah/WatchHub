@@ -1434,6 +1434,9 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             set(settings.copy(navStyle = if (it) "pill" else "bar"))
         }
 
+        Section("Tab Bar Look", "Frosted: the bar's own colour with the app's grain. Glass: what scrolls behind it shows through, blurred (Android 12 and later).") {
+            BarChoices(NavGlass.CHOICES, NavGlass.CHOICES.indexOf(NavGlass.style)) { NavGlass.choose(NavGlass.CHOICES[it]) }
+        }
         Section("Active Tab", "The chosen tab in the bottom bar: ${NavActive.style}.") {
             BarChoices(NavActive.CHOICES, NavActive.CHOICES.indexOf(NavActive.style)) { NavActive.choose(NavActive.CHOICES[it]) }
         }

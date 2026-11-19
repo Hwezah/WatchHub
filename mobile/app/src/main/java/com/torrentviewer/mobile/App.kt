@@ -80,6 +80,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -553,12 +555,14 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                     }
                 }
             }
+            // What the bar's "Glass" look blurs: everything drawn under it.
+            val haze = dev.chrisbanes.haze.rememberHazeState()
             Box(Modifier.fillMaxSize().nestedScroll(watchScroll)) {
-                host(body)
+                Box(Modifier.fillMaxSize().then(if (NavGlass.glass) Modifier.hazeSource(haze) else Modifier)) { host(body) }
                 AnimatedVisibility(
                     pillShown && OpenSheets.count == 0, Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
-                ) { PillBar(tab, choose) }
+                ) { PillBar(tab, choose, haze = haze) }
             }
         } else {
             Column(Modifier.fillMaxSize()) {
@@ -703,7 +707,8 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
  * on a capsule of the accent. One flat colour a little lighter than the page's cards, with the grain over it, no rim.
  */
 @Composable
-private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier) {
+private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier, haze: dev.chrisbanes.haze.HazeState? = null) {
+    val face = if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else Ink.surface2
     Column(
         // Just wider than the pages' content (16 dp in), clear of the screen's edges (the owner's choice).
         modifier.navigationBarsPadding().padding(start = 10.dp, end = 10.dp, bottom = 10.dp).fillMaxWidth()
@@ -713,8 +718,16 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
             // Dark: a shade lighter than the page. Light: a tint — near-white on the paper page, edged faintly —
             // so the bar stands apart in both (the owner's choice: light plays with tints as dark with shades).
             // Flat, no edge (the owner's choice). Light theme: a deeper paper than the page, so it reads apart from it.
-            .background(if (Ink.isDark) androidx.compose.ui.graphics.lerp(Ink.surface, Ink.surface2, 0.6f) else Ink.surface2)
-            .grain()
+            // Glass: what scrolls behind blurred and tinted with the bar's colour, part see-through (Settings → Appearance).
+            .then(
+                if (NavGlass.glass && haze != null) Modifier.hazeEffect(
+                    haze,
+                    dev.chrisbanes.haze.HazeStyle(
+                        backgroundColor = Ink.bg, tint = dev.chrisbanes.haze.HazeTint(face.copy(alpha = 0.55f)),
+                        blurRadius = 26.dp, noiseFactor = 0.06f, fallbackTint = dev.chrisbanes.haze.HazeTint(face.copy(alpha = 0.92f)),
+                    ),
+                ) else Modifier.background(face).grain(),
+            )
             // A little more room above, below and between the rows (the owner's choice).
             .padding(horizontal = 8.dp, vertical = 13.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -853,3 +866,4 @@ private fun Layer(shown: Boolean, z: Float, opaque: Boolean = false, content: @C
             .then(if (shown) Modifier else Modifier.blockTouches()),
     ) { content() }
 }
+

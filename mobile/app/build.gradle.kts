@@ -131,6 +131,8 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")
     // Tube's background play: a media session with its own notification, kept running as a media service.
     implementation("androidx.media3:media3-session:1.9.4")
+    // The tab bar's "Glass" look: what scrolls behind it blurred live and tinted (Android 12+; a tint before that).
+    implementation("dev.chrisbanes.haze:haze:1.7.3")
     // The in-app VPN: WireGuard's own Android tunnel library (GoBackend), with a config from Mullvad, Proton or similar.
     implementation("com.wireguard.android:tunnel:1.0.20260102")
     // Video and audio from YouTube and ~1,800 other sites (the Browser's "Grab this page", Tube's audio formats):
