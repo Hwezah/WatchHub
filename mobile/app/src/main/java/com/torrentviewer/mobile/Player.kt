@@ -1379,7 +1379,7 @@ private fun SourceRow(hit: Hit, here: Boolean, onClick: () -> Unit) {
             Text(hit.name, style = Type.label.copy(color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
             val about = listOfNotNull(
                 hit.quality,
-                hit.size.takeIf { it > 0 }?.let(com.torrentviewer.core::bytes),
+                hit.size.takeIf { it > 0 }?.let { com.torrentviewer.core.bytes(it) },
                 if (hit.direct) "Link" else "${hit.seeders} seeds",
                 hit.addon.takeIf { it.isNotBlank() },
             ).joinToString(" · ")
