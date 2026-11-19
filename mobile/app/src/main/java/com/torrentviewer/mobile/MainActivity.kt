@@ -86,8 +86,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CrashGuard.install(applicationContext)
-        // What an update that went through left behind (55 MB), unless one is downloading right now.
-        if (com.torrentviewer.core.Updates.progress.value == null) runCatching { java.io.File(filesDir, "update.apk").delete() }
+        // What an update that went through left behind (55 MB), unless one is downloading or waiting to be installed.
+        if (com.torrentviewer.core.Updates.progress.value == null && com.torrentviewer.core.Updates.ready.value == null) runCatching { java.io.File(filesDir, "update.apk").delete() }
         // Pictures kept in memory: an eighth of the app's share rather than Coil's quarter — posters reload from disk in a blink.
         runCatching {
             coil3.SingletonImageLoader.setSafe { ctx ->

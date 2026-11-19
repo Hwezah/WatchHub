@@ -71,12 +71,13 @@ jobs:
           done
           # The versionCode and each APK's size and checksum, beside the APKs: the app reads this when GitHub's API
           # (60 calls an hour per network) won't answer.
-          python3 - "$((100 + GITHUB_RUN_NUMBER))" <<'PY'
+          # Also the commit's subject, as the update strip's one-line summary of what changed.
+          SUMMARY="$(git log -1 --format=%s)" python3 - "$((100 + GITHUB_RUN_NUMBER))" <<'PY'
           import hashlib, json, os, sys, glob
           files = {}
           for path in sorted(glob.glob("out/*.apk")):
               files[os.path.basename(path)] = {"size": os.path.getsize(path), "sha256": hashlib.sha256(open(path, "rb").read()).hexdigest()}
-          json.dump({"versionCode": int(sys.argv[1]), "files": files}, open("out/phone-version.json", "w"))
+          json.dump({"versionCode": int(sys.argv[1]), "summary": os.environ.get("SUMMARY", ""), "files": files}, open("out/phone-version.json", "w"))
           PY
           ls -lh out
 
@@ -94,6 +95,8 @@ jobs:
         run: |
           # "versionCode N" is what the installed app reads to know a newer build is out (100 + the run number, as build.gradle.kts sets it).
           notes="Latest phone build from \`${GITHUB_REF_NAME}\` at ${GITHUB_SHA::7}, built $(date -u '+%Y-%m-%d %H:%M UTC'), versionCode $((100 + GITHUB_RUN_NUMBER)). Most phones: download the **arm64-v8a** APK. Not sure? Take **universal**."
+          # What the build changed, in a line: the update strip shows it.
+          notes="$notes"$'\n\n'"Summary: $(git log -1 --format=%s)"
           if gh release view phone-latest > /dev/null 2>&1; then
             # The tag moves to this build, so the release page shows the commit the APKs came from.
             gh api -X PATCH "repos/$GH_REPO/git/refs/tags/phone-latest" -f sha="$GITHUB_SHA" -F force=true > /dev/null

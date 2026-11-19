@@ -417,6 +417,17 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     // Every push builds a new phone APK: offered here as soon as it's out (see Updates.checkPhoneBuild).
     LaunchedEffect(Unit) { com.torrentviewer.core.Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-") }
+    // And every 5 minutes while the app is in front (the owner's choice, as the Folio app does), so a build that finishes
+    // while it's open is fetched and offered without leaving it.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        while (true) {
+            kotlinx.coroutines.delay(5 * 60_000L)
+            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                com.torrentviewer.core.Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-")
+            }
+        }
+    }
 
     // The tour, once, on a fresh install: anyone with a library or a profile already knows the app.
     var toured by remember { mutableStateOf(Kv.global(TOURED) != null || Profiles.list.value.isNotEmpty() || History.items.value.isNotEmpty()) }
@@ -585,7 +596,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             }
         }
 
-        UpdateCard(watch, Modifier.align(Alignment.TopCenter).statusBarsPadding())
+        // A slim strip along the very top, its face reaching up behind the status bar (it pads itself below it).
+        UpdateCard(watch, Modifier.align(Alignment.TopCenter))
 
         if (watch.phase == Phase.INSPECTING) Opening(watch)
 
@@ -779,7 +791,7 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
 }
 
 /** The floating tab bar in the dark theme: near pitch black, just above the page's #0A0A0A so it still reads apart. */
-private val NAV_DARK = Color(0xFF0E0E0E)
+internal val NAV_DARK = Color(0xFF0E0E0E)
 
 /** Its tabs' icons in the dark theme: a muted grey, quieter than the app's usual muted text on the near-black bar. */
 private val NAV_DARK_ICON = Color(0xFF6E6E6E)

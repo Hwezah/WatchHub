@@ -1,93 +1,136 @@
 package com.torrentviewer.mobile
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.border
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.drawscope.clipRect
-import com.composables.icons.lucide.R as L
+import androidx.compose.ui.unit.sp
 import com.torrentviewer.core.Ink
-import com.torrentviewer.core.Lc
 import com.torrentviewer.core.Type
 import com.torrentviewer.core.Updates
 import com.torrentviewer.core.Watch
-import com.torrentviewer.core.bytes
+import com.torrentviewer.core.grain
 
-/** Floating at the top of the screen while a new version is waiting. */
+/** The strip's entrance: a short rise with a little spring at its end (the owner's choice, as the Folio app's). */
+private val RISE = CubicBezierEasing(0.2f, 0.9f, 0.3f, 1.2f)
+
+/**
+ * A new build, as a slim strip pinned along the top of the app (the owner's choice, as the Folio app's): flat and
+ * frosted like the tab bar, no rim or shadow, one line — [mark] [what's happening · build — what it changed] [Install] [✕].
+ * The build downloads in the background as soon as it's found ([Updates.prepare]): a spinner and "Downloading update…"
+ * meanwhile, then a green dot, "Update ready" and Install, which hands it straight to Android's installer. The ✕ hides
+ * it until the app is next opened; a download under way carries on.
+ */
 @Composable
 fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
     val release by Updates.release.collectAsState()
     val hidden by Updates.hidden.collectAsState()
-    val r = release ?: return
-    // Downloading: the card stays even if it was put off, so the progress is never out of sight.
     val progress by Updates.progress.collectAsState()
-    val p = progress
-    if (hidden && p == null) return
+    val ready by Updates.ready.collectAsState()
+    val failed by Updates.failed.collectAsState()
     val context = LocalContext.current
-    val shape = RoundedCornerShape(12.dp)
-    // White, with a red Update button edged faintly (the owner's choice). While downloading, the card fills from the
-    // left in deep red; the words over the filled part turn white, those over the rest stay dark.
-    // The accent itself: the red is now this deep red everywhere (the owner's choice).
-    val deep = Ink.accent
-    val body: @Composable (Color, Boolean) -> Unit = { ink, live ->
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(if (p != null) "Downloading update…" else "Update available", style = Type.body.copy(fontWeight = FontWeight.SemiBold, color = ink), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    if (p != null) "${(p * 100).toInt()}%  ·  ${bytes((p * r.size).toLong())} of ${bytes(r.size)}  ·  the installer opens when it's done"
-                    else "Version ${r.version}  ·  ${bytes(r.size)}",
-                    style = Type.meta.copy(color = ink.copy(alpha = 0.75f)), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
+    val r = release ?: return
+    // Fetched as soon as it's found (and again when a newer build replaces it), unless put away or already tried and failed.
+    LaunchedEffect(r, hidden, ready, progress == null, failed) {
+        if (!hidden && progress == null && ready != r && failed != r.version) Updates.prepare(context, r)
+    }
+    if (hidden) return
+    val isReady = ready == r
+    val isFailed = !isReady && progress == null && failed == r.version
+
+    val rise = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { rise.animateTo(1f, tween(300, easing = RISE)) }
+    // Dark: the tab bar's near-black; light: its deeper paper. Flat, with the grain.
+    val face = if (Ink.isDark) NAV_DARK else Ink.surface2
+    Row(
+        modifier.fillMaxWidth()
+            .graphicsLayer {
+                val v = rise.value
+                alpha = v.coerceIn(0f, 1f)
+                translationY = (1f - v) * 18.dp.toPx()
+                scaleX = 0.98f + 0.02f * v
+                scaleY = 0.98f + 0.02f * v
             }
-            // Downloads here, in the app, then hands the file to Android's installer.
-            if (p == null) Tap({ if (live) Updates.download(context, r) { watch.notes.tryEmit(it) } }, shape = RoundedCornerShape(10.dp)) {
-                Box(
-                    Modifier.background(Ink.accent, RoundedCornerShape(10.dp)).border(1.dp, Color.Black.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) { Text("Update", style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Color.White)) }
+            .background(face).grain()
+            .statusBarsPadding()
+            .padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        // The mark: a small spinner while it downloads, a green dot once it's ready, a red one when the download failed.
+        Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
+            when {
+                isReady -> Box(Modifier.size(8.dp).background(Ink.good, CircleShape))
+                isFailed -> Box(Modifier.size(8.dp).background(Ink.danger, CircleShape))
+                else -> CircularProgressIndicator(Modifier.size(13.dp), color = Ink.muted, strokeWidth = 1.6.dp, trackColor = Color.Transparent, strokeCap = StrokeCap.Round)
             }
-            Spacer(Modifier.width(4.dp))
-            // A cross rather than a "Not now" button. While downloading, it stops it.
-            Tap({ if (live) { if (p != null) Updates.cancel() else Updates.skip(r.version) } }, Modifier.size(36.dp), CircleShape) {
-                // A thin cross, drawn: Lucide's stroke is heavier than this bar wants.
-                androidx.compose.foundation.Canvas(Modifier.align(Alignment.Center).size(14.dp)) {
-                    val w = 1.3.dp.toPx()
-                    drawLine(ink, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, size.height), w, androidx.compose.ui.graphics.StrokeCap.Round)
-                    drawLine(ink, androidx.compose.ui.geometry.Offset(size.width, 0f), androidx.compose.ui.geometry.Offset(0f, size.height), w, androidx.compose.ui.graphics.StrokeCap.Round)
+        }
+        val headline = when {
+            isReady -> "Update ready"
+            isFailed -> "Couldn't download the update"
+            else -> "Downloading update…"
+        }
+        val line = buildAnnotatedString {
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = Ink.text)) { append(headline) }
+            withStyle(SpanStyle(color = Ink.muted, fontSize = 13.sp)) { append("  ·  " + r.version + (r.summary?.let { " — $it" } ?: "")) }
+        }
+        Text(line, Modifier.weight(1f), style = Type.label.copy(fontSize = 13.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (isReady || isFailed) StripPill(if (isReady) "Install" else "Retry") {
+            if (isReady) Updates.installReady(context) else Updates.prepare(context, r)
+        }
+        // A ghost ✕: no fill until pressed.
+        Tap({ Updates.dismiss() }, Modifier.size(34.dp).semantics { contentDescription = "Hide the update" }, CircleShape) { pressed ->
+            Box(Modifier.size(34.dp).background(if (pressed) Ink.text.copy(alpha = 0.08f) else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
+                // A thin cross, drawn: Lucide's stroke is heavier than this strip wants.
+                androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
+                    val w = 1.4.dp.toPx()
+                    drawLine(Ink.muted, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, size.height), w, StrokeCap.Round)
+                    drawLine(Ink.muted, androidx.compose.ui.geometry.Offset(size.width, 0f), androidx.compose.ui.geometry.Offset(0f, size.height), w, StrokeCap.Round)
                 }
             }
         }
     }
-    Box(modifier.fillMaxWidth().padding(horizontal = EDGE, vertical = 8.dp).shadow(8.dp, shape).clip(shape).background(Color.White)) {
-        body(Color(0xFF161616), true)
-        // The part downloaded: deep red, with the same words in white, cut to the progress.
-        if (p != null) Box(
-            Modifier.matchParentSize().drawWithContent {
-                clipRect(right = size.width * p.coerceIn(0f, 1f)) { this@drawWithContent.drawContent() }
-            }.background(deep),
-        ) { body(Color.White, false) }
+}
+
+/** The strip's small pill: the accent a notch toward black (12%), white words, fully rounded. */
+@Composable
+private fun StripPill(label: String, onClick: () -> Unit) {
+    Tap(onClick, shape = CircleShape) { pressed ->
+        Box(
+            Modifier.height(34.dp).clip(CircleShape).background(lerp(Ink.accent, Color.Black, if (pressed) 0.28f else 0.12f), CircleShape).grain().padding(horizontal = 13.dp),
+            contentAlignment = Alignment.Center,
+        ) { Text(label, style = Type.label.copy(fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White), maxLines = 1) }
     }
 }

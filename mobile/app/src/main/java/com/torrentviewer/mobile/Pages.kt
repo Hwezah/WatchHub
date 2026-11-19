@@ -880,7 +880,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     update?.let { r ->
                         listOf(
                             Entry(L.drawable.lucide_ic_download, "Update available", "Version ${r.version}  ·  ${bytes(r.size)}", "new version upgrade", Ink.accent) {
-                                Updates.download(appContext, r) { watch.notes.tryEmit(it) }
+                                // Already fetched in the background: straight to the installer. Still coming: said so.
+                                when {
+                                    Updates.ready.value == r -> Updates.installReady(appContext)
+                                    Updates.progress.value != null -> watch.notes.tryEmit("Still downloading — Install shows at the top when it's ready")
+                                    else -> Updates.download(appContext, r) { watch.notes.tryEmit(it) }
+                                }
                             },
                         )
                     },
