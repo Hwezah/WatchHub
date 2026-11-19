@@ -301,23 +301,22 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             FilmBadge()
             // Beside the poster: the words and buttons, and under them the progress line.
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            // One line; a name too long for it scrolls slowly across (the owner's choice), a short one stays still.
+            // At the far right, what the file is ("720p · MKV · x265"), plain and dotted (the owner's choice), to judge a size
+            // that looks wrong for its resolution.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(row.job.label, Modifier.weight(1f).basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1)
+                if (row.job.tags3.isNotEmpty()) Text(
+                    row.job.tags3.joinToString(" · "),
+                    Modifier.padding(start = 10.dp, end = 8.dp),
+                    style = Type.meta.copy(fontSize = 12.sp, color = Ink.muted, fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
             // The buttons sit at the foot of the words, level with the status line (the owner's choice).
             Row(verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                // One line; a name too long for it scrolls slowly across (the owner's choice), a short one stays still.
-                // Beside it, what the file is ("720p · MKV · x265"), to judge a size that looks wrong for its resolution.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(row.job.label, Modifier.weight(1f, fill = false).basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1)
-                    row.job.tags3.forEach { tag ->
-                        Text(
-                            tag,
-                            Modifier.padding(start = 5.dp).background(Ink.text.copy(alpha = 0.1f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
-                            style = Type.meta.copy(fontSize = 10.sp, color = Ink.muted, fontWeight = FontWeight.SemiBold),
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-                    }
-                }
                 // A link being renewed says nothing (the owner's choice): the spinner beside it is enough.
                 val status = when (row.state) {
                         DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) }?.let { if (it.startsWith("Waiting for its turn")) "Queued — starts when one finishes" else it } else "Finding peers…"
