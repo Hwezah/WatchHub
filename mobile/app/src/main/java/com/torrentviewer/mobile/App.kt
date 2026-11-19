@@ -725,6 +725,8 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
     // Dark: near pitch black, a breath above the page's own black, its parts toned down to match (the owner's choice:
     // dark, muted, nothing that clashes with the pages behind). Light: as it was.
     val face = if (Ink.isDark) NAV_DARK else Ink.surface2
+    // A very faint edge in the colour of the line between its rows (the owner's choice).
+    val edge = Ink.text.copy(alpha = if (Ink.isDark) 0.05f else 0.08f)
     Column(
         // Just wider than the pages' content (16 dp in), clear of the screen's edges (the owner's choice).
         modifier.navigationBarsPadding().padding(start = 10.dp, end = 10.dp, bottom = 10.dp).fillMaxWidth()
@@ -744,6 +746,7 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                     ),
                 ) else Modifier.background(face).grain(),
             )
+            .border(1.dp, edge, RoundedCornerShape(26.dp))
             // A little more room above, below and between the rows (the owner's choice).
             .padding(horizontal = 8.dp, vertical = 13.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -751,7 +754,7 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
     ) {
         tabs().chunked(4).forEachIndexed { i, row ->
             // Between the two rows: a thin, quiet line, short of the panel's edges (the owner's choice: 90% wide).
-            if (i > 0) Box(Modifier.fillMaxWidth(0.9f).height(1.dp).background(Ink.text.copy(alpha = if (Ink.isDark) 0.05f else 0.08f)))
+            if (i > 0) Box(Modifier.fillMaxWidth(0.9f).height(1.dp).background(edge))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 row.forEach { t ->
                     val on = t == tab
