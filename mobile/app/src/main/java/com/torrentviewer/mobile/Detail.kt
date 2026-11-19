@@ -840,7 +840,9 @@ private fun LazyListScope.sources(
     // In the episode sheet the pills and the count stay put at the top, on the sheet's own colour, and only the
     // releases scroll under them; on the page they scroll with it.
     val head: @Composable () -> Unit = {
-        Column(modifier.then(if (heading) Modifier else Modifier.fillMaxWidth().background(Ink.surface)).padding(start = EDGE, end = EDGE, top = if (heading) 26.dp else 4.dp)) {
+        // In the sheet: the sheet's own face and grain, so the pills and the loader read as part of its heading, not a
+        // grey slab over the results (the owner's choice).
+        Column(modifier.then(if (heading) Modifier else Modifier.fillMaxWidth().background(SHEET_FACE).grain()).padding(start = EDGE, end = EDGE, top = if (heading) 26.dp else 4.dp)) {
             // The heading, and at its far right a green reload: these links' tokens expire within minutes.
             if (heading) Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 // An accent asterisk before the word, as the mirrors list marks its links (the owner's choice).
