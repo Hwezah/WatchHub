@@ -144,10 +144,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     // Rating, cast and what's like it. Without a key or a connection the page is as it was.
     val tmdb by produceState<com.torrentviewer.core.TmdbTitle?>(null, initial.imdb) { value = com.torrentviewer.core.Tmdb.title(initial.imdb, initial.kind) }
     val certificate = tmdb?.certificate
-    // Whether a film is out at home yet or still in cinemas, under its facts (series run by episode, so not for them).
-    val release = tmdb?.takeUnless { initial.isSeries }?.let {
-        com.torrentviewer.core.releaseLine(it.cinemas, it.digital, java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date()))
-    }
+    val release = releaseOf(tmdb, initial.isSeries)
     if (com.torrentviewer.core.Kids.on && com.torrentviewer.core.tooOldForKids(certificate)) {
         TooOldForKids(title, certificate.orEmpty(), onBack)
         return
@@ -1107,4 +1104,12 @@ private fun ReloadPill(busy: Boolean, onClick: () -> Unit) {
             ReloadArrow(busy, Ink.muted, 18.dp)
         }
     }
+}
+
+/**
+ * Whether a film is out at home yet or still in cinemas ("Digital Since …"), for the line under its facts; null for a
+ * series (they come out by episode) or when TMDB has no dates.
+ */
+fun releaseOf(tmdb: com.torrentviewer.core.TmdbTitle?, series: Boolean): String? = tmdb?.takeUnless { series }?.let {
+    com.torrentviewer.core.releaseLine(it.cinemas, it.digital, java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date()))
 }

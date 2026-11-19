@@ -516,12 +516,15 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
     // Clean line, upright: the facts and buttons sit under the picture, so the hero grows by their room and the
     // picture keeps its full height (the owner's choice: a tall poster area).
     val height = if (wide) (LocalConfiguration.current.screenHeightDp * 0.82f).dp
-    else (LocalConfiguration.current.screenWidthDp * 1.02f).dp + if (HeaderEdge.fade) 0.dp else 136.dp
+    else (LocalConfiguration.current.screenWidthDp * 1.02f).dp + if (HeaderEdge.fade) 0.dp else 158.dp
     Box(Modifier.fillMaxWidth().height(height)) {
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { titles.getOrNull(it)?.imdb ?: it }) { page ->
             val start = titles.getOrNull(page) ?: return@HorizontalPager
             // The shelf row carries no logo or runtime; the full entry does.
             val t by produceState(start, start.imdb) { Meta.title(start.imdb, start.kind)?.let { value = it } }
+            // Out at home yet, or only in cinemas: as on the title's page (TMDB's answer is kept, so opening it asks again for nothing).
+            val tmdb by produceState<com.torrentviewer.core.TmdbTitle?>(null, start.imdb) { value = com.torrentviewer.core.Tmdb.title(start.imdb, start.kind) }
+            val release = releaseOf(tmdb, t.isSeries)
             val saved by SavedStore.items.collectAsState()
             val inList = saved.any { it.imdb == t.imdb && it.list == "later" }
             // The whole billboard opens the title, as Watch does; the buttons keep their own taps.
@@ -531,7 +534,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                     Artwork(t.wide, t.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.72f).fillMaxHeight().then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false)
                     Column(Modifier.align(Alignment.CenterStart).padding(start = EDGE + 8.dp, top = 40.dp).widthIn(max = 380.dp)) {
                         TitleMark(t, Modifier.widthIn(max = 300.dp), maxHeight = 72.dp, style = Type.display)
-                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp))
+                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp), release = release)
                         t.plot?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.body.copy(color = Ink.text.copy(alpha = 0.78f)), maxLines = 3, overflow = TextOverflow.Ellipsis) }
                         HeroButtons(t, inList, onOpen, Modifier.padding(top = 16.dp))
                     }
@@ -550,7 +553,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                         }
                     }
                     // The facts on the page, under the picture's edge, not over the picture (the owner's choice).
-                    Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone())
+                    Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone(), release = release)
                     HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 14.dp, bottom = 22.dp))
                 }
             } else {
@@ -560,7 +563,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                         Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
                             TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
                         }
-                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp), centred = isPortraitPhone())
+                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp), centred = isPortraitPhone(), release = release)
                         HeroButtons(t, inList, onOpen, Modifier.padding(top = 16.dp))
                     }
                 }
