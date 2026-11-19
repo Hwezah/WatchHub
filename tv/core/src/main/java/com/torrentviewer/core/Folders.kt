@@ -122,3 +122,19 @@ val NaturalOrder: Comparator<String> = Comparator { a, b ->
     }
     x.size.compareTo(y.size)
 }
+
+/** Whether a video in the folder at [folders] (its names under [GRABBER_ROOT]) is a film or an episode: Video/Movies, Video/Shows and below. */
+fun inLibrary(folders: List<String>): Boolean = folders.size >= 2 && folders[0] == "Video" && (folders[1] == "Movies" || folders[1] == "Shows")
+
+/** The episode a file is: from its name, else from the label its download carried ("1923 · S01E04"); null for a film. */
+fun episodeOfFile(fileName: String, label: String?): Ep? = parseEpisode(fileName) ?: label?.let(::parseEpisode)
+
+/**
+ * What to look a film or episode file up by when the app kept no record of it: inside Video/Shows, its show's folder
+ * and the episode ("1923 S01E04"), since an episode's file name may not name the show; elsewhere the file's own name,
+ * which is mostly a release name ("Interstellar.2014.720p.mkv").
+ */
+fun lookupName(fileName: String, folders: List<String>): String {
+    val show = folders.getOrNull(2)?.takeIf { folders[0] == "Video" && folders[1] == "Shows" } ?: return fileName
+    return show + (parseEpisode(fileName)?.let { " " + episodeTag(it.season, it.episode) } ?: "")
+}

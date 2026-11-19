@@ -83,4 +83,20 @@ class FoldersTest {
         val seasons = listOf("Season 10", "season 2", "Season 1", "Specials", "Season 02b")
         assertEquals(listOf("Season 1", "season 2", "Season 02b", "Season 10", "Specials"), seasons.sortedWith(NaturalOrder))
     }
+
+    @Test
+    fun filmAndEpisodeFilesAreToldApart() {
+        assertTrue(inLibrary(listOf("Video", "Movies")))
+        assertTrue(inLibrary(listOf("Video", "Shows", "1923", "Season 1")))
+        assertFalse(inLibrary(listOf("Video", "YouTube")))
+        assertFalse(inLibrary(listOf("Browser", "Video")))
+        assertFalse(inLibrary(listOf("Video")))
+        assertEquals(Ep(1, 4), episodeOfFile("1923.S01E04.720p.mkv", null))
+        assertEquals(Ep(2, 3), episodeOfFile("Episode 3.mkv", "1923 · S02E03"))
+        assertNull(episodeOfFile("Interstellar.2014.720p.mkv", "Interstellar"))
+        // Looked up by the show's folder inside Shows, else by the file's own name.
+        assertEquals("1923 S01E04", lookupName("x.S01E04.mkv", listOf("Video", "Shows", "1923", "Season 1")))
+        assertEquals("1923", lookupName("Pilot.mkv", listOf("Video", "Shows", "1923")))
+        assertEquals("Interstellar.2014.720p.mkv", lookupName("Interstellar.2014.720p.mkv", listOf("Video", "Movies")))
+    }
 }
