@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.webkit.CookieManager
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -260,11 +259,15 @@ fun YouTubeSignIn(onDone: (Boolean) -> Unit) {
                         settings.domStorageEnabled = true
                         settings.userAgentString = settings.userAgentString.replace("; wv", "").replace(Regex("""Version/\d+\.\d+\s"""), "")
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        webViewClient = WebViewClient()
+                        // Survives the page engine going, rather than closing the app with it.
+                        webViewClient = SurvivingClient()
                         loadUrl(YouTubeAccount.LOGIN)
                     }
                 },
                 modifier = Modifier.weight(1f).fillMaxWidth(),
+                // Destroyed when the sheet closes: a sign-in page left alive (it was) shares the page engine, and its going
+                // later (the Browser ending a hung page) closed the whole app.
+                onRelease = { runCatching { it.destroy() } },
             )
         }
     }

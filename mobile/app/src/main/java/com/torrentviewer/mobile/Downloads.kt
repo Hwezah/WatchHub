@@ -1540,6 +1540,8 @@ class DownloadService : Service() {
         // the app's services below (the torrent engine, the plugins) can take longer — "did not then call
         // startForeground()", the crash this was.
         foreground()
+        // Started by Android without the app open: what goes wrong from here is kept for the crash report too.
+        CrashGuard.install(applicationContext)
         // Restarted by the system after the process died: the queue picks itself back up.
         Services.init(applicationContext)
     }

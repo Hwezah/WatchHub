@@ -864,6 +864,8 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val update by Updates.release.collectAsState()
     val appContext = LocalContext.current
+    /** Something to read under Last crash report: looked at again each time the list comes back. */
+    val crashed = remember(page) { CrashGuard.anything(appContext) }
     BackHandler(page != null && LocalShown.current) { page = null }
     // The list keeps its own place, for coming back to; a page always opens at its top.
     val listScroll = rememberScrollState()
@@ -921,7 +923,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         },
                     ),
                     listOf(
-                        Entry(L.drawable.lucide_ic_file_text, "Last crash report", if (CrashGuard.last() == null) "Nothing has gone wrong" else "Something failed — open to read and share it", "crash error bug log") { page = "Last crash report" },
+                        Entry(L.drawable.lucide_ic_file_text, "Last crash report", if (crashed) "Something failed — open to read and share it" else "Nothing has gone wrong", "crash error bug log") { page = "Last crash report" },
                         Entry(L.drawable.lucide_ic_scale, "Legal notice", "WatchHub is a media player only", "disclaimer copyright dmca") { page = "Legal notice" },
                         Entry(L.drawable.lucide_ic_shield, "Privacy policy", "What stays here and what is sent", "data") { page = "Privacy policy" },
                         Entry(L.drawable.lucide_ic_file_text, "Terms and conditions", "The rules for using WatchHub", "agreement licence") { page = "Terms and conditions" },
@@ -946,7 +948,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
 
         if (page == "Last crash report") Panel {
             val context = LocalContext.current
-            var report by remember { mutableStateOf(CrashGuard.last()) }
+            var report by remember { mutableStateOf(CrashGuard.report(context)) }
             val text = report
             if (text == null) Text("Nothing has gone wrong since this was last cleared.", Modifier.padding(bottom = 18.dp), style = Type.body.copy(color = Ink.muted))
             else {
@@ -955,7 +957,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text)
                         runCatching { context.startActivity(android.content.Intent.createChooser(send, "Share report").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     }, icon = L.drawable.lucide_ic_share_2)
-                    Chip("Clear", false, onClick = { CrashGuard.clear(); report = null }, icon = L.drawable.lucide_ic_x)
+                    Chip("Clear", false, onClick = { CrashGuard.clear(context); report = null }, icon = L.drawable.lucide_ic_x)
                 }
                 Text(text, Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.muted, fontSize = 11.sp))
             }

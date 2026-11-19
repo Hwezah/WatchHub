@@ -49,6 +49,8 @@ class TubeService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        // Android may start this with the app closed (a headset's play button): its errors are kept for the crash report too.
+        CrashGuard.install(applicationContext)
         val s = MediaSession.Builder(this, TubeEngine.player(this)).setId("tube").build()
         session = s
         // No controller connects from outside: the session is added by hand so its notification shows.

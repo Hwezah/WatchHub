@@ -6,7 +6,6 @@ import android.graphics.Color as AndroidColor
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
@@ -470,7 +469,9 @@ private fun YouTubeView(id: String, zoom: Float) {
                 settings.domStorageEnabled = true
                 settings.mediaPlaybackRequiresUserGesture = false
                 webChromeClient = WebChromeClient()
-                webViewClient = object : WebViewClient() {
+                // The page engine lost (Android ending it for memory, the Browser ending a hung page): the sheet stays, with
+                // the way out to YouTube, instead of the whole app closing.
+                webViewClient = object : SurvivingClient({ web = null; loaded = false; slow = true }) {
                     // As soon as the page starts drawing, YouTube's extra buttons are hidden; again when it has finished.
                     override fun onPageCommitVisible(view: WebView, url: String?) {
                         view.evaluateJavascript(zoomScript(current.value), null)

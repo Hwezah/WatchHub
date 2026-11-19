@@ -35,6 +35,8 @@ object Services {
         private set
 
     fun init(context: Context) {
+        // First, whoever started the app (the activity, or Android restarting the download service): its errors are kept.
+        CrashGuard.install(context.applicationContext)
         if (::engine.isInitialized) return
         Kv.init(context)
         SettingsStore.load()

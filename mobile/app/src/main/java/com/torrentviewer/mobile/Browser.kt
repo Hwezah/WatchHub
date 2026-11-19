@@ -888,7 +888,8 @@ object Browser {
         val probe = WebView(opener.context)
         prepare(probe, t.incognito)
         var kept = false
-        probe.webViewClient = object : WebViewClient() {
+        // The page engine lost while it waits: let go, as a dropped window is, rather than closing the app.
+        probe.webViewClient = object : SurvivingClient({ dead += it }) {
             private var done: Boolean? = null
 
             /** Whether to stop this window: judged once, on the first address it goes to. */
@@ -1068,5 +1069,19 @@ object Browser {
     fun clearHistory() {
         history.clear()
         save(HISTORY, emptyList())
+    }
+}
+
+/**
+ * A WebView's client that outlives the page engine. Every WebView in the app shares one engine process; when it goes
+ * (crashed, ended by Android for memory, or ended by the Browser for hanging), Android closes the whole app unless every
+ * WebView still around says it dealt with it. This one does: its view is destroyed (a destroyed view draws nothing and
+ * holds nothing), then [onGone] runs for the screen to let it go.
+ */
+open class SurvivingClient(private val onGone: ((WebView) -> Unit)? = null) : WebViewClient() {
+    override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+        runCatching { view.destroy() }
+        runCatching { onGone?.invoke(view) }
+        return true
     }
 }
