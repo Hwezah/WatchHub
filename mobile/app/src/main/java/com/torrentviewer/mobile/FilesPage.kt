@@ -50,6 +50,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.torrentviewer.core.AppScope
+import com.torrentviewer.core.Episode
+import com.torrentviewer.core.Meta
+import com.torrentviewer.core.Spinner
+import com.torrentviewer.core.episodeOfFile
+import com.torrentviewer.core.inLibrary
+import com.torrentviewer.core.lookupName
 import com.torrentviewer.core.GRABBER_ROOT
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
@@ -64,6 +70,7 @@ import com.torrentviewer.core.freeName
 import com.torrentviewer.core.grain
 import com.torrentviewer.core.isFixedFolder
 import com.torrentviewer.core.isWithin
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -217,6 +224,10 @@ fun FilesScreen(watch: Watch) {
     var entries by remember { mutableStateOf<List<FileEntry>?>(null) }
     LaunchedEffect(dir.path, finished, bump, ended) { entries = withContext(Dispatchers.IO) { runCatching { listEntries(dir) }.getOrDefault(emptyList()) } }
     var menu by remember { mutableStateOf<FileEntry?>(null) }
+    // A film's or episode's story being read ([FileStorySheet]).
+    var story by remember { mutableStateOf<FileEntry?>(null) }
+    // What the app saved, by where it is: a file's title, poster and IMDb id.
+    val savedAt = remember(finished) { finished.associateBy { it.file.path } }
     var deleting by remember { mutableStateOf<FileEntry?>(null) }
     // Naming: a new folder (no entry) or a rename (the entry).
     var naming by remember { mutableStateOf<Pair<Boolean, FileEntry?>?>(null) }
@@ -231,7 +242,7 @@ fun FilesScreen(watch: Watch) {
 
     fun open(e: FileEntry) {
         if (e.folder) { trail = trail + e.file.name; return }
-        val saved = finished.firstOrNull { it.file.path == e.file.path }
+        val saved = savedAt[e.file.path]
         if (kindOf(e.file) == Kind.VIDEO) {
             val from = saved?.imdb?.let { Title(it, saved.kind ?: "movie", saved.label.substringBefore(" · "), poster = saved.poster) }
             watch.playFile(e.file.path, saved?.label ?: e.file.nameWithoutExtension, from, saved?.poster)
@@ -256,6 +267,9 @@ fun FilesScreen(watch: Watch) {
     }
 
     fun actsOf(e: FileEntry) = Act.entries.filter { !(fixed(e) && (it == Act.MOVE || it == Act.RENAME)) }
+
+    /** Whether [e] is a film or an episode with a story to read: one the app saved for a title, or a video in Video/Movies or Video/Shows. */
+    fun hasStory(e: FileEntry) = !e.folder && kindOf(e.file) == Kind.VIDEO && (savedAt[e.file.path]?.imdb != null || inLibrary(trail))
 
     fun putHere() {
         val src = carried ?: return
@@ -311,6 +325,7 @@ fun FilesScreen(watch: Watch) {
                         onOpen = { if (!blocked) open(e) },
                         onMenu = { menu = e },
                         onAct = { act(e, it) },
+                        onStory = if (!picking && hasStory(e)) ({ story = e }) else null,
                     )
                 }
             }
@@ -337,6 +352,8 @@ fun FilesScreen(watch: Watch) {
             onDismiss = { menu = null },
         )
     }
+
+    story?.let { e -> FileStorySheet(e.file, savedAt[e.file.path], trail) { story = null } }
 
     deleting?.let { e ->
         val isFixed = fixed(e)
@@ -403,12 +420,15 @@ private fun remove(file: File, fixed: Boolean) {
  * [picking]: a move or copy is being placed, so no ⋯ or hold; [blocked] rows (files, the folder being moved) are dimmed.
  */
 @Composable
-private fun EntryRow(e: FileEntry, picking: Boolean, blocked: Boolean, acts: List<Act>, onOpen: () -> Unit, onMenu: () -> Unit, onAct: (Act) -> Unit) {
+private fun EntryRow(e: FileEntry, picking: Boolean, blocked: Boolean, acts: List<Act>, onOpen: () -> Unit, onMenu: () -> Unit, onAct: (Act) -> Unit, onStory: (() -> Unit)? = null) {
     Tap(
         onOpen,
         Modifier.fillMaxWidth().padding(bottom = 10.dp).alpha(if (blocked) 0.4f else 1f)
-            // TalkBack's actions menu: the same Move, Copy, Rename and Delete as the ⋯.
-            .semantics { if (acts.isNotEmpty()) customActions = acts.map { a -> CustomAccessibilityAction(a.label) { onAct(a); true } } },
+            // TalkBack's actions menu: the same Move, Copy, Rename and Delete as the ⋯, and the story as the ⓘ.
+            .semantics {
+                val all = listOfNotNull(onStory?.let { CustomAccessibilityAction("Story") { it(); true } }) + acts.map { a -> CustomAccessibilityAction(a.label) { onAct(a); true } }
+                if (all.isNotEmpty()) customActions = all
+            },
         FILE_CARD,
         onLongClick = if (picking) null else onMenu,
         longClickLabel = if (picking) null else "Options",
@@ -426,6 +446,12 @@ private fun EntryRow(e: FileEntry, picking: Boolean, blocked: Boolean, acts: Lis
                 Text(e.file.name, Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
                 val meta = if (e.folder) (if (e.count == 1) "1 item" else "${e.count} items") else "${bytes(e.size)}  ·  ${ago(e.at)}"
                 Text(meta, Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
+            }
+            // A film's or episode's story, as an episode's row on its title page has it.
+            onStory?.let { tap ->
+                Tap(tap, Modifier.size(40.dp).semantics { contentDescription = "Story of ${e.file.name}"; role = Role.Button }, CircleShape) {
+                    Box(contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_info, tint = Ink.muted, size = 20.dp) }
+                }
             }
             Lc(if (e.folder) L.drawable.lucide_ic_chevron_right else if (kindOf(e.file) == Kind.VIDEO) L.drawable.lucide_ic_play else L.drawable.lucide_ic_external_link, tint = Ink.muted, size = 20.dp)
             if (!picking) Tap(onMenu, Modifier.size(40.dp).semantics { contentDescription = "Options for ${e.file.name}"; role = Role.Button }, CircleShape) {
@@ -489,6 +515,54 @@ private fun NameSheet(title: String, start: String, verb: String, onName: (Strin
             Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button("Cancel", onDismiss, Modifier.weight(1f))
                 Button(verb, ::submit, Modifier.weight(1f), primary = true)
+            }
+        }
+    }
+}
+
+/**
+ * A film's or episode's file worked out to the title (and episode) its story is read for: by the IMDb id the app saved
+ * it under, else from its show's folder or its own name ([lookupName]); null when it can't be told. The title's full
+ * entry is fetched so the episode carries its name.
+ */
+private suspend fun identify(file: File, saved: Finished?, folders: List<String>): Pair<Title, Episode?>? {
+    val ep = episodeOfFile(file.name, saved?.label)
+    val kind = saved?.kind?.takeIf { it == "tv" || it == "movie" } ?: if (ep != null || folders.getOrNull(1) == "Shows") "tv" else "movie"
+    val found = saved?.imdb?.let { Meta.title(it, kind) ?: Title(it, kind, saved.label.substringBefore(" · "), poster = saved.poster) }
+        ?: Meta.resolve(lookupName(file.name, folders))?.let { Meta.title(it.imdb, it.kind) ?: it }
+        ?: return null
+    if (!found.isSeries || ep == null) return found to null
+    val episode = found.episodes.firstOrNull { it.season == ep.season && it.episode == ep.episode }
+        ?: Episode("${found.imdb}:${ep.season}:${ep.episode}", ep.season, ep.episode, found.title, null, null, null)
+    return found to episode
+}
+
+/**
+ * A film's or episode's file, its story ([StorySheet]: Wikipedia's plot or the episode's summary, the ending held back)
+ * once it's known which title it is; meanwhile a spinner, or a note when it can't be told.
+ */
+@Composable
+private fun FileStorySheet(file: File, saved: Finished?, folders: List<String>, onDismiss: () -> Unit) {
+    var found by remember(file.path) { mutableStateOf<Pair<Title, Episode?>?>(null) }
+    var lost by remember(file.path) { mutableStateOf(false) }
+    LaunchedEffect(file.path) {
+        val got = try {
+            identify(file, saved, folders)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        if (got == null) lost = true else found = got
+    }
+    val got = found
+    if (got != null) StorySheet(got.first, got.second, onDismiss)
+    else BottomSheet(saved?.label ?: file.nameWithoutExtension, onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (lost) EmptyNote("Couldn't tell which film or episode this is.")
+            else {
+                Spinner(size = 30.dp)
+                Text("Finding which title this is…", Modifier.padding(top = 12.dp), style = Type.meta)
             }
         }
     }
