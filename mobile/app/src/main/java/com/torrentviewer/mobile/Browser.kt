@@ -323,9 +323,10 @@ object Browser {
         }
     }
 
-    private fun sniff(t0: BTab, url: String, sent: Map<String, String> = emptyMap()) {
+    private fun sniff(t0: BTab, url: String, sent: Map<String, String> = emptyMap(), known: String? = null) {
         if (!sniffMedia) return
-        val kind = kindOf(url) ?: return
+        if (!url.startsWith("http", true)) return
+        val kind = known ?: kindOf(url) ?: return
         // Pieces of a stream aren't worth listing; the stream itself is. "init-…mp4" is a stream's header (a few KB),
         // not a video: as 1DM, it's left out.
         val file = url.substringBefore('?').substringAfterLast('/').lowercase()
@@ -340,6 +341,96 @@ object Browser {
     }
 
     private val expanded = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /* ------------------------------------------------------------ finds without a telling address */
+
+    /** Addresses already asked what they are ([probe]), so a player's repeated range requests are asked once. */
+    private val probed = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /** Pictures, fonts, scripts and styles: never media, whatever headers they come with. */
+    private val NOT_MEDIA = Regex("""\.(jpe?g|png|gif|webp|avif|svg|ico|woff2?|ttf|otf|css|js|json|html?)(\?|#|$)""", RegexOption.IGNORE_CASE)
+
+    /** A Content-Type as one of the Browser's kinds; null when it isn't a video, audio or a stream's playlist. */
+    private fun kindOfType(type: String?): String? {
+        val t = type.orEmpty().lowercase()
+        return when {
+            "mpegurl" in t -> "Stream (HLS)"
+            "dash+xml" in t -> "Stream (DASH)"
+            // A stream's pieces (MPEG-TS, fMP4 segments) aren't worth listing; the stream is.
+            "mp2t" in t || "iso.segment" in t -> null
+            t.startsWith("video/") -> "Video"
+            t.startsWith("audio/") -> "Audio"
+            else -> null
+        }
+    }
+
+    /**
+     * A request a player made for a range of an address that doesn't say what it is ("/get_file/…?token", "/hls/x/master"):
+     * one byte of it asked for, with the page's headers, and its Content-Type says whether it's a video, a sound or a
+     * stream. Off the request's thread, once per address.
+     */
+    private fun probe(t0: BTab, url: String, sent: Map<String, String>) = kotlin.concurrent.thread(name = "browser-probe") {
+        runCatching {
+            val headers = headersFor(Sniffed(url, "", t0.url, t0.title, sent), t0)
+            val b = okhttp3.Request.Builder().url(url).header("Range", "bytes=0-0")
+            headers.forEach { (k, v) -> runCatching { b.header(k, v) } }
+            http.newCall(b.build()).execute().use { r -> kindOfType(r.header("Content-Type"))?.let { sniff(t0, url, sent, it) } }
+        }
+    }
+
+    /**
+     * Told by the page itself ([MEDIA_SPY]): what its video or audio element plays, and the playlists its player
+     * fetched (by their Content-Type). Any page can call it; all it can do is add a row to this tab's finds.
+     */
+    private class MediaSpy(val t0: BTab) {
+        @android.webkit.JavascriptInterface
+        fun found(url: String, type: String) {
+            if (url.length > 4000) return
+            val kind = kindOfType(type) ?: kindOf(url) ?: return
+            sniff(t0, url, known = kind)
+        }
+    }
+
+    /**
+     * Run in every page and frame from its start: reports a video or audio element's real address when it starts
+     * (unless it's the page's own blob:, which a player builds from pieces), and every request whose answer is a
+     * stream's playlist (HLS or DASH) — what a player such as hls.js fetches before making that blob.
+     */
+    private const val MEDIA_SPY = """(function(){
+  if (window.__whMedia || !window.WatchHubMedia) return; window.__whMedia = 1;
+  var B = window.WatchHubMedia;
+  function rep(u, t) { try { if (!u) return; u = String(u); if (u.indexOf('blob:') == 0 || u.indexOf('data:') == 0) return; B.found(new URL(u, location.href).href, String(t || '')); } catch (e) {} }
+  function playlist(ct) { ct = String(ct || '').toLowerCase(); return ct.indexOf('mpegurl') >= 0 || ct.indexOf('dash+xml') >= 0; }
+  function el(e) { var v = e.target; if (v && (v.tagName == 'VIDEO' || v.tagName == 'AUDIO')) rep(v.currentSrc || v.src, v.tagName == 'VIDEO' ? 'video/' : 'audio/'); }
+  document.addEventListener('loadedmetadata', el, true);
+  document.addEventListener('play', el, true);
+  try {
+    var o = XMLHttpRequest.prototype.open, s = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(m, u) { this.__whu = u; return o.apply(this, arguments); };
+    XMLHttpRequest.prototype.send = function() { var x = this; x.addEventListener('load', function() { try { var ct = x.getResponseHeader('content-type'); if (playlist(ct)) rep(x.responseURL || x.__whu, ct); } catch (e) {} }); return s.apply(this, arguments); };
+  } catch (e) {}
+  try {
+    if (window.fetch) { var f = window.fetch; window.fetch = function() { return f.apply(this, arguments).then(function(r) { try { var ct = r.headers.get('content-type'); if (playlist(ct)) rep(r.url, ct); } catch (e) {} return r; }); }; }
+  } catch (e) {}
+})();"""
+
+    /** Requests a site's service worker makes never reach a tab's client: watched here, for the tab in front. Once. */
+    private var workersWatched = false
+
+    private fun watchWorkers() {
+        if (workersWatched) return
+        workersWatched = true
+        runCatching {
+            val f = androidx.webkit.WebViewFeature::isFeatureSupported
+            if (!f(androidx.webkit.WebViewFeature.SERVICE_WORKER_BASIC_USAGE) || !f(androidx.webkit.WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) return
+            androidx.webkit.ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(object : androidx.webkit.ServiceWorkerClientCompat() {
+                override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
+                    runCatching { sniff(tab, request.url.toString(), request.requestHeaders.orEmpty()) }
+                    return null
+                }
+            })
+        }
+    }
 
     /** One HTTP client for the Browser's look-ups, short timeouts: a slow site never holds a thread for long. */
     private val http by lazy {
@@ -473,6 +564,7 @@ object Browser {
         // The shield (ad slots stripped, ads skipped) before any of the page's own scripts, where the WebView allows.
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
             runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, SHIELD_SCRIPT, setOf("*")) }
+            runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, MEDIA_SPY, setOf("*")) }
         }
         t.ua = w.settings.userAgentString.orEmpty()
         cookiesOf(t).setAcceptThirdPartyCookies(w, true)
@@ -484,7 +576,13 @@ object Browser {
                     main.post { t.blocked++ }
                     WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                 } else {
-                    sniff(t, u.toString(), request.requestHeaders.orEmpty())
+                    val url = u.toString()
+                    val sent = request.requestHeaders.orEmpty()
+                    sniff(t, url, sent)
+                    // A player asking for a range of an address that doesn't say what it is: asked what it is.
+                    if (sniffMedia && !request.isForMainFrame && kindOf(url) == null && url.startsWith("http", true) && !NOT_MEDIA.containsMatchIn(url) &&
+                        sent.keys.any { it.equals("Range", true) } && probed.add(url)
+                    ) probe(t, url, sent)
                     null
                 }
             } catch (e: Throwable) {
@@ -521,6 +619,8 @@ object Browser {
                 if (blockAds && !androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                     runCatching { view.evaluateJavascript(SHIELD_SCRIPT, null) }
                 }
+                // The media watch too, whatever the ad setting.
+                if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) runCatching { view.evaluateJavascript(MEDIA_SPY, null) }
                 scrolledUp++
                 val u = if (url == "about:blank") "" else url
                 if (u != t.url) { t.found.clear(); t.children.clear() }
@@ -614,6 +714,8 @@ object Browser {
             false
         }
         w.addJavascriptInterface(BlobSaver(), "WatchHubBlob")
+        w.addJavascriptInterface(MediaSpy(t), "WatchHubMedia")
+        watchWorkers()
         // A file the site hands over: straight to the download sheet, with this page's headers.
         w.setDownloadListener { url, ua, disposition, mime, _ ->
             val name = URLUtil.guessFileName(url, disposition, mime)
