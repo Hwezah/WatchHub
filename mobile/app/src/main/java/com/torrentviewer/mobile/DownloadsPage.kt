@@ -299,24 +299,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = CARD - 2.dp, top = 10.dp, bottom = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             FilmBadge()
-            // Beside the poster: the words and buttons, and under them the progress line.
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            // One line; a name too long for it scrolls slowly across (the owner's choice), a short one stays still.
-            // At the far right, what the file is ("720p · MKV · x265"), plain and dotted (the owner's choice), to judge a size
-            // that looks wrong for its resolution.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(row.job.label, Modifier.weight(1f).basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1)
-                if (row.job.tags3.isNotEmpty()) Text(
-                    row.job.tags3.joinToString(" · "),
-                    Modifier.padding(start = 10.dp, end = 8.dp),
-                    style = Type.meta.copy(fontSize = 12.sp, color = Ink.muted, fontWeight = FontWeight.SemiBold),
-                    maxLines = 1,
-                    softWrap = false,
-                )
-            }
-            // The buttons sit at the foot of the words, level with the status line (the owner's choice).
-            Row(verticalAlignment = Alignment.Bottom) {
-            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            // Beside the badge, centred on it (the owner's choice): the name and how it's going.
+            Column(Modifier.weight(1f).padding(start = 12.dp, end = 12.dp)) {
+                // One line; a name too long for it scrolls slowly across (the owner's choice), a short one stays still.
+                Text(row.job.label, Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1)
                 // A link being renewed says nothing (the owner's choice): the spinner beside it is enough.
                 val status = when (row.state) {
                         DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) }?.let { if (it.startsWith("Waiting for its turn")) "Queued — starts when one finishes" else it } else "Finding peers…"
@@ -335,25 +321,36 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 )
                 if (pack) Text("$savedCount of ${wanted.size} episodes saved", style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint), maxLines = 1)
             }
-            when {
-                row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
-                // Failed: ↻ asks the sources again for the next fresh link at this resolution.
-                row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) }
-                // Queued behind the others: nothing is happening to it yet, so no spinner — it can be paused like a running one.
-                row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") == true ->
-                    Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
-                // Looking for a fresh link: a small spinner where the button was.
-                row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
-                row.state == DlState.WIFI -> Unit
-                else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
-            }
-            // A link that looks wrong: swapped for a different source, by hand (not while one is being looked for).
-            if (row.job.link && row.job.imdb != null && !(row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") != true)) {
-                Tap(onSwap, shape = CircleShape) { Lc(L.drawable.lucide_ic_shuffle, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 20.dp) }
-            }
-            // Inside the card's padding (the owner's choice: a notch of room from the edge).
-            Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 22.dp) }
-            }
+            // At the far right: what the file is ("720p · MKV · x265"), plain and dotted, to judge a size that looks wrong
+            // for its resolution — and under it the buttons (the owner's choice).
+            Column(horizontalAlignment = Alignment.End) {
+                if (row.job.tags3.isNotEmpty()) Text(
+                    row.job.tags3.joinToString(" · "),
+                    Modifier.padding(end = 8.dp),
+                    style = Type.meta.copy(fontSize = 12.sp, color = Ink.muted, fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
+                    // Failed: ↻ asks the sources again for the next fresh link at this resolution.
+                    row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) }
+                    // Queued behind the others: nothing is happening to it yet, so no spinner — it can be paused like a running one.
+                    row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") == true ->
+                        Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
+                    // Looking for a fresh link: a small spinner where the button was.
+                    row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
+                    row.state == DlState.WIFI -> Unit
+                    else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
+                }
+                // A link that looks wrong: swapped for a different source, by hand (not while one is being looked for).
+                if (row.job.link && row.job.imdb != null && !(row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") != true)) {
+                    Tap(onSwap, shape = CircleShape) { Lc(L.drawable.lucide_ic_shuffle, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 20.dp) }
+                }
+                // Inside the card's padding (the owner's choice: a notch of room from the edge).
+                Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 22.dp) }
+                }
             }
         }
         // Grabber's bar: across the whole card under the badge and words, thin, rounded, light on a dark track.
