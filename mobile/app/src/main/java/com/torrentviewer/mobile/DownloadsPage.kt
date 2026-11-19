@@ -307,7 +307,15 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 Text(row.job.label, Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1)
                 // A link being renewed says nothing (the owner's choice): the spinner beside it is enough.
                 val status = when (row.state) {
-                        DlState.RESOLVING -> if (row.job.link) row.error?.takeUnless { it.contains("link", true) }?.let { if (it.startsWith("Waiting for its turn")) "Queued — starts when one finishes" else it } else "Finding peers…"
+                        // A link being renewed says so briefly, so a long search isn't a silent spinner.
+                        DlState.RESOLVING -> if (row.job.link) row.error?.let {
+                            when {
+                                it.startsWith("Waiting for its turn") -> "Queued — starts when one finishes"
+                                it.startsWith("Got a fresh link") -> "Starting…"
+                                it.contains("link", true) -> "Finding another source…"
+                                else -> it
+                            }
+                        } else "Finding peers…"
                         // As Grabber words it: what it's doing, then how much of how much (and the rate while it runs).
                         DlState.DOWNLOADING -> listOfNotNull(if (row.speed > 0) speed(row.speed) else "$pct%", sizes(row), "${row.peers} peers".takeIf { !row.job.link && row.total == 0L }).joinToString(" · ")
                         DlState.PAUSED -> listOfNotNull("Paused", sizes(row) ?: "$pct%").joinToString(" · ")

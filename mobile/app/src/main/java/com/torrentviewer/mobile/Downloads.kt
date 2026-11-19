@@ -818,6 +818,18 @@ object Downloads {
                         } catch (e: java.io.IOException) {
                             if (e is LinkExpiredException || attempt >= DROPPED_RETRIES) throw e
                             attempt++
+                            // Held back by the host (429): one connection, and the wait it asked for (else a growing one) —
+                            // asking again in seconds only kept the limit on.
+                            if (e is BusyException) {
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                conns = 1
+                                hostConns[host] = 1
+                                val wait = (e.retryAfter ?: (20 * attempt)).coerceIn(10, 120)
+                                Log.w(TAG, "${job.label}: host busy (${e.code}); waiting ${wait}s")
+                                update(job.uri) { it.copy(state = DlState.RESOLVING, error = "The host is busy (${e.code}) — waiting ${wait}s", speed = 0) }
+                                kotlinx.coroutines.delay(wait * 1000L)
+                                continue
+                            }
                             // A playlist never fetched more than LinkFetch's cap at once: halved from what it really used.
                             // The last tries of a single file over one connection: some hosts (Driveseed's instant links among
                             // them) drop every request but one, however few the others.
@@ -866,10 +878,12 @@ object Downloads {
                 // An expired or unreachable link: ask the sources for a fresh one and carry on with it.
                 // Dropped connections that outlived the retries above count too: that link isn't going to work today.
                 val dead = e is java.io.IOException
+                // A host that kept saying "too many requests": its next links are asked for last ([busyHosts]).
+                if (e is BusyException) linkHost(job.uri).takeIf { it.isNotEmpty() }?.let { h -> busyHosts.merge(job.label, setOf(h)) { a, b -> a + b } }
                 if (dead && job.refreshes < MAX_REFRESHES && job.imdb != null) {
-                    update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Link expired — getting a fresh one…", speed = 0) }
+                    update(job.uri) { it.copy(state = DlState.RESOLVING, error = if (e is BusyException) "The host is busy — finding another source…" else "Link expired — getting a fresh one…", speed = 0) }
                     failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
-                    val fresh = runCatching { LinkRefresh.fresh(job, tried(job)) }.onFailure { Log.w(TAG, "refresh: ${it.message}") }.getOrNull()
+                    val fresh = runCatching { LinkRefresh.fresh(job, tried(job), busyHosts = busy(job)) }.onFailure { Log.w(TAG, "refresh: ${it.message}") }.getOrNull()
                     if (fresh != null) {
                         replaceLink(job, fresh)
                         return
@@ -926,6 +940,11 @@ object Downloads {
 
     private fun tried(job: DownloadJob) = failedLinks[job.label].orEmpty()
 
+    /** Per download (by its name): hosts that kept answering 429, whose links a refresh takes last. */
+    private val busyHosts = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+
+    private fun busy(job: DownloadJob) = busyHosts[job.label].orEmpty()
+
     /**
      * The ↻ on a failed download. A link from a known title: the sources are asked again in the background and
      * the next fresh link at the same resolution — never one that already failed — takes over, from the start.
@@ -955,7 +974,7 @@ object Downloads {
                 runCatching { com.torrentviewer.mobile.cs.CsPlugins.forgetPages() }
             }
             // By hand: the episode searched again in full, everywhere — and, with no single episode, a pack holding it.
-            val fresh = runCatching { LinkRefresh.fresh(job, if (byHand) setOf(job.uri) else tried(job), wide = byHand) }.onFailure { Log.w(TAG, "retry: ${it.message}") }.getOrNull()
+            val fresh = runCatching { LinkRefresh.fresh(job, if (byHand) setOf(job.uri) else tried(job), wide = byHand, busyHosts = busy(job)) }.onFailure { Log.w(TAG, "retry: ${it.message}") }.getOrNull()
             // A retry by hand starts the automatic refreshes over.
             if (fresh != null) replaceLink(job.copy(refreshes = -1), fresh)
             // Nothing new by hand: the link it had, tried again as it is — a tap always does something.
@@ -1009,7 +1028,7 @@ object Downloads {
             com.torrentviewer.core.forgetStreams()
             runCatching { com.torrentviewer.mobile.cs.CsPlugins.forgetPages() }
             // Any size: the one turned down may have been the odd one out. Not the same source's same link renewed either.
-            val fresh = runCatching { LinkRefresh.fresh(job.copy(size = 0, linkName = null), tried(job) + uri, wide = true) }
+            val fresh = runCatching { LinkRefresh.fresh(job.copy(size = 0, linkName = null), tried(job) + uri, wide = true, busyHosts = busy(job)) }
                 .onFailure { Log.w(TAG, "different source: ${it.message}") }.getOrNull()
             // By hand, the automatic refreshes start over; on its own (a dead torrent), it counts as one.
             if (fresh != null) replaceLink(if (byHand) job.copy(refreshes = -1) else job, fresh)

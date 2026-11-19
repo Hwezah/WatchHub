@@ -26,6 +26,15 @@ open class LinkDownloadException(message: String) : IOException(message)
 /** The link is dead — expired, refused, or its server gone — but a fresh one for the same video may work. */
 class LinkExpiredException(message: String) : LinkDownloadException(message)
 
+/**
+ * The host said "too many requests" (429) or "busy" (503): this phone is being held back, not the link dead. Asking
+ * again at once only keeps the limit on; [retryAfter] is the wait in seconds the host asked for, when it said.
+ */
+class BusyException(val code: Int, val retryAfter: Int?) : LinkDownloadException("The host is busy ($code)")
+
+/** A host's busy answer as a [BusyException], its Retry-After (seconds) read when it gives one. */
+private fun busy(conn: HttpURLConnection, code: Int) = BusyException(code, conn.getHeaderField("Retry-After")?.trim()?.toIntOrNull())
+
 /** No video is this small: under it, a "download" is an error or "click here" page the host sent instead. */
 const val MIN_VIDEO_BYTES = 2L * 1024 * 1024
 
@@ -111,6 +120,8 @@ object LinkFetch {
             try {
                 val code = conn.responseCode
                 if (code in EXPIRED) throw LinkExpiredException("The link has expired (the server answered $code)")
+                // Held back: said at once, rather than asked again over one connection straight away.
+                if (code == 429 || code == 503) throw busy(conn, code)
                 val size = conn.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull()
                 if (code == 206 && size != null) size to extOf(url, conn.contentType) else null
             } finally {
@@ -219,7 +230,10 @@ object LinkFetch {
             } catch (e: LinkDownloadException) {
                 throw e
             } catch (e: IOException) {
-                if (++failures > TRIES * 3) throw LinkDownloadException("A part kept failing: ${e.message}")
+                if (++failures > TRIES * 3) {
+                    val code = e.message?.let { Regex("""busy \((\d+)\)""").find(it) }?.groupValues?.get(1)?.toIntOrNull()
+                    throw if (code != null) BusyException(code, null) else LinkDownloadException("A part kept failing: ${e.message}")
+                }
                 delay(1000L * failures.coerceAtMost(8))
             }
         }
@@ -267,6 +281,7 @@ object LinkFetch {
                 out.delete(); meta.delete(); again()
             }
             if (code in EXPIRED) throw LinkExpiredException("The link has expired (the server answered $code)")
+            if (code == 429 || code == 503) throw busy(conn, code)
             if (code !in 200..299) throw LinkDownloadException("The server answered $code")
             // 200 to a Range request: the server starts over, so must we.
             if (code == 200 && have > 0) {

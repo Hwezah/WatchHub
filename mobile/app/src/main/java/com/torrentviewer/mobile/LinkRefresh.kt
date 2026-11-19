@@ -22,7 +22,10 @@ fun refreshPick(
     oldSize: Long = 0, prefs: DownloadPrefs = DownloadPrefs(), rejected: Set<String> = emptySet(),
 ): Hit? {
     val ok = prefs.usable(hits).filter { it.uri != oldUri && it.uri !in tried && rejectKey(it.addon, it.name) !in rejected && batchable(it) }
-    renewal(ok, source, name)?.let { return it }
+        // Strictly the preferred format too (MKV): a file that says it's another (an MP4, a stream) isn't a rescue.
+        // One that doesn't say (many plugin links) still counts.
+        .filter { rightFormat(it, prefs.format) }
+    renewal(ok, source, name, quality)?.let { return it }
     val atQuality = ok.filter { quality == null || it.quality == quality }
     if (atQuality.isEmpty()) return null
     val near = if (oldSize <= 0) atQuality else
@@ -39,9 +42,19 @@ fun refreshPick(
     return from(links) ?: from(near)
 }
 
-/** The same source's link of the same name: the very file that failed, under a new address. */
-fun renewal(hits: List<Hit>, source: String?, name: String?): Hit? =
-    if (source == null) null else hits.firstOrNull { it.addon == source && it.name == name }
+/**
+ * The same source's link of the same name: the very file that failed, under a new address — at the same resolution,
+ * as some plugins give every resolution one name ("Server 1"), and a renewal once landed on the 1080p that way.
+ */
+fun renewal(hits: List<Hit>, source: String?, name: String?, quality: String? = null): Hit? =
+    if (source == null) null else hits.firstOrNull { it.addon == source && it.name == name && (quality == null || it.quality == null || it.quality == quality) }
+
+/** Whether [hit] is in the preferred [format] ("MKV"), or doesn't say what it is; any, with no preference. */
+fun rightFormat(hit: Hit, format: String): Boolean =
+    format.isEmpty() || traitsOf(hit).format.let { it == format || it == UNKNOWN }
+
+/** The host a link is served from ("" for a torrent or a bad address). */
+fun linkHost(uri: String): String = runCatching { java.net.URI(uri).host.orEmpty().lowercase() }.getOrDefault("")
 
 /**
  * The resolution a download is kept at: the one it was asked for ([DownloadJob.wanted]); for a download from before
@@ -73,7 +86,7 @@ object LinkRefresh {
      * asked for, [wantedQuality]): with nothing at it, null — the download waits and asks again later rather than
      * drifting to another resolution, which then stuck for every refresh after.
      */
-    suspend fun fresh(job: DownloadJob, tried: Set<String> = emptySet(), allowSame: Boolean = false, wide: Boolean = false): Hit? {
+    suspend fun fresh(job: DownloadJob, tried: Set<String> = emptySet(), allowSame: Boolean = false, wide: Boolean = false, busyHosts: Set<String> = emptySet()): Hit? {
         val imdb = job.imdb ?: return null
         // The title's details if they come; else enough to search by (its id, kind and name) — a slow or missing
         // listing never stops the search.
@@ -98,10 +111,15 @@ object LinkRefresh {
         // Sources turned down by hand ("Different Source") never come back for this download, under any address.
         val rejected = job.rejected.toSet()
         fun allowed(hits: List<Hit>) = allowedHits(hits).filter { rejectKey(it.addon, it.name) !in rejected && it.uri !in rejected }
-        fun pick(hits: List<Hit>) = refreshPick(allowed(hits), old, job.source, job.linkName, quality, tried, oldSize, prefs)
+        // Hosts that answered "too many requests" (429) for this download are asked last: the next link from them is
+        // refused the same way until they cool down.
+        fun pick(hits: List<Hit>) = allowed(hits).let { all ->
+            refreshPick(all.filterNot { linkHost(it.uri) in busyHosts }, old, job.source, job.linkName, quality, tried, oldSize, prefs)
+                ?: refreshPick(all, old, job.source, job.linkName, quality, tried, oldSize, prefs)
+        }
         // Only the same file renewed ends the search early: anything else waits for every source (or FRESH_MS), so a fast
         // source's first answer — often a far bigger torrent — doesn't win over a better one still on its way.
-        fun sameFile(hits: List<Hit>) = renewal(prefs.usable(allowed(hits)).filter { it.uri != old && it.uri !in tried && batchable(it) }, job.source, job.linkName)
+        fun sameFile(hits: List<Hit>) = renewal(prefs.usable(allowed(hits)).filter { it.uri != old && it.uri !in tried && batchable(it) && linkHost(it.uri) !in busyHosts }, job.source, job.linkName, quality)
         var latest = emptyList<Hit>()
         val early = kotlinx.coroutines.CompletableDeferred<Hit?>()
         // By hand ([wide]): longer, so the slow plugins (StreamPlay, SuperStream) that often hold the small files have answered.
@@ -123,7 +141,7 @@ object LinkRefresh {
         }
         // Out of time with sources still answering: the best of what came, at that resolution. Nothing at it: by hand, a
         // pack holding the episode at it; else nothing — never another resolution.
-        val atQuality = allowed(latest).filter { quality == null || it.quality == quality }
+        val atQuality = allowed(latest).filter { (quality == null || it.quality == quality) && rightFormat(it, prefs.format) }
         return found ?: pick(latest) ?: preferredPick(atQuality.filter { it.uri != old && it.uri !in tried }, prefs)
             ?: if (wide) packPick(atQuality, old, tried, season, prefs) else null
     }

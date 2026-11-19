@@ -28,10 +28,10 @@ class LinkRefreshTest {
         val hits = listOf(
             link("Pixeldrain 720p", "HDhub4u", "720p", "https://pd.example/720"),
             link("Pixeldrain 1080p", "HDhub4u", "1080p", "https://pd.example/1080"),
-            link("Other 1080p", "MoviesMod", "1080p", "https://mm.example/1080.mp4", 900 * mb),
+            link("Other 1080p", "MoviesMod", "1080p", "https://mm.example/1080.mkv", 900 * mb),
         )
         assertEquals("https://pd.example/1080", refreshPick(hits, old, "HDhub4u", "HubCloud 1080p", "1080p")!!.uri)
-        assertEquals("https://mm.example/1080.mp4", refreshPick(hits.drop(1).drop(1), old, "HDhub4u", "HubCloud 1080p", "1080p")!!.uri)
+        assertEquals("https://mm.example/1080.mkv", refreshPick(hits.drop(1).drop(1), old, "HDhub4u", "HubCloud 1080p", "1080p")!!.uri)
     }
 
     @Test fun neverTheDeadLinkAgain() {
@@ -41,10 +41,10 @@ class LinkRefreshTest {
     @Test fun eachRetryMovesOnPastEveryLinkThatFailed() {
         val hits = listOf(
             link("Pixeldrain 1080p", "HDhub4u", "1080p", "https://pd.example/1080"),
-            link("Other 1080p", "MoviesMod", "1080p", "https://mm.example/1080.mp4", 900 * mb),
+            link("Other 1080p", "MoviesMod", "1080p", "https://mm.example/1080.mkv", 900 * mb),
         )
-        assertEquals("https://mm.example/1080.mp4", refreshPick(hits, old, "HDhub4u", "HubCloud 1080p", "1080p", setOf("https://pd.example/1080"))!!.uri)
-        assertNull(refreshPick(hits, old, "HDhub4u", "HubCloud 1080p", "1080p", setOf("https://pd.example/1080", "https://mm.example/1080.mp4")))
+        assertEquals("https://mm.example/1080.mkv", refreshPick(hits, old, "HDhub4u", "HubCloud 1080p", "1080p", setOf("https://pd.example/1080"))!!.uri)
+        assertNull(refreshPick(hits, old, "HDhub4u", "HubCloud 1080p", "1080p", setOf("https://pd.example/1080", "https://mm.example/1080.mkv")))
     }
 
     /** From S01E05: a 449 MB pick whose link died isn't swapped for a 1.67 GB torrent while 282–436 MB links exist. */
@@ -102,5 +102,22 @@ class LinkRefreshTest {
         val link = link("Moviesmod Driveseed [324.6MB].mkv", "StreamPlay", "720p", "https://mm.example/324.mkv", 325 * mb)
         assertEquals(link, refreshPick(listOf(torrent, link), old, null, null, "720p"))
         assertEquals(torrent, refreshPick(listOf(torrent), old, null, null, "720p"))
+    }
+
+    /** E07: an MP4 isn't a rescue when MKV is preferred; a link that doesn't say what it is still is. */
+    @Test fun strictlyTheFormat() {
+        val mp4 = link("FibWatch 720p", "CineStream", "720p", "https://fw.example/e07.mp4", 400 * mb)
+        val bare = link("Moviesmod Driveseed [305MB]", "StreamPlay", "720p", "https://mm.example/e07", 305 * mb)
+        assertNull(refreshPick(listOf(mp4), old, null, null, "720p"))
+        assertEquals(bare, refreshPick(listOf(mp4, bare), old, null, null, "720p"))
+    }
+
+    /** One name for every resolution ("Server 1"): the renewal stays at the resolution. */
+    @Test fun aRenewalKeepsTheResolution() {
+        val hits = listOf(
+            link("Server 1", "SuperStream", "1080p", "https://ss.example/1080.mkv"),
+            link("Server 1", "SuperStream", "720p", "https://ss.example/720.mkv"),
+        )
+        assertEquals("https://ss.example/720.mkv", refreshPick(hits, old, "SuperStream", "Server 1", "720p")!!.uri)
     }
 }
