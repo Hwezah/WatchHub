@@ -169,6 +169,17 @@ object Browser {
     /** Counts up each time the page is touched: the tab bar goes away. */
     var touched by mutableIntStateOf(0)
 
+    /**
+     * Count up as the page is moved back toward its top (a finger drawn down, or the page scrolling up) and on down it:
+     * on the Browser the tab bar shows only on the way up, so it never covers what's being read on the way down
+     * (the owner's choice).
+     */
+    var goingUp by mutableIntStateOf(0)
+    var goingDown by mutableIntStateOf(0)
+
+    /** Where the finger was when the page last said which way it's going. */
+    private var dragFrom = 0f
+
     /** The one file the page was just asked for, so [BlobSaver] takes nothing a page sends it unasked. */
     @Volatile private var pending: String? = null
 
@@ -578,7 +589,10 @@ object Browser {
             }
         }
         // Any movement of the page, either way, sends the tab bar off; it comes back once the page rests ([touched]).
-        w.setOnScrollChangeListener { _, _, y, _, oldY -> if (y != oldY) touched++ }
+        w.setOnScrollChangeListener { _, _, y, _, oldY ->
+            if (y != oldY) touched++
+            if (y < oldY - 2) goingUp++ else if (y > oldY + 2) goingDown++
+        }
         // Any touch on the page sends the tab bar away (the owner's choice): a pop-up's buttons at the foot of the
         // screen (a site's own dialog, which scrolls inside itself) are never under it. It stays away until the page
         // is scrolled back up or another page opens.
@@ -586,6 +600,16 @@ object Browser {
             // Down, each move and the lift: the bar's rest timer starts over from the last of them.
             when (e.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_MOVE, android.view.MotionEvent.ACTION_UP -> touched++
+            }
+            // Which way the finger goes, for a page that can't scroll any further (at its top, or too short): drawn
+            // down far enough is "going up"; up, "going down".
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> dragFrom = e.y
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dy = e.y - dragFrom
+                    val step = 24 * w.resources.displayMetrics.density
+                    if (dy > step) { goingUp++; dragFrom = e.y } else if (dy < -step) { goingDown++; dragFrom = e.y }
+                }
             }
             false
         }

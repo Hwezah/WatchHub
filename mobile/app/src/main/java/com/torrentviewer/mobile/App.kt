@@ -524,12 +524,20 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             // The pages run to the bottom edge; the pill floats over them. It slides away while the page is scrolled
             // down — so the last items are never under it — and back the moment it's scrolled up (or a tab changes).
             var pillShown by remember { mutableStateOf(true) }
-            LaunchedEffect(tab) { pillShown = true }
+            // Web pages and YouTube (the owner's choice): the bar stays away — at rest too — and comes only while the
+            // page is moved back up, so it never covers what's being read on the way down. A blank Browser tab has
+            // nothing to cover: there it shows. Everywhere else, as before: away while moving, back once at rest.
+            val reveal = tab == Tab.BROWSER || tab == Tab.YOUTUBE
+            val revealNow by androidx.compose.runtime.rememberUpdatedState(reveal)
+            LaunchedEffect(tab) { pillShown = !reveal || (tab == Tab.BROWSER && Browser.url.isBlank()) }
+            LaunchedEffect(Browser.url) { if (tab == Tab.BROWSER) pillShown = Browser.url.isBlank() }
+            LaunchedEffect(Browser.goingUp) { if (tab == Tab.BROWSER && Browser.goingUp > 0) pillShown = true }
+            LaunchedEffect(Browser.goingDown) { if (tab == Tab.BROWSER && Browser.goingDown > 0 && Browser.url.isNotBlank()) pillShown = false }
             // Hidden only while a page is actually moving (either way, a fling included); back as soon as it rests.
             // A page with nothing to scroll never moves, so the bar never leaves.
             var moved by remember { mutableIntStateOf(0) }
             LaunchedEffect(moved) {
-                if (moved == 0) return@LaunchedEffect
+                if (moved == 0 || reveal) return@LaunchedEffect
                 kotlinx.coroutines.delay(350)
                 pillShown = true
             }
@@ -537,7 +545,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             // The Browser: a touch or any scroll of the page sends the bar away; it comes back once the page has rested
             // a little longer than elsewhere (2.5 s), time to reach a site's own buttons at the foot of the screen.
             LaunchedEffect(Browser.touched) {
-                if (tab != Tab.BROWSER || Browser.touched == 0) return@LaunchedEffect
+                if (tab != Tab.BROWSER || reveal || Browser.touched == 0) return@LaunchedEffect
                 pillShown = false
                 kotlinx.coroutines.delay(2500)
                 pillShown = true
@@ -547,7 +555,11 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                     override fun onPostScroll(
                         consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
                     ): androidx.compose.ui.geometry.Offset {
-                        if (kotlin.math.abs(consumed.y) > 2f) {
+                        if (revealNow) {
+                            // Down the page (the finger going up): away. Back up it, or drawn down at its top: here.
+                            if (consumed.y < -2f) pillShown = false
+                            else if (consumed.y > 2f || available.y > 8f) pillShown = true
+                        } else if (kotlin.math.abs(consumed.y) > 2f) {
                             pillShown = false
                             moved++
                         }
