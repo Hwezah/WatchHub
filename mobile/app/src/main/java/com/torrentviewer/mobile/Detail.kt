@@ -134,7 +134,10 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var episodesChecked by remember(initial.imdb) { mutableStateOf(false) }
     LaunchedEffect(initial.imdb) {
         // Some addon catalogues list a series as a film; Cinemeta then has no film by that id, but has the series.
-        val found = Meta.title(initial.imdb, initial.kind) ?: if (initial.kind == "movie") Meta.title(initial.imdb, "tv")?.takeIf { it.isSeries } else null
+        // And TMDB, when it knows the id only as a series: the page opens on its episodes, not a film's sources.
+        val found = Meta.title(initial.imdb, initial.kind)?.let { f ->
+            if (initial.kind == "movie" && f.runtime == null && com.torrentviewer.core.Tmdb.isSeries(initial.imdb)) Meta.title(initial.imdb, "tv")?.takeIf { it.isSeries } ?: f else f
+        } ?: if (initial.kind == "movie") Meta.title(initial.imdb, "tv")?.takeIf { it.isSeries } else null
         found?.let { title = it }
         // A new series Cinemeta lists no episodes for yet: TMDB's, so it has episodes and a season download.
         val t = title
@@ -346,10 +349,11 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     // Opening a series' page is seeing what is out: its new-episode count starts again from here.
     LaunchedEffect(title.imdb, title.episodes.size) { NewEpisodes.markSeen(title) }
 
-    // A film has one thing to look for: look on arrival.
+    // A film has one thing to look for: look once the title is known to be one — not before, as a series a catalogue
+    // listed as a film then showed a list of releases first and its episodes (with their pictures) only after.
     // A series with no episode list anywhere is searched as a whole, as a film is.
     LaunchedEffect(title.imdb, title.kind, lang, episodesChecked) {
-        if (!title.isSeries || (episodesChecked && title.episodes.isEmpty())) findSources(null)
+        if (episodesChecked && (!title.isSeries || title.episodes.isEmpty())) findSources(null)
     }
     // Once the whole-title search is in: a "film" whose releases are a series' becomes that series, and a
     // series with no episode list gets one from what its releases name — so either has episodes and a season download.

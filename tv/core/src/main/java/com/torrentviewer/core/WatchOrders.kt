@@ -146,6 +146,17 @@ object Tmdb {
         }
     }
 
+    /** Whether TMDB knows [imdb] only as a series (and not as a film); false with no key or no answer. */
+    suspend fun isSeries(imdb: String): Boolean {
+        if (key.isEmpty()) return false
+        return withContext(Dispatchers.Default) {
+            runCatching {
+                val found = JSONObject(get("/find/$imdb?external_source=imdb_id"))
+                (found.optJSONArray("tv_results")?.length() ?: 0) > 0 && (found.optJSONArray("movie_results")?.length() ?: 0) == 0
+            }.getOrDefault(false)
+        }
+    }
+
     private val trailers = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /**
