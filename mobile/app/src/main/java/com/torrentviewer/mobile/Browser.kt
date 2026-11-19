@@ -67,6 +67,11 @@ class BTab(val id: Long, val incognito: Boolean = false) {
      */
     var opener: BTab? = null
 
+    /** When this tab's page last started loading: a Go or Reload that starts nothing finds its page dead ([revive]). */
+    @Volatile var startedAt = 0L
+    /** When this tab was last shown: the least recently used give their pages back first ([MAX_LIVE]). */
+    var usedAt = System.currentTimeMillis()
+
     /** The window a page opened for this tab ([catchPopup]), already loading: taken as the tab's own page, not reloaded. */
     @SuppressLint("StaticFieldLeak")
     var adopt: WebView? = null
@@ -304,6 +309,66 @@ object Browser {
         // A server's own redirect (sign-ins, short links), a real tap, and whatever the site does for a few seconds after
         // a tap (a link through its "/out?l=" page, a script's hop) go through; a jump nobody asked for doesn't.
         return !request.hasGesture() && !request.isRedirect && now - t.tappedAt > 10_000
+    }
+
+    /* ------------------------------------------------------------ pages that died */
+
+    /** Pages destroyed or found dead: never handed back to a tab, which then gets a new one. */
+    private val dead: MutableSet<WebView> = java.util.Collections.newSetFromMap(java.util.WeakHashMap())
+
+    /** Takes [t]'s page down for good (off the screen, destroyed); the tab keeps its address for a new one. */
+    private fun kill(t: BTab) {
+        val w = t.web ?: return
+        t.web = null
+        dead += w
+        runCatching { (w.parent as? ViewGroup)?.removeView(w) }
+        runCatching { w.destroy() }
+        t.loading = false
+    }
+
+    /**
+     * [t]'s page took a Go or Reload and started nothing: a dead page (its engine killed for memory or hung), as the
+     * owner found — black, no loading line, until the app was swiped away. A new page for the tab, loading [url].
+     */
+    private fun revive(t: BTab, url: String) {
+        if (t !in tabs) return
+        kill(t)
+        t.url = url
+        t.openedAt = System.currentTimeMillis()
+        rebuilt++
+    }
+
+    /** Checks, a few seconds after asking [t]'s page to load, that it started; else [revive]s it. */
+    private fun watchStart(t: BTab, url: String) {
+        val before = t.startedAt
+        main.postDelayed({ if (t.startedAt == before && url.isNotBlank() && t in tabs) revive(t, url) }, 5_000)
+    }
+
+    /**
+     * Pages kept alive at once (each holds a page's memory, and one engine draws them all): beyond it, the tabs used
+     * least recently give theirs back and load again when shown, as a phone's browser does — so the engine isn't
+     * killed for memory, which left every tab black.
+     */
+    private const val MAX_LIVE = 4
+
+    private fun trimPages(keep: BTab) {
+        val live = tabs.filter { it.web != null && it !== keep }.sortedByDescending { it.usedAt }
+        live.drop(MAX_LIVE - 1).forEach { kill(it) }
+    }
+
+    /** A page engine that stopped answering (hung): ended, so its pages are rebuilt ([onRenderProcessGone]) rather than left black. */
+    private fun watchEngine(w: WebView) {
+        val f = androidx.webkit.WebViewFeature::isFeatureSupported
+        if (!f(androidx.webkit.WebViewFeature.WEB_VIEW_RENDERER_CLIENT_BASIC_USAGE)) return
+        runCatching {
+            androidx.webkit.WebViewCompat.setWebViewRenderProcessClient(w, object : androidx.webkit.WebViewRenderProcessClient() {
+                override fun onRenderProcessUnresponsive(view: WebView, renderer: androidx.webkit.WebViewRenderProcess?) {
+                    if (f(androidx.webkit.WebViewFeature.WEB_VIEW_RENDERER_TERMINATE)) runCatching { renderer?.terminate() }
+                }
+
+                override fun onRenderProcessResponsive(view: WebView, renderer: androidx.webkit.WebViewRenderProcess?) = Unit
+            })
+        }
     }
 
     /** Whether [t]'s page was opened by the viewer in the last few seconds: its own redirects then go through. */
@@ -561,7 +626,10 @@ object Browser {
 
     @SuppressLint("SetJavaScriptEnabled")
     fun view(context: Context, t: BTab = tab): WebView {
-        t.web?.let { return it }
+        t.usedAt = System.currentTimeMillis()
+        t.web?.takeIf { it !in dead }?.let { return it }
+        t.web = null
+        trimPages(keep = t)
         // A window the page opened, already on its way: kept as it is (its opener, referrer and what it was sent), not
         // loaded again from scratch, which sites' click-through pages ("/out?l=") answer with nothing.
         val adopted = t.adopt
@@ -620,6 +688,7 @@ object Browser {
     /** The tab's own watchers on its WebView: requests, pages, windows, downloads, scrolling. */
     @SuppressLint("ClickableViewAccessibility")
     private fun finishView(w: WebView, t: BTab) {
+        watchEngine(w)
         t.ua = w.settings.userAgentString.orEmpty()
         cookiesOf(t).setAcceptThirdPartyCookies(w, true)
         w.webViewClient = object : WebViewClient() {
@@ -645,6 +714,7 @@ object Browser {
 
             // The page's renderer crashed or was killed for memory: rebuild this tab instead of closing the app.
             override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                dead += view
                 runCatching { (view.parent as? ViewGroup)?.removeView(view) }
                 runCatching { view.destroy() }
                 if (t.web === view) t.web = null
@@ -676,6 +746,7 @@ object Browser {
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                t.startedAt = System.currentTimeMillis()
                 // Older WebViews without start-of-page scripts: the shield as early as they let it in.
                 if (blockAds && !androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                     runCatching { view.evaluateJavascript(SHIELD_SCRIPT, null) }
@@ -813,6 +884,7 @@ object Browser {
                 done = ad
                 main.post {
                     if (ad) {
+                        dead += probe
                         runCatching { probe.stopLoading(); probe.destroy() }
                         t.blocked++
                     } else {
@@ -823,7 +895,8 @@ object Browser {
                         tab.opener = t
                         tab.tappedAt = System.currentTimeMillis()
                         tab.url = url
-                        tab.adopt = probe
+                        // Too late (let go meanwhile): the tab loads the address in a page of its own instead.
+                        if (probe !in dead) tab.adopt = probe
                     }
                 }
                 return ad
@@ -835,7 +908,7 @@ object Browser {
         (msg.obj as? WebView.WebViewTransport)?.webView = probe
         msg.sendToTarget()
         // Nothing came (a window that stays blank): let go after a moment — unless it became a tab.
-        main.postDelayed({ if (!kept) runCatching { probe.destroy() } }, 8_000)
+        main.postDelayed({ if (!kept) { dead += probe; runCatching { probe.destroy() } } }, 8_000)
         return true
     }
 
@@ -844,12 +917,16 @@ object Browser {
         current = tabs.lastIndex
     }
 
-    fun select(i: Int) { current = i.coerceIn(0, tabs.lastIndex) }
+    fun select(i: Int) {
+        current = i.coerceIn(0, tabs.lastIndex)
+        tab.usedAt = System.currentTimeMillis()
+    }
 
     fun close(i: Int) {
         val t = tabs.getOrNull(i) ?: return
         t.web?.apply {
             if (t.incognito) { clearHistory(); clearCache(true) }
+            dead += this
             (parent as? ViewGroup)?.removeView(this)
             destroy()
         }
@@ -880,7 +957,7 @@ object Browser {
         val w = tab.web
         tab.openedAt = System.currentTimeMillis()
         tab.stopped = null
-        if (w != null) w.loadUrl(target) else tab.url = target
+        if (w != null && w !in dead) { w.loadUrl(target); watchStart(tab, target) } else { tab.web = null; tab.url = target; rebuilt++ }
     }
 
     /** Dark pages: Android's own darkening of light sites, with the app's dark theme. */
@@ -909,7 +986,14 @@ object Browser {
         select(tabs.indexOf(from))
     }
     fun forward() = tab.web?.takeIf { it.canGoForward() }?.goForward()
-    fun reload() = tab.web?.reload()
+    /** Reload; a page that's dead (or gone) is made anew on the tab's address ([revive]). */
+    fun reload() {
+        val t = tab
+        val w = t.web
+        if (w == null || w in dead) { if (t.url.isNotBlank()) revive(t, t.url); return }
+        w.reload()
+        watchStart(t, t.url)
+    }
 
     /* ------------------------------------------------------------ bookmarks and history */
 
