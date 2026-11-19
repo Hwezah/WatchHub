@@ -142,6 +142,8 @@ fun batchPick(hits: List<Hit>, filter: BatchFilter, preferDirect: Boolean = fals
     val links = if (preferDirect) preferableLinks(list) else emptySet()
     list.sortedWith(
     compareByDescending<Hit> { alive(it) }
+        // A link before a torrent (the owner's rule: torrents aren't the priority).
+        .thenByDescending { it.direct }
         .thenByDescending { it in links }
         .thenByDescending { quick(it) }
         .thenByDescending { !(it.direct && isPlaylist(it)) }
@@ -222,7 +224,27 @@ fun resolutionDistance(quality: String?, wanted: String): Int {
  *     [DownloadPrefs.direct]), a well-seeded torrent, a single file before a playlist and the preferred codec go first.
  * Unknown sizes come after every known one.
  */
-fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
+fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? = linksFirst(hits, prefs.quality) { preferredAmong(it, prefs) }
+
+/**
+ * The owner's rule for a film or an episode: torrents aren't the priority. [pick] runs on the direct links and on the
+ * torrents apart, and the link is taken unless the torrent is a closer match to the [wanted] resolution (or there is
+ * no link) — whatever their formats or sizes, as a link's name often doesn't say MKV and an addon's seed count is often
+ * stale. (A whole season's pack is chosen elsewhere: a well-seeded one is still worth it.)
+ */
+fun linksFirst(hits: List<Hit>, wanted: String, pick: (List<Hit>) -> Hit?): Hit? {
+    val (links, torrents) = hits.partition { it.direct }
+    val link = pick(links)
+    val torrent = pick(torrents)
+    return when {
+        link == null -> torrent
+        torrent == null -> link
+        resolutionDistance(torrent.quality, wanted) < resolutionDistance(link.quality, wanted) -> torrent
+        else -> link
+    }
+}
+
+private fun preferredAmong(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     val candidates = prefs.usable(hits).filter(::batchable)
     if (candidates.isEmpty()) return null
     val traits = candidates.associateWith(::traitsOf)
@@ -250,7 +272,9 @@ fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
  * else the next up), then a direct link before a torrent or a playlist — and among those the fewest MB, strictly. An
  * unknown size after every known one; a dead torrent never before a live one.
  */
-fun seasonPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
+fun seasonPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? = linksFirst(hits, prefs.quality) { seasonAmong(it, prefs) }
+
+private fun seasonAmong(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     val candidates = prefs.usable(hits).filter(::batchable)
     if (candidates.isEmpty()) return null
     val traits = candidates.associateWith(::traitsOf)
@@ -297,12 +321,13 @@ const val NEAR_SIZE = 1.1
 
 /**
  * Whether a season scan can stop asking for this episode: what [preferredPick] would take already is the preferred
- * format at the preferred resolution, quick to download. Slow plugins are then not waited on.
+ * format at the preferred resolution, as a direct link. Slow plugins are then not waited on.
  * ponytail: a smaller file may still be on its way from a slow plugin; the scan trades that for not waiting minutes.
  */
 fun goodEnough(hits: List<Hit>, prefs: DownloadPrefs): Boolean {
     val pick = preferredPick(hits, prefs) ?: return false
-    return resolutionDistance(pick.quality, prefs.quality) == 0 && pick.quality != null && quick(pick) &&
+    // A link: a torrent isn't the priority, so a scan holding only torrents waits for the slow plugins' links.
+    return pick.direct && resolutionDistance(pick.quality, prefs.quality) == 0 && pick.quality != null &&
         (prefs.format.isEmpty() || traitsOf(pick).format == prefs.format)
 }
 

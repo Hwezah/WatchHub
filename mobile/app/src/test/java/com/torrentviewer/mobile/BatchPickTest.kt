@@ -33,19 +33,23 @@ class BatchPickTest {
         val alive = hit("Show.S01E01.720p.x264", "720p", 800 * mb)
         val playlist = hit("Plugin 720p", "720p", 0, uri = "https://cdn.example/master.m3u8")
         val dash = hit("Plugin DASH 720p", "720p", 0, uri = "https://cdn.example/manifest.mpd")
-        assertEquals(alive, batchPick(listOf(trailer, pack, dead, alive, playlist, dash), "720p"))
+        // A link (here a playlist) before any torrent; without one, the live torrent.
+        assertEquals(playlist, batchPick(listOf(trailer, pack, dead, alive, playlist, dash), "720p"))
+        assertEquals(alive, batchPick(listOf(trailer, pack, dead, alive, dash), "720p"))
         // A playlist that will download beats a dead torrent; a dead torrent still beats nothing.
         assertEquals(playlist, batchPick(listOf(trailer, pack, dead, playlist), "720p"))
         assertEquals(dead, batchPick(listOf(trailer, pack, dead, dash), "720p"))
         assertNull(batchPick(listOf(trailer, pack, dash), "720p"))
     }
 
-    /** A direct file link of unknown size is kept after every known size. */
+    /** A direct link before a torrent, even of unknown size; among links, an unknown size after every known one. */
     @Test fun unknownSizeLast() {
         val link = hit("Plugin 720p", "720p", 0, uri = "https://cdn.example/ep1.mp4")
+        val sized = hit("Plugin 720p 400 MB", "720p", 400 * mb, uri = "https://cdn.example/ep1b.mp4")
         val torrent = hit("Show.S01E01.720p.x264", "720p", 900 * mb)
-        assertEquals(torrent, batchPick(listOf(link, torrent), "720p"))
-        assertEquals(link, batchPick(listOf(link), "720p"))
+        assertEquals(link, batchPick(listOf(link, torrent), "720p"))
+        assertEquals(sized, batchPick(listOf(link, sized, torrent), "720p"))
+        assertEquals(torrent, batchPick(listOf(torrent), "720p"))
     }
 
     @Test fun resolutionsOffered() {
