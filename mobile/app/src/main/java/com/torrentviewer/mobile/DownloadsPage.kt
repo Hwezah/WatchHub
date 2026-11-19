@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import com.torrentviewer.core.grain
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -324,8 +325,14 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             // At the far right: what the file is ("720p · MKV · x265"), plain and dotted, to judge a size that looks wrong
             // for its resolution — and under it the buttons (the owner's choice).
             Column(horizontalAlignment = Alignment.End) {
+                // The dots between them in the accent (the owner's choice).
                 if (row.job.tags3.isNotEmpty()) Text(
-                    row.job.tags3.joinToString(" · "),
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        row.job.tags3.forEachIndexed { i, tag ->
+                            if (i > 0) withStyle(androidx.compose.ui.text.SpanStyle(color = Ink.accent)) { append(" · ") }
+                            append(tag)
+                        }
+                    },
                     Modifier.padding(end = 8.dp),
                     style = Type.meta.copy(fontSize = 12.sp, color = Ink.muted, fontWeight = FontWeight.SemiBold),
                     maxLines = 1,
