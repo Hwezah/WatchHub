@@ -60,6 +60,7 @@ fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
     val progress by Updates.progress.collectAsState()
     val ready by Updates.ready.collectAsState()
     val failed by Updates.failed.collectAsState()
+    val reason by Updates.failReason.collectAsState()
     val context = LocalContext.current
     val r = release ?: return
     // Fetched as soon as it's found (and again when a newer build replaces it), unless put away or already tried and failed.
@@ -99,12 +100,14 @@ fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
         }
         val headline = when {
             isReady -> "Update ready"
-            isFailed -> "Couldn't download the update"
+            isFailed -> "Update failed"
             else -> "Downloading update…"
         }
         val line = buildAnnotatedString {
             withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = Ink.text)) { append(headline) }
-            withStyle(SpanStyle(color = Ink.muted, fontSize = 13.sp)) { append("  ·  " + r.version + (r.summary?.let { " — $it" } ?: "")) }
+            // Failed: why, in a few words (it's tried again by itself a few times); otherwise the build and what it changed.
+            val detail = if (isFailed && reason != null) reason.orEmpty() else r.version + (r.summary?.let { " — $it" } ?: "")
+            withStyle(SpanStyle(color = Ink.muted, fontSize = 13.sp)) { append("  ·  $detail") }
         }
         Text(line, Modifier.weight(1f), style = Type.label.copy(fontSize = 13.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (isReady || isFailed) StripPill(if (isReady) "Install" else "Retry") {

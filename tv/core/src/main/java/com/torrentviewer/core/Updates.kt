@@ -50,8 +50,16 @@ object Updates {
     val ready: StateFlow<AppRelease?> = _ready
 
     private val _failed = MutableStateFlow<String?>(null)
-    /** The version whose background download failed, for the strip to offer a retry; the next check tries again too. */
+    /** The version whose background download failed, for the strip to offer a retry; it's tried again by itself too. */
     val failed: StateFlow<String?> = _failed
+
+    private val _failReason = MutableStateFlow<String?>(null)
+    /** Why the last background download failed, in a few words, for the strip. */
+    val failReason: StateFlow<String?> = _failReason
+
+    /** Automatic retries made for a version ([prepare]): a few, a minute apart, then only the strip's Retry. */
+    private val retries = HashMap<String, Int>()
+    private const val AUTO_RETRIES = 3
 
     /** The strip's ✕ was tapped: no build is offered again until the app is next opened (or asked for in Settings). */
     private var dismissed = false
@@ -71,17 +79,28 @@ object Updates {
         val app = context.applicationContext
         _ready.value = null
         _failed.value = null
+        _failReason.value = null
         job = AppScope.launch {
             _progress.value = 0f
             try {
                 withContext(Dispatchers.IO) { fetch(r, file(app)) }
                 _ready.value = r
+                retries.remove(r.version)
             } catch (e: CancellationException) {
                 file(app).delete()
                 throw e
             } catch (e: Exception) {
                 file(app).delete()
                 _failed.value = r.version
+                _failReason.value = (if (e is java.io.FileNotFoundException) "the build was still being published" else e.message)?.take(80)
+                // Mostly a build caught mid-publish (each push replaces the files): tried again a minute later, a few times.
+                val n = (retries[r.version] ?: 0) + 1
+                retries[r.version] = n
+                // Its own job, not this one's child: the download job must end for [prepare] to start another.
+                if (n <= AUTO_RETRIES) AppScope.launch {
+                    kotlinx.coroutines.delay(60_000L)
+                    if (_failed.value == r.version) prepare(app, r)
+                }
             } finally {
                 _progress.value = null
             }
