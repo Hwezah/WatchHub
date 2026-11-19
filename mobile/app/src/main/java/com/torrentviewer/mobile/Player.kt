@@ -1440,7 +1440,7 @@ private fun BarButton(@DrawableRes icon: Int, label: String, on: Boolean = false
  * time so far and left either side, and while dragging a bubble with the target and the jump.
  */
 @Composable
-private fun SeekBar(at: () -> Double, playing: () -> Double, duration: Double, scrubbing: Boolean, onScrub: (Double) -> Unit, onCommit: () -> Unit) {
+fun SeekBar(at: () -> Double, playing: () -> Double, duration: Double, scrubbing: Boolean, onScrub: (Double) -> Unit, onCommit: () -> Unit) {
     val fraction = if (duration > 0) (at() / duration).toFloat().coerceIn(0f, 1f) else 0f
     val shown by animateFloatAsState(fraction, if (scrubbing) tween(60) else tween(420, easing = FastOutSlowInEasing), label = "head")
     val lift by animateFloatAsState(if (scrubbing) 1f else 0.4f, tween(200, easing = FastOutSlowInEasing), label = "lift")

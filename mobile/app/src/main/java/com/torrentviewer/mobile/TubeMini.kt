@@ -133,10 +133,22 @@ fun TubeMiniPlayer(onOpen: () -> Unit, modifier: Modifier = Modifier) {
     // The controls: shown for a few seconds after a tap (and at first), then the bare picture.
     var shownAt by remember { mutableStateOf(System.currentTimeMillis()) }
     var controls by remember { mutableStateOf(true) }
-    androidx.compose.runtime.LaunchedEffect(shownAt) {
+    // The seek bar: where it is, read twice a second while the controls show; a drag holds them up.
+    var at by remember { mutableStateOf(player.currentPosition / 1000.0) }
+    var duration by remember { mutableStateOf(0.0) }
+    var scrub by remember { mutableStateOf<Double?>(null) }
+    androidx.compose.runtime.LaunchedEffect(shownAt, scrub == null) {
         controls = true
+        if (scrub != null) return@LaunchedEffect
         kotlinx.coroutines.delay(3500)
         controls = false
+    }
+    androidx.compose.runtime.LaunchedEffect(controls) {
+        while (controls) {
+            at = player.currentPosition / 1000.0
+            duration = player.duration.takeIf { it > 0 }?.div(1000.0) ?: 0.0
+            kotlinx.coroutines.delay(500)
+        }
     }
     var dx by remember { mutableStateOf(0f) }
     var dy by remember { mutableStateOf(0f) }
@@ -182,6 +194,18 @@ fun TubeMiniPlayer(onOpen: () -> Unit, modifier: Modifier = Modifier) {
                             // Light strokes, moderately big (the owner's choice).
                             Lc(if (playing) R.drawable.ic_pause_bars else R.drawable.ic_play_thin, tint = Color.White, size = 38.dp)
                         }
+                    }
+                    // The players' own seek bar along the foot (the owner's choice).
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 6.dp)) {
+                        SeekBar(
+                            at = { scrub ?: at }, playing = { at }, duration = duration, scrubbing = scrub != null,
+                            onScrub = { scrub = it },
+                            onCommit = {
+                                scrub?.let { player.seekTo((it * 1000).toLong()); at = it }
+                                scrub = null
+                                shownAt = System.currentTimeMillis()
+                            },
+                        )
                     }
                 }
             }
