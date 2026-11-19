@@ -281,7 +281,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
     val genreTiles = remember(addons, kids.on) { if (kids.on) null else com.torrentviewer.core.Addons.genres() }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(state = state.list, contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+        LazyColumn(state = state.list, contentPadding = PaddingValues(bottom = NAV_CLEARANCE), verticalArrangement = Arrangement.spacedBy(22.dp)) {
             item(key = "hero") {
                 if (heroes.isEmpty()) Box(Modifier.fillMaxWidth().height(if (isWide()) 320.dp else 390.dp))
                 else Hero(state.hero, heroes, onOpen)

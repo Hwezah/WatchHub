@@ -936,7 +936,8 @@ object Downloads {
                 com.torrentviewer.core.forgetStreams()
                 runCatching { com.torrentviewer.mobile.cs.CsPlugins.forgetPages() }
             }
-            val fresh = runCatching { LinkRefresh.fresh(job, if (byHand) setOf(job.uri) else tried(job)) }.onFailure { Log.w(TAG, "retry: ${it.message}") }.getOrNull()
+            // By hand: the episode searched again in full, everywhere — and, with no single episode, a pack holding it.
+            val fresh = runCatching { LinkRefresh.fresh(job, if (byHand) setOf(job.uri) else tried(job), wide = byHand) }.onFailure { Log.w(TAG, "retry: ${it.message}") }.getOrNull()
             // A retry by hand starts the automatic refreshes over.
             if (fresh != null) replaceLink(job.copy(refreshes = -1), fresh)
             // Nothing new by hand: the link it had, tried again as it is — a tap always does something.
@@ -1364,7 +1365,13 @@ class DownloadService : Service() {
      * on in bursts instead, and the app doesn't ask again until it has been opened.
      */
     private fun foreground(): Boolean = runCatching {
-        val note = Downloads.notification(this)
+        // The full notification, or — if building it fails for any reason — a bare one: Android must hear
+        // startForeground() within seconds whatever happens, or it closes the app.
+        val note = runCatching { Downloads.notification(this) }.getOrElse {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) runCatching { nm.createNotificationChannel(NotificationChannel("downloads", "Downloads", NotificationManager.IMPORTANCE_LOW)) }
+            NotificationCompat.Builder(this, "downloads").setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("Downloading").setOngoing(true).build()
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(Downloads.NOTE_ID, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         else startForeground(Downloads.NOTE_ID, note)
         instance = this

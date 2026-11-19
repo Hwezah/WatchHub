@@ -127,7 +127,7 @@ fun PersonScreen(id: Int, name: String, onOpen: (Title) -> Unit, onBack: () -> U
         LazyVerticalGrid(
             PosterGrid,
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 32.dp),
+            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

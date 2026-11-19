@@ -141,7 +141,7 @@ fun TopScreen(startKind: String, onOpen: (Title) -> Unit, onBack: () -> Unit) {
             PosterGrid,
             state = rememberLazyGridState(),
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),
+            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {

@@ -227,7 +227,7 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
             POSTER,
             state = grid,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),
+            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -428,7 +428,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
         POSTER,
         state = rememberLazyGridState(),
         modifier = Modifier.fillMaxSize().imePadding(),
-        contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),
+        contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -668,7 +668,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
         if (shelf == Shelfs.HISTORY) GridCells.Adaptive(340.dp) else POSTER,
         state = rememberLazyGridState(),
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),
+        contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -1695,7 +1695,7 @@ fun AddonsScreen(watch: Watch) {
     }
     // Stremio addons, or CloudStream plugins: two kinds of source, one tab.
     var plugins by rememberSaveable { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = EDGE).padding(bottom = 32.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = EDGE).padding(bottom = NAV_CLEARANCE)) {
         Heading("Addons")
         // End to end: each the page's margin from its edge, the space between them.
         // On an upright phone the two share the width, half each (as Search's Titles / Streams); elsewhere side by side.

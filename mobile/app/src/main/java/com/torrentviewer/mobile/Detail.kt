@@ -393,7 +393,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     Box(Modifier.fillMaxSize()) {
         if (wide) Artwork(title.wide, title.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.7f).fillMaxHeight(0.9f).then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false)
 
-        LazyColumn(state = list, contentPadding = PaddingValues(bottom = 32.dp), modifier = Modifier.fillMaxSize()) {
+        LazyColumn(state = list, contentPadding = PaddingValues(bottom = NAV_CLEARANCE), modifier = Modifier.fillMaxSize()) {
             item(key = "head") {
                 // On any release here, or on a connected account from another device; a series shows it per episode.
                 val finished = history.filter { it.imdb == title.imdb && it.ratio >= com.torrentviewer.core.WATCHED_AT }.maxOfOrNull { it.at }

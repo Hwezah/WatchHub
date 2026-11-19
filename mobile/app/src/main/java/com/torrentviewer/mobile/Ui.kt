@@ -1019,3 +1019,10 @@ fun BackTitle(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, 
         if (trailing != null) trailing() else if (centred) Spacer(Modifier.width(40.dp))
     }
 }
+
+
+/**
+ * Room under the last thing on a page: enough for it to scroll up clear of the floating tab bar (two rows and their
+ * margin, above the system's own bar), whether or not the bar is showing at the time (the owner's choice).
+ */
+val NAV_CLEARANCE = 180.dp

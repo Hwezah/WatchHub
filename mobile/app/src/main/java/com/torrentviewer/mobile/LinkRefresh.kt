@@ -48,7 +48,7 @@ object LinkRefresh {
      * same resolution — not after every source has finished. If the search ends (or [FRESH_MS] passes) with
      * nothing at that resolution, what Settings → Preferred download would pick from the rest.
      */
-    suspend fun fresh(job: DownloadJob, tried: Set<String> = emptySet(), allowSame: Boolean = false): Hit? {
+    suspend fun fresh(job: DownloadJob, tried: Set<String> = emptySet(), allowSame: Boolean = false, wide: Boolean = false): Hit? {
         val imdb = job.imdb ?: return null
         val title = Meta.title(imdb, job.kind ?: "movie") ?: return null
         // The addons' answers are kept for the session; this needs new ones.
@@ -87,5 +87,21 @@ object LinkRefresh {
         // Out of time with sources still answering: the best of what came. Nothing at that resolution: the nearest the
         // preferences allow, from whatever was found.
         return found ?: pick(latest) ?: preferredPick(allowedHits(latest).filter { it.uri != old && it.uri !in tried }, prefs)
+            ?: if (wide) packPick(latest, old, tried, season, prefs) else null
+    }
+
+    /**
+     * ↻ pressed by hand and no single episode anywhere ([wide]): a season (or complete) pack holding the episode, as
+     * its torrent — the job's episode tag then takes just that file out of it. Still within the download rules
+     * ([DownloadPrefs.usable]); the preferred resolution first, then the best-seeded.
+     */
+    private fun packPick(hits: List<Hit>, old: String, tried: Set<String>, season: Int?, prefs: DownloadPrefs): Hit? {
+        val packs = allowedHits(hits).filter { h ->
+            h.scope != com.torrentviewer.core.Scope.EPISODE && h.uri != old && h.uri !in tried &&
+                (season == null || com.torrentviewer.core.seasonsIn(h.release).let { s -> s.isEmpty() || season in s })
+        }.mapNotNull { h -> if (h.uri.startsWith("magnet:", true)) h else magnetOf(h)?.let { m -> h.copy(uri = m) } }
+        return prefs.usable(packs).sortedWith(
+            compareBy<Hit> { if (prefs.quality.isNotEmpty() && it.quality != prefs.quality) 1 else 0 }.thenByDescending { it.seeders },
+        ).firstOrNull()
     }
 }

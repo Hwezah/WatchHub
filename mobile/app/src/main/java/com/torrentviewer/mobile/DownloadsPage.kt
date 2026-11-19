@@ -111,7 +111,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     var deleting by remember { mutableStateOf<Finished?>(null) }
     var deletingAll by remember { mutableStateOf(false) }
 
-    LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp)) {
+    LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE)) {
         // Inside the Library, its heading and tabs; opened on its own, a heading with a close.
         item {
             if (header != null) Column { header() }
