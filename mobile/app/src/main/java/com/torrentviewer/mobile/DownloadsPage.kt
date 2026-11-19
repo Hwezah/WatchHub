@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -297,8 +298,17 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     var openSeasons by remember(row.job.uri) {
         mutableStateOf(setOf(row.files.firstOrNull { it.wanted && !it.saved }?.let { parseEpisode(it.name)?.season }))
     }
+    // How far it has come, as a fill across the whole card from the left (the owner's choice: no strip, a shorter card),
+    // in a shade between the card's and the page's — under the grain, so it reads as part of the card. Eased, not jumping.
+    val done by androidx.compose.animation.core.animateFloatAsState(if (row.ratio.isNaN()) 0f else row.ratio.coerceIn(0f, 1f), label = "filled")
+    val fill = androidx.compose.ui.graphics.lerp(CARD_FACE, Ink.bg, 0.5f)
     // Grabber's look (the owner's choice): a well-rounded card, a film badge where the poster was.
-    Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = CARD - 2.dp, top = 10.dp, bottom = 10.dp)) {
+    Column(
+        Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).background(CARD_FACE)
+            .drawBehind { if (done > 0f) drawRect(fill, size = size.copy(width = size.width * done)) }
+            .grain()
+            .padding(start = 16.dp, end = CARD - 2.dp, top = 10.dp, bottom = 10.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             FilmBadge()
             // Beside the badge, centred on it (the owner's choice): the name and how it's going.
@@ -370,14 +380,6 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 }
             }
         }
-        // Grabber's bar: across the whole card under the badge and words, thin, rounded, light on a dark track.
-        ProgressLine(row.ratio, Modifier.padding(top = 10.dp, end = 8.dp, bottom = 2.dp).fillMaxWidth().clip(CircleShape), height = 2.dp,
-            // Light on the dark theme; on the light one, the download green on a faint dark track (the owner's choice).
-            // Not moving (paused, failed, waiting): quieter, so the running ones stand out (the owner's choice).
-            // Downloading: the accent (the owner's choice). Anything else (paused, failed, waiting): a stale grey.
-            color = if (row.state == DlState.DOWNLOADING) Ink.accent else Ink.text.copy(alpha = 0.3f),
-            track = if (Ink.isDark) androidx.compose.ui.graphics.Color.White.copy(alpha = if (row.state == DlState.DOWNLOADING) 0.25f else 0.12f) else Ink.text.copy(alpha = if (row.state == DlState.DOWNLOADING) 0.12f else 0.07f),
-        )
         if (row.state == DlState.WIFI || pack) Column {
         // Waiting is a choice the viewer can overrule for this one download.
         if (row.state == DlState.WIFI) Chip("Use mobile data", false, onClick = onResume, Modifier.padding(top = 10.dp))
