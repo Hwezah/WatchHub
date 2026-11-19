@@ -26,42 +26,61 @@ import java.io.File
  * request is checked against it (and its parent domains) before it leaves.
  */
 object AdBlock {
-    private const val LIST = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+    /**
+     * The lists, together about 300,000 sites: StevenBlack's unified hosts (ads, trackers, malware) and AdGuard's DNS
+     * filter (ad networks, video-ad servers, pop-under and tracking hosts the hosts list lacks).
+     */
+    private val LISTS = listOf(
+        "blocklist.txt" to "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+        "blocklist-adguard.txt" to "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/gh-pages/Filters/filter.txt",
+    )
     private const val WEEK = 7L * 24 * 3600 * 1000
-    private lateinit var file: File
+    private lateinit var dir: File
 
     @Volatile private var hosts: Set<String> = emptySet()
 
     private val _count = MutableStateFlow(0)
-    /** How many sites the list holds: Settings → Browser says it. */
+    /** How many sites the lists hold: Settings → Browser says it. */
     val count: StateFlow<Int> = _count
 
     fun init(context: Context) {
-        if (::file.isInitialized) return
-        file = File(context.applicationContext.filesDir, "blocklist.txt")
+        if (::dir.isInitialized) return
+        dir = context.applicationContext.filesDir
         AppScope.launch(Dispatchers.IO) {
-            runCatching { if (file.exists()) use(file.readText()) }
-            if (!file.exists() || System.currentTimeMillis() - file.lastModified() > WEEK) runCatching { update() }
+            runCatching { load() }
+            val stale = LISTS.any { (name, _) -> File(dir, name).let { !it.exists() || System.currentTimeMillis() - it.lastModified() > WEEK } }
+            if (stale) runCatching { update() }
         }
     }
 
-    private fun use(text: String) {
-        hosts = parseHostsList(text)
-        _count.value = hosts.size
+    /** Every list kept on the phone, read into one set. */
+    private fun load() {
+        val all = HashSet<String>(320_000)
+        LISTS.forEach { (name, _) -> File(dir, name).takeIf { it.exists() }?.let { all += parseHostsList(it.readText()) } }
+        hosts = all
+        _count.value = all.size
     }
 
-    /** Fetched afresh (Settings' "Update Now", and weekly by itself). */
+    /** Fetched afresh (Settings' "Update Now", and weekly by itself). A list that fails keeps its last good copy. */
     suspend fun update() = withContext(Dispatchers.IO) {
-        val text = okhttp3.OkHttpClient().newCall(okhttp3.Request.Builder().url(LIST).build()).execute().use { r ->
-            if (!r.isSuccessful) error("The blocklist didn't download (${r.code})")
-            r.body?.string().orEmpty()
+        val client = okhttp3.OkHttpClient()
+        var got = 0
+        LISTS.forEach { (name, url) ->
+            runCatching {
+                val text = client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { r ->
+                    if (!r.isSuccessful) error("${r.code}")
+                    r.body?.string().orEmpty()
+                }
+                if (parseHostsList(text).size < 1000) error("empty")
+                File(dir, name).writeText(text)
+                got++
+            }
         }
-        if (parseHostsList(text).size < 1000) error("The blocklist came back empty")
-        file.writeText(text)
-        use(text)
+        load()
+        if (got == 0) error("The blocklists didn't download; the copies already here are still used")
     }
 
-    fun updatedAt(): Long = if (::file.isInitialized && file.exists()) file.lastModified() else 0
+    fun updatedAt(): Long = if (::dir.isInitialized) LISTS.maxOf { (name, _) -> File(dir, name).lastModified() } else 0
 
     fun blocks(host: String): Boolean = hosts.isNotEmpty() && hostBlocked(host, hosts)
 
@@ -79,6 +98,32 @@ s.textContent='ins.adsbygoogle,[id^="google_ads"],[id^="div-gpt-ad"],[data-ad-sl
 (document.head||document.documentElement).appendChild(s);})();
 """
 }
+
+/**
+ * Run in every page before its own scripts (where the phone's WebView allows it, else as early as it can):
+ *
+ * - YouTube: the ad slots taken out of the player's data before the player reads it (as uBlock's "json-prune"),
+ *   so no ad is ever scheduled.
+ * - Any player: a Skip button pressed the moment it appears; an ad video (Google IMA, Video.js and JW Player ad
+ *   states, YouTube's ad-showing) muted and sent to its end in a split second.
+ */
+const val SHIELD_SCRIPT = """
+(function(){if(window.__whShield)return;window.__whShield=1;
+var AD=['adPlacements','playerAds','adSlots','adBreakHeartbeatParams','adBreakParams'];
+function strip(o){try{if(o&&typeof o==='object'){AD.forEach(function(k){if(k in o)delete o[k]});if(o.playerResponse)strip(o.playerResponse);}}catch(e){}return o;}
+var jp=JSON.parse;JSON.parse=function(){return strip(jp.apply(this,arguments));};
+try{var keep;Object.defineProperty(window,'ytInitialPlayerResponse',{configurable:true,get:function(){return keep},set:function(v){keep=strip(v)}});}catch(e){}
+if(window.Response&&Response.prototype.json){var rj=Response.prototype.json;Response.prototype.json=function(){return rj.apply(this,arguments).then(strip);};}
+var SKIP='.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton,.jw-skip,.jw-skiptext,.vjs-ad-skip,'+
+'[class*="skip-ad"],[class*="skipAd"],[class*="ad-skip"],[id*="skip-ad"],[id*="skipAd"],button[aria-label^="Skip"]';
+var ADVID='.ad-showing video,.ad-interrupting video,.vjs-ad-playing video,.jw-flag-ads video,.ima-ad-container video,'+
+'[class*="preroll"] video,[id*="preroll"] video,[class*="ad-player"] video';
+setInterval(function(){try{
+document.querySelectorAll(SKIP).forEach(function(b){try{b.click()}catch(e){}});
+document.querySelectorAll(ADVID).forEach(function(v){v.muted=true;if(isFinite(v.duration)&&v.duration>0&&v.currentTime<v.duration-0.2)v.currentTime=v.duration-0.1;v.playbackRate=16;});
+}catch(e){}},300);
+})();
+"""
 
 /** Where the VPN stands, for the switch and Settings. */
 enum class VpnState { OFF, CONNECTING, ON, FAILED }

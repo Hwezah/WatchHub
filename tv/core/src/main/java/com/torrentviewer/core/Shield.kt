@@ -1,16 +1,26 @@
 package com.torrentviewer.core
 
 /**
- * The domains a hosts-format blocklist names (StevenBlack's, AdGuard's DNS list in hosts form): "0.0.0.0 ads.example.com"
+ * The domains a blocklist names — hosts format or AdGuard's DNS-filter format. Hosts format (StevenBlack's, AdGuard's DNS list in hosts form): "0.0.0.0 ads.example.com"
  * or "127.0.0.1 …" lines, comments and the list's own localhost entries left out. Lower-cased, for the Browser's
  * ad blocking.
  */
 fun parseHostsList(text: String): Set<String> {
     val skip = setOf("localhost", "localhost.localdomain", "local", "broadcasthost", "ip6-localhost", "ip6-loopback", "0.0.0.0")
     val out = HashSet<String>(100_000)
+    val allowed = HashSet<String>()
+    // AdGuard's DNS filter writes "||ads.example.com^" (a "$…" option after it), "@@||…^" for a site let through, and
+    // "!" before a comment; names with a "*" in them are patterns, which a name list can't hold, and are left out.
+    val adblock = Regex("""^(@@)?\|\|([a-z0-9._-]+)\^?(\$.*)?$""")
     text.lineSequence().forEach { raw ->
+        if (raw.startsWith("!")) return@forEach
+        adblock.matchEntire(raw.trim().lowercase())?.let { m ->
+            val host = m.groupValues[2].trimEnd('.')
+            if ('.' in host) { if (m.groupValues[1].isNotEmpty()) allowed += host else out += host }
+            return@forEach
+        }
         val line = raw.substringBefore('#').trim()
-        if (line.isEmpty()) return@forEach
+        if (line.isEmpty() || line.startsWith("|") || line.startsWith("@")) return@forEach
         val parts = line.split(Regex("""\s+"""))
         val host = when {
             parts.size >= 2 && (parts[0] == "0.0.0.0" || parts[0] == "127.0.0.1" || parts[0] == "::" || parts[0] == "::1") -> parts[1]
@@ -20,7 +30,7 @@ fun parseHostsList(text: String): Set<String> {
         }.lowercase()
         if (host !in skip && '.' in host) out += host
     }
-    return out
+    return if (allowed.isEmpty()) out else out.apply { removeAll(allowed) }
 }
 
 /** Whether [host] or any domain it sits under ("a.b.ads.com" → "b.ads.com", "ads.com") is in [blocked]. */

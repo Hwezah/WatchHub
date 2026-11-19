@@ -117,7 +117,7 @@ object Browser {
     /** Settings changed: every open tab takes them at once. */
     private fun applySettings() = tabs.forEach { t ->
         t.web?.settings?.let { s ->
-            s.javaScriptCanOpenWindowsAutomatically = !blockPopups
+            s.javaScriptCanOpenWindowsAutomatically = true // windows are caught and judged ([catchPopup]), not refused
             darken(s)
         }
     }
@@ -416,15 +416,20 @@ object Browser {
             javaScriptEnabled = true
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = true
-            // No pop-up windows: most are ads.
-            setSupportMultipleWindows(false)
-            javaScriptCanOpenWindowsAutomatically = !blockPopups
+            // Pop-ups are caught in a window of their own ([catchPopup]) rather than taking over this tab: with
+            // windows off, Android loads a pop-up ad *in place of the page*, which is what blacked sites out.
+            setSupportMultipleWindows(true)
+            javaScriptCanOpenWindowsAutomatically = true
             builtInZoomControls = true
             displayZoomControls = false
             loadWithOverviewMode = true
             useWideViewPort = true
         }
         darken(w.settings)
+        // The shield (ad slots stripped, ads skipped) before any of the page's own scripts, where the WebView allows.
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, SHIELD_SCRIPT, setOf("*")) }
+        }
         t.ua = w.settings.userAgentString.orEmpty()
         CookieManager.getInstance().setAcceptThirdPartyCookies(w, true)
         w.webViewClient = object : WebViewClient() {
@@ -468,6 +473,10 @@ object Browser {
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                // Older WebViews without start-of-page scripts: the shield as early as they let it in.
+                if (blockAds && !androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                    runCatching { view.evaluateJavascript(SHIELD_SCRIPT, null) }
+                }
                 scrolledUp++
                 val u = if (url == "about:blank") "" else url
                 if (u != t.url) { t.found.clear(); t.children.clear() }
@@ -499,6 +508,10 @@ object Browser {
         }
         w.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) { t.progress = newProgress }
+
+            // A page opening a window: caught here, never loaded over this page.
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean =
+                catchPopup(view, t, isUserGesture, resultMsg)
             override fun onReceivedTitle(view: WebView, title: String?) { t.title = title.orEmpty() }
 
             // Full screen for a page's video player: its view laid over the whole window, back out with Back.
@@ -557,6 +570,36 @@ object Browser {
         t.web = w
         if (t.url.isNotEmpty()) w.loadUrl(t.url)
         return w
+    }
+
+    /**
+     * A window a page opens, read in an unseen WebView until its address is known, then: an ad or tracker host, a
+     * betting or pop-under site, or any window opened without a tap (with pop-up blocking on) — dropped, the page
+     * left as it was; a tapped link to a real page — opened in a new tab, as a desktop browser does.
+     */
+    private fun catchPopup(opener: WebView, t: BTab, tapped: Boolean, msg: android.os.Message): Boolean {
+        if (blockPopups && !tapped) { t.blocked++; return false }
+        val probe = WebView(opener.context)
+        probe.webViewClient = object : WebViewClient() {
+            private var done = false
+            private fun decide(url: String) {
+                if (done) return
+                done = true
+                val host = android.net.Uri.parse(url).host.orEmpty().lowercase()
+                val ad = url.startsWith("about:") || host.isEmpty() || (blockAds && blockedHost(host)) || BAD_JUMP.containsMatchIn(host)
+                main.post {
+                    runCatching { probe.stopLoading(); probe.destroy() }
+                    if (ad) t.blocked++ else { newTab(); tab.url = url }
+                }
+            }
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean { decide(request.url.toString()); return true }
+            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) { if (url != "about:blank") decide(url) }
+        }
+        (msg.obj as? WebView.WebViewTransport)?.webView = probe
+        msg.sendToTarget()
+        // Nothing came (a window that stays blank): let go after a moment.
+        main.postDelayed({ runCatching { probe.destroy() } }, 8_000)
+        return true
     }
 
     fun newTab() {

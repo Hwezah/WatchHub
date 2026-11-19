@@ -21,7 +21,20 @@ class ShieldTest {
         assertEquals(setOf("ads.example.com", "tracker.net", "plain-domain.org"), parseHostsList(text))
     }
 
-    @Test fun parentsBlock() {
+    @Test fun adguardList() {
+        val text = """
+            ! Title: AdGuard DNS filter
+            ||ads.example.com^
+            ||Tracker.net^${'$'}important
+            ||ad-host-*.cdn.com^
+            @@||good.example.com^
+            ||good.example.com^
+            ||bare.org
+        """.trimIndent()
+        assertEquals(setOf("ads.example.com", "tracker.net", "bare.org"), parseHostsList(text))
+    }
+
+        @Test fun parentsBlock() {
         val set = setOf("ads.com", "x.tracker.net")
         assertTrue(hostBlocked("a.b.ads.com", set))
         assertTrue(hostBlocked("X.Tracker.net", set))

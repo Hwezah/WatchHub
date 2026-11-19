@@ -1343,11 +1343,11 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 }
                 row("Block Ads", "Drops requests to ad and tracker networks", { Browser.blockAds }, { Browser.blockAds = it })
                 row("Dark Pages", "Shows light websites dark, with the app's dark theme", { Browser.darkPages }, { Browser.darkPages = it })
-                row("Block Pop-ups", "Pages can't open new windows", { Browser.blockPopups }, { Browser.blockPopups = it })
+                row("Block Pop-ups", "Windows a page opens by itself are dropped; a tapped link to a real page opens in a new tab", { Browser.blockPopups }, { Browser.blockPopups = it })
                 row("Block Redirects", "Stops pages jumping to ad and betting sites; a bar offers Open Anyway", { Browser.blockRedirects }, { Browser.blockRedirects = it })
                 row("Spot Videos and Files", "Watches what pages load and offers it to download", { Browser.sniffMedia }, { Browser.sniffMedia = it })
             }
-            Section("Ad Blocklist", "StevenBlack's list of ad, tracker and malware sites, updated weekly, on top of the built-in list. Leftover ad boxes are hidden too.") {
+            Section("Ad Blocking", "StevenBlack's and AdGuard's lists of ad, tracker, pop-up and video-ad sites (updated weekly), leftover ad boxes hidden, pop-up ads caught without leaving the page, video ads skipped, and YouTube's ads removed before they play.") {
                 val count by AdBlock.count.collectAsState()
                 val scope = rememberCoroutineScope()
                 var busy by remember { mutableStateOf(false) }
