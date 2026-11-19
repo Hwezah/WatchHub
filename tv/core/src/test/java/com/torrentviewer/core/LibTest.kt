@@ -508,11 +508,11 @@ class LibTest {
         // Cartoons and anime out, by any of their genres.
         val drawn = listOf(Title("a", "movie", "A", genres = listOf("Action", "Animation")), Title("b", "movie", "B", genres = listOf("Action")), Title("c", "tv", "C", genres = listOf("anime")))
         assertEquals(listOf("b"), withoutAnimation(drawn).map { it.imdb })
-        // Downloads' folders under Grabber!: films by name, episodes by show and season.
-        assertEquals(listOf("Movies"), libraryFolders("Interstellar", "Interstellar.2014.720p.mkv", "movie", null))
-        assertEquals(listOf("Shows", "1923", "Season 01"), libraryFolders("1923 · S01E04", "1923.S01E04.720p.mkv", "tv", null))
-        assertEquals(listOf("Shows", "Daredevil_ Born Again", "Season 02"), libraryFolders("Daredevil: Born Again", "x.mkv", "tv", 2))
-        assertEquals(listOf("Shows", "Show"), libraryFolders("Show", "trailer.mkv", "tv", null))
+        // Downloads' folders under Grabber!: films in Video/Movies, episodes by show and season in Video/Shows.
+        assertEquals(listOf("Video", "Movies"), libraryFolders("Interstellar", "Interstellar.2014.720p.mkv", "movie", null))
+        assertEquals(listOf("Video", "Shows", "1923", "Season 1"), libraryFolders("1923 · S01E04", "1923.S01E04.720p.mkv", "tv", null))
+        assertEquals(listOf("Video", "Shows", "Daredevil_ Born Again", "Season 2"), libraryFolders("Daredevil: Born Again", "x.mkv", "tv", 2))
+        assertEquals(listOf("Video", "Shows", "Show"), libraryFolders("Show", "trailer.mkv", "tv", null))
         // Search: the film once (IMDb's id kept), placeholders gone, the real release ahead of a fan "series".
         val film = Title("tt6806448", "movie", "Hobbs & Shaw", year = "2019", rating = "6.4", poster = "p")
         val twin = Title("tmdb:384018", "movie", "Hobbs & Shaw", year = "2019", poster = "p")

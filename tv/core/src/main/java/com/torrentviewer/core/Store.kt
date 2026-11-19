@@ -845,6 +845,20 @@ object History {
         write(items.map { if (it.uri == from) it.copy(uri = to) else it })
     }
 
+    /**
+     * A saved file or folder moved or renamed [from] → [to] (the Files tab): every entry played from in it follows it
+     * there, its file paths too, so Continue Watching still opens it.
+     */
+    @Synchronized
+    fun movedTree(from: String, to: String) {
+        val items = _items.value
+        val next = items.map { item ->
+            val uri = rebased(item.uri.removePrefix("file://"), from, to) ?: return@map item
+            item.copy(uri = uri, files = item.files?.map { f -> f.path?.let { p -> rebased(p.removePrefix("file://"), from, to) }?.let { f.copy(path = it) } ?: f })
+        }
+        if (next != items) write(next)
+    }
+
     /** Every entry of one title — each torrent it was played from — with their subtitles. */
     fun dropTitle(key: String, engine: TorrentStream) = _items.value.filter { it.titleKey == key }.forEach { drop(it.uri, engine) }
 
