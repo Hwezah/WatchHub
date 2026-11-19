@@ -388,9 +388,10 @@ fun Field(
     trailing: @Composable () -> Unit = {},
 ) {
     var focused by remember { mutableStateOf(false) }
-    val ring by animateColorAsState(if (focused) Ink.text.copy(alpha = 0.7f) else Color.Transparent, Motion.effects(), label = "ring")
+    // Very faint (the owner's choice): enough to show where the typing goes, not a frame.
+    val ring by animateColorAsState(if (focused) Ink.text.copy(alpha = 0.16f) else Color.Transparent, Motion.effects(), label = "ring")
     Row(
-        modifier.height(50.dp).clip(RoundedCornerShape(7.dp)).background(if (focused) Ink.text.copy(alpha = 0.12f) else QUIET_FILL).border(1.5.dp, ring, RoundedCornerShape(7.dp)).padding(horizontal = 14.dp),
+        modifier.height(50.dp).clip(RoundedCornerShape(7.dp)).background(if (focused) Ink.text.copy(alpha = 0.12f) else QUIET_FILL).border(1.dp, ring, RoundedCornerShape(7.dp)).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading?.let {
