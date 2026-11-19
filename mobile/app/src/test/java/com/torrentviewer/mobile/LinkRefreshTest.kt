@@ -81,4 +81,18 @@ class LinkRefreshTest {
         assertEquals(listOf("1080p", "MP4"), downloadTags("1080p", "Pixeldrain 1080p", "https://a.example/film.mp4?t=1", false))
         assertEquals(listOf("720p", "HLS"), downloadTags("720p", "Server 1", "https://a.example/master.m3u8", true))
     }
+
+    /** E04 fell back to a 1080p pack once: its fresh links are still looked for at the 720p it was asked for. */
+    @Test fun theWantedResolutionSticks() {
+        val asked = DownloadJob("u", "1923.S01E04", quality = "1080p", wanted = "720p")
+        assertEquals("720p", wantedQuality(asked, "1080p"))
+        // From before the wanted resolution was kept: the preferred one, else the file's own.
+        assertEquals("720p", wantedQuality(DownloadJob("u", "x", quality = "1080p"), "720p"))
+        assertEquals("1080p", wantedQuality(DownloadJob("u", "x", quality = "1080p"), ""))
+    }
+
+    @Test fun neverAnotherResolution() {
+        val hits = listOf(link("Big 1080p", "A", "1080p", "https://a.example/1080.mkv", 3000 * mb))
+        assertNull(refreshPick(hits, old, null, null, "720p"))
+    }
 }

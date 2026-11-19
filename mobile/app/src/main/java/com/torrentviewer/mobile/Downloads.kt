@@ -97,6 +97,8 @@ data class DownloadJob(
     val playlist: Boolean = false,
     /** The source's resolution ("720p"), to pick the playlist's matching variant. */
     val quality: String? = null,
+    /** The resolution asked for when it was added: fresh links are found at it, whatever a fallback once landed on. */
+    val wanted: String? = null,
     /** Where the link came from — the addon or plugin, its link name, the episode — to ask for a fresh one when it expires. */
     val source: String? = null,
     val linkName: String? = null,
@@ -120,7 +122,7 @@ data class DownloadJob(
         .put("imdb", imdb).put("kind", kind).put("tags", JSONArray(tags)).put("season", season)
         .put("fileIndices", JSONArray(files)).put("savedIndices", JSONArray(saved)).put("paused", paused).put("mobileData", mobileData).put("sequential", sequential)
         .put("skipped", JSONArray(skipped))
-        .put("link", link).put("playlist", playlist).put("quality", quality)
+        .put("link", link).put("playlist", playlist).put("quality", quality).put("wanted", wanted)
         .put("source", source).put("linkName", linkName).put("epSeason", epSeason).put("epNumber", epNumber).put("refreshes", refreshes).put("fetchedAt", fetchedAt).put("size", size)
         .put("rejected", JSONArray(rejected))
         .put("headers", JSONObject().also { o -> headers.forEach { (k, v) -> o.put(k, v) } })
@@ -148,6 +150,7 @@ data class DownloadJob(
                 headers = o.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith { h.optString(it) } }.orEmpty(),
                 playlist = o.optBoolean("playlist"),
                 quality = o.str("quality"),
+                wanted = o.str("wanted"),
                 source = o.str("source"),
                 linkName = o.str("linkName"),
                 epSeason = if (o.has("epSeason") && !o.isNull("epSeason")) o.optInt("epSeason") else null,
@@ -940,7 +943,7 @@ object Downloads {
             autoRounds.remove(job.label)
             triedByHand[uri] = System.currentTimeMillis()
         } else failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
-        update(uri) { it.copy(state = DlState.RESOLVING, error = "Finding a fresh ${job.quality ?: ""} link…".replace("  ", " "), speed = 0) }
+        update(uri) { it.copy(state = DlState.RESOLVING, error = "Finding a fresh ${wantedQuality(job, downloadPrefs().quality) ?: ""} link…".replace("  ", " "), speed = 0) }
         scope.launch {
             if (byHand) {
                 com.torrentviewer.core.forgetStreams()
@@ -957,7 +960,7 @@ object Downloads {
                 val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
                 val wait = waitMinutes(round)
                 update(uri) {
-                    it.copy(state = DlState.FAILED, speed = 0, error = "No other ${job.quality ?: "working"} source · retrying in $wait min")
+                    it.copy(state = DlState.FAILED, speed = 0, error = "No other ${wantedQuality(job, downloadPrefs().quality) ?: "working"} source · retrying in $wait min")
                 }
                 wakeIn(wait)
                 scope.launch {
@@ -1003,7 +1006,7 @@ object Downloads {
             val fresh = runCatching { LinkRefresh.fresh(job.copy(size = 0, linkName = null), tried(job) + uri, wide = true) }
                 .onFailure { Log.w(TAG, "different source: ${it.message}") }.getOrNull()
             if (fresh != null) replaceLink(job.copy(refreshes = -1), fresh)
-            else update(uri) { it.copy(state = DlState.FAILED, speed = 0, error = "No other ${job.quality ?: ""} source found · tap ↻ to look again".replace("  ", " ")) }
+            else update(uri) { it.copy(state = DlState.FAILED, speed = 0, error = "No other ${wantedQuality(job, downloadPrefs().quality) ?: ""} source found · tap ↻ to look again".replace("  ", " ")) }
             settle()
         }
     }
@@ -1028,6 +1031,8 @@ object Downloads {
             headers = if (hit.direct) hit.headers else emptyMap(),
             playlist = hit.direct && isPlaylist(hit),
             quality = hit.quality ?: old.quality,
+            // The resolution asked for stays the target, whatever this file is.
+            wanted = wantedQuality(old, downloadPrefs().quality),
             source = hit.addon.ifEmpty { old.source },
             linkName = hit.name,
             size = if (hit.size > 0) hit.size else old.size,
