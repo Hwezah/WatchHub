@@ -2,6 +2,8 @@ package com.torrentviewer.mobile
 
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -103,37 +105,47 @@ object TubeSession {
 }
 
 /**
- * The mini player (Settings → YouTube): a strip as wide as the tab bar, just above it, with the video playing on the
- * left, its title and channel, and large play/pause and close buttons. Dragged anywhere on the screen; a tap on it
- * opens the video's page again ([onOpen]).
+ * The mini player (Settings → YouTube), as YouTube's but a notch bigger: just the video — no strip, no box around it —
+ * as wide as the tab bar and as tall as the video's own shape (no black bars), resting just above the bar. A tap
+ * shows the controls on the picture (open, play/pause, close) for a few seconds; dragged, it goes anywhere.
  */
 @Composable
 fun TubeMiniPlayer(onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val v = TubeSession.mini ?: return
     val context = LocalContext.current
     val player = remember { TubeEngine.player(context) }
-    var playing by remember { mutableStateOf(player.isPlaying || player.playWhenReady) }
+    var playing by remember { mutableStateOf(player.playWhenReady) }
+    var ratio by remember { mutableStateOf(player.videoSize.let { if (it.width > 0 && it.height > 0) it.width * it.pixelWidthHeightRatio / it.height else 16f / 9f }) }
     DisposableEffect(player) {
         val l = object : androidx.media3.common.Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying || player.playWhenReady }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { playing = playWhenReady }
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
+                if (size.width > 0 && size.height > 0) ratio = size.width * size.pixelWidthHeightRatio / size.height
+            }
             override fun onPlaybackStateChanged(state: Int) {
-                // Finished: the strip goes.
+                // Finished: it goes.
                 if (state == androidx.media3.common.Player.STATE_ENDED) TubeSession.closeMini(context)
             }
         }
         player.addListener(l)
         onDispose { player.removeListener(l) }
     }
-    // Where it has been dragged to, from its resting place above the tab bar.
+    // The controls: shown for a few seconds after a tap (and at first), then the bare picture.
+    var shownAt by remember { mutableStateOf(System.currentTimeMillis()) }
+    var controls by remember { mutableStateOf(true) }
+    androidx.compose.runtime.LaunchedEffect(shownAt) {
+        controls = true
+        kotlinx.coroutines.delay(3500)
+        controls = false
+    }
     var dx by remember { mutableStateOf(0f) }
     var dy by remember { mutableStateOf(0f) }
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(14.dp)
     BoxWithConstraints(modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val maxX = with(density) { (maxWidth / 2).toPx() }
-        val maxY = with(density) { (maxHeight - 220.dp).toPx() }
-        Row(
+        val maxY = with(density) { (maxHeight - 260.dp).toPx() }
+        Box(
             Modifier.align(Alignment.BottomCenter)
                 // As wide as the tab bar, resting just above it.
                 .padding(start = 10.dp, end = 10.dp, bottom = 168.dp)
@@ -145,33 +157,32 @@ fun TubeMiniPlayer(onOpen: () -> Unit, modifier: Modifier = Modifier) {
                         dy = (dy + drag.y).coerceIn(-maxY, 0f)
                     }
                 }
-                .fillMaxWidth().height(72.dp)
-                .shadow(12.dp, shape).clip(shape).background(SHEET_FACE).grain(),
-            verticalAlignment = Alignment.CenterVertically,
+                // The video's own shape: no bars above or below it.
+                .fillMaxWidth().aspectRatio(ratio.coerceIn(0.5f, 3f))
+                .shadow(14.dp, shape).clip(shape).background(Color.Black)
+                .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { shownAt = System.currentTimeMillis() },
         ) {
-            // The picture itself, still playing.
-            Box(Modifier.fillMaxHeight().width(128.dp).background(Color.Black)) {
-                Artwork(v.thumb, v.title, Modifier.fillMaxSize())
-                AndroidView(
-                    factory = { c -> android.view.TextureView(c).also { player.setVideoTextureView(it) } },
-                    modifier = Modifier.fillMaxSize(),
-                    onRelease = { player.clearVideoTextureView(it) },
-                )
-            }
-            Tap(onOpen, Modifier.weight(1f).fillMaxHeight(), RoundedCornerShape(0.dp)) {
-                Column(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
-                    Text(v.title, Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1)
-                    Text(v.channel, style = Type.meta.copy(fontSize = 12.sp), maxLines = 1)
+            Artwork(v.thumb, v.title, Modifier.fillMaxSize())
+            AndroidView(
+                factory = { c -> android.view.TextureView(c).also { player.setVideoTextureView(it) } },
+                modifier = Modifier.fillMaxSize(),
+                onRelease = { player.clearVideoTextureView(it) },
+            )
+            androidx.compose.animation.AnimatedVisibility(controls, Modifier.fillMaxSize(), enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))) {
+                    // Big enough to hit while it moves (the owner's choice).
+                    Tap(onOpen, Modifier.align(Alignment.TopStart).padding(6.dp).size(48.dp), CircleShape) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_maximize, tint = Color.White, size = 24.dp) }
+                    }
+                    Tap({ TubeSession.closeMini(context) }, Modifier.align(Alignment.TopEnd).padding(6.dp).size(48.dp), CircleShape) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_x, tint = Color.White, size = 26.dp) }
+                    }
+                    Tap({ if (player.playWhenReady) player.pause() else player.play(); shownAt = System.currentTimeMillis() }, Modifier.align(Alignment.Center).size(64.dp), CircleShape) {
+                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f), CircleShape), contentAlignment = Alignment.Center) {
+                            Lc(if (playing) R.drawable.ic_pause_bars else L.drawable.lucide_ic_play, tint = Color.White, size = 32.dp)
+                        }
+                    }
                 }
-            }
-            // Big enough to hit while it moves (the owner's choice).
-            Tap({ if (player.playWhenReady) player.pause() else player.play() }, Modifier.size(52.dp), CircleShape) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Lc(if (playing) R.drawable.ic_pause_bars else L.drawable.lucide_ic_play, tint = Ink.text, size = 28.dp)
-                }
-            }
-            Tap({ TubeSession.closeMini(context) }, Modifier.padding(end = 6.dp).size(52.dp), CircleShape) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_x, tint = Ink.text, size = 26.dp) }
             }
         }
     }
