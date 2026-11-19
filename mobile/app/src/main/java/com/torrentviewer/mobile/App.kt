@@ -119,6 +119,7 @@ import com.torrentviewer.core.titleOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.withContext
 import com.composables.icons.lucide.R as L
 
@@ -475,7 +476,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 key(t) {
                     val stack = stacks.getOrPut(t) { mutableStateListOf() }
                     val active = t == tab
-                    Layer(shown = active && stack.isEmpty(), z = if (active) 1f else 0f) {
+                    // The Browser's tab without the fade: a web page drawn half-faded (in a layer of its own) flickers.
+                    Layer(shown = active && stack.isEmpty(), z = if (active) 1f else 0f, fade = t != Tab.BROWSER) {
                         CompositionLocalProvider(LocalShown provides (active && stack.isEmpty())) {
                             holder.SaveableStateProvider(t.name) {
                                 when (t) {
@@ -542,23 +544,18 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             val revealNow by androidx.compose.runtime.rememberUpdatedState(reveal)
             LaunchedEffect(tab) { pillShown = !reveal || (tab == Tab.BROWSER && Browser.url.isBlank()) }
             LaunchedEffect(Browser.url) { if (tab == Tab.BROWSER) pillShown = Browser.url.isBlank() }
-            LaunchedEffect(Browser.goingUp) { if (tab == Tab.BROWSER && Browser.goingUp > 0) pillShown = true }
-            LaunchedEffect(Browser.goingDown) { if (tab == Tab.BROWSER && Browser.goingDown > 0 && Browser.url.isNotBlank()) pillShown = false }
+            // The page's way, read outside composition: read here, each step of a page's scroll recomposed the whole shell.
+            val tabNow by androidx.compose.runtime.rememberUpdatedState(tab)
+            LaunchedEffect(Unit) {
+                launch { androidx.compose.runtime.snapshotFlow { Browser.goingUp }.drop(1).collect { if (tabNow == Tab.BROWSER) pillShown = true } }
+                androidx.compose.runtime.snapshotFlow { Browser.goingDown }.drop(1).collect { if (tabNow == Tab.BROWSER && Browser.url.isNotBlank()) pillShown = false }
+            }
             // Hidden only while a page is actually moving (either way, a fling included); back as soon as it rests.
             // A page with nothing to scroll never moves, so the bar never leaves.
             var moved by remember { mutableIntStateOf(0) }
             LaunchedEffect(moved) {
                 if (moved == 0 || reveal) return@LaunchedEffect
                 kotlinx.coroutines.delay(350)
-                pillShown = true
-            }
-            // A web page scrolls inside its WebView, out of Compose's reach: the Browser counts its moves.
-            // The Browser: a touch or any scroll of the page sends the bar away; it comes back once the page has rested
-            // a little longer than elsewhere (2.5 s), time to reach a site's own buttons at the foot of the screen.
-            LaunchedEffect(Browser.touched) {
-                if (tab != Tab.BROWSER || reveal || Browser.touched == 0) return@LaunchedEffect
-                pillShown = false
-                kotlinx.coroutines.delay(2500)
                 pillShown = true
             }
             val watchScroll = remember {
@@ -895,8 +892,11 @@ private fun Modifier.blockTouches() = pointerInput(Unit) {
 
 /** One screen in the stack: drawn and touchable only when [shown], kept composed (and its state with it) when not. */
 @Composable
-private fun Layer(shown: Boolean, z: Float, opaque: Boolean = false, content: @Composable () -> Unit) {
-    val alpha by androidx.compose.animation.core.animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 220 else 120), label = "layer")
+private fun Layer(shown: Boolean, z: Float, opaque: Boolean = false, fade: Boolean = true, content: @Composable () -> Unit) {
+    val faded by androidx.compose.animation.core.animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 220 else 120), label = "layer")
+    // [fade] off: shown or not at once. A WebView inside a layer being faded is drawn off-screen first, and on many
+    // phones that comes out as blank frames — the flicker the owner saw opening the Browser on a page.
+    val alpha = if (fade) faded else if (shown) 1f else 0f
     Box(
         Modifier.fillMaxSize().zIndex(z).graphicsLayer { this.alpha = alpha }
             .then(if (opaque) Modifier.background(Ink.bg).grain() else Modifier)

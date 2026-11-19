@@ -356,17 +356,27 @@ object Browser {
         live.drop(MAX_LIVE - 1).forEach { kill(it) }
     }
 
-    /** A page engine that stopped answering (hung): ended, so its pages are rebuilt ([onRenderProcessGone]) rather than left black. */
+    /**
+     * A page engine that stopped answering (hung): ended, so its pages are rebuilt ([onRenderProcessGone]) rather than
+     * left black. Only one that stays hung through three reports in a row (well over ten seconds): a heavy page busy
+     * for a moment was ended at the first, reloaded, busy again — over and over.
+     */
     private fun watchEngine(w: WebView) {
         val f = androidx.webkit.WebViewFeature::isFeatureSupported
         if (!f(androidx.webkit.WebViewFeature.WEB_VIEW_RENDERER_CLIENT_BASIC_USAGE)) return
         runCatching {
             androidx.webkit.WebViewCompat.setWebViewRenderProcessClient(w, object : androidx.webkit.WebViewRenderProcessClient() {
+                private var strikes = 0
+
                 override fun onRenderProcessUnresponsive(view: WebView, renderer: androidx.webkit.WebViewRenderProcess?) {
+                    if (++strikes < 3) return
+                    strikes = 0
                     if (f(androidx.webkit.WebViewFeature.WEB_VIEW_RENDERER_TERMINATE)) runCatching { renderer?.terminate() }
                 }
 
-                override fun onRenderProcessResponsive(view: WebView, renderer: androidx.webkit.WebViewRenderProcess?) = Unit
+                override fun onRenderProcessResponsive(view: WebView, renderer: androidx.webkit.WebViewRenderProcess?) {
+                    strikes = 0
+                }
             })
         }
     }
@@ -820,10 +830,15 @@ object Browser {
                 exitFull = null
             }
         }
-        // Any movement of the page, either way, sends the tab bar off; it comes back once the page rests ([touched]).
+        // Which way the page is going, from steady movement only (24 dp one way): a few pixels back and forth — a header
+        // shrinking as it scrolls, an ad settling in — said nothing, and flicked the tab bar in and out.
+        var travel = 0
         w.setOnScrollChangeListener { _, _, y, _, oldY ->
             if (y != oldY) touched++
-            if (y < oldY - 2) goingUp++ else if (y > oldY + 2) goingDown++
+            val d = y - oldY
+            travel = if (travel != 0 && (d > 0) != (travel > 0)) d else travel + d
+            val step = (24 * w.resources.displayMetrics.density).toInt()
+            if (travel <= -step) { goingUp++; travel = 0 } else if (travel >= step) { goingDown++; travel = 0 }
         }
         // Any touch on the page sends the tab bar away (the owner's choice): a pop-up's buttons at the foot of the
         // screen (a site's own dialog, which scrolls inside itself) are never under it. It stays away until the page
