@@ -123,4 +123,15 @@ class PreferredPickTest {
         assertEquals(link, preferredPick(listOf(thin, link), prefs))
         assertNull(batchPick(listOf(thin), BatchFilter(quality = "720p"), prefs = prefs))
     }
+
+    /** MoviesMod, MoviesDrive and HDHub first among links at the resolution, though another link is lighter or says MKV. */
+    @Test fun trustedSitesFirst() {
+        val other = link("FibWatch 720p [280MB].mkv", "720p", 280 * mb, "https://fw.x/e07.mkv").copy(addon = "CineStream")
+        val mod = link("Moviesmod Driveseed [BLURAY] [305.65MB]", "720p", 306 * mb, "https://mm.x/e07").copy(addon = "StreamPlay")
+        assertEquals(mod, preferredPick(listOf(other, mod), defaults))
+        assertEquals(true, trustedSource(link("HDHub4u 720p", "720p", 0, "https://h.x/1")))
+        assertEquals(true, trustedSource(link("x", "720p", 0, "https://h.x/2").copy(addon = "MoviesDrive")))
+        // Not at the cost of the resolution.
+        assertEquals(other, preferredPick(listOf(other, mod.copy(quality = "1080p")), defaults))
+    }
 }

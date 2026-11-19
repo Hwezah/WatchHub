@@ -144,6 +144,8 @@ fun batchPick(hits: List<Hit>, filter: BatchFilter, preferDirect: Boolean = fals
     compareByDescending<Hit> { alive(it) }
         // A link before a torrent (the owner's rule: torrents aren't the priority).
         .thenByDescending { it.direct }
+        // Then MoviesMod, MoviesDrive, HDHub (the owner's trusted sites).
+        .thenByDescending { trustedSource(it) }
         .thenByDescending { it in links }
         .thenByDescending { quick(it) }
         .thenByDescending { !(it.direct && isPlaylist(it)) }
@@ -234,7 +236,10 @@ fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? = linksFirst(hits
  */
 fun linksFirst(hits: List<Hit>, wanted: String, pick: (List<Hit>) -> Hit?): Hit? {
     val (links, torrents) = hits.partition { it.direct }
-    val link = pick(links)
+    // Among links, the trusted sites first ([trustedSource]) when they have the resolution as near as any.
+    val any = pick(links)
+    val trusted = pick(links.filter(::trustedSource))
+    val link = if (trusted != null && any != null && resolutionDistance(trusted.quality, wanted) <= resolutionDistance(any.quality, wanted)) trusted else any
     val torrent = pick(torrents)
     return when {
         link == null -> torrent
@@ -243,6 +248,12 @@ fun linksFirst(hits: List<Hit>, wanted: String, pick: (List<Hit>) -> Hit?): Hit?
         else -> link
     }
 }
+
+/** Sites whose links are good small 720p files with good codecs, from experience (the owner's): MoviesMod, MoviesDrive, HDHub. */
+private val TRUSTED = Regex("(?i)movies?\\W?mod|movies?\\W?drive|hd\\W?hub")
+
+/** A link from a trusted site ([TRUSTED]), by its name, release or the addon or plugin it came through. */
+fun trustedSource(hit: Hit) = hit.direct && (TRUSTED.containsMatchIn(hit.name) || TRUSTED.containsMatchIn(hit.release) || TRUSTED.containsMatchIn(hit.addon))
 
 private fun preferredAmong(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     val candidates = prefs.usable(hits).filter(::batchable)
