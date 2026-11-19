@@ -138,3 +138,13 @@ fun lookupName(fileName: String, folders: List<String>): String {
     val show = folders.getOrNull(2)?.takeIf { folders[0] == "Video" && folders[1] == "Shows" } ?: return fileName
     return show + (parseEpisode(fileName)?.let { " " + episodeTag(it.season, it.episode) } ?: "")
 }
+
+/**
+ * Whether a saved file — its title's [imdb] and [kind], the [label] its download carried, its [fileName] — is the film
+ * [wantImdb] ([wantEp] null) or that title's episode [wantEp]: Play then opens it rather than streaming.
+ */
+fun isCopyOf(imdb: String?, kind: String?, label: String?, fileName: String, wantImdb: String, wantEp: Ep?): Boolean {
+    if (imdb == null || imdb != wantImdb) return false
+    val ep = episodeOfFile(fileName, label)
+    return if (wantEp == null) ep == null && kind != "tv" else ep == wantEp
+}

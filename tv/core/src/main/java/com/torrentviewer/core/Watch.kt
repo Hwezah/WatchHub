@@ -280,7 +280,8 @@ class Watch(val engine: TorrentStream) {
      * other, so it resumes from Continue Watching too; the player is handed its path as
      * though the engine had just announced it.
      */
-    fun playFile(path: String, label: String, from: Title? = null, poster: String? = null) = AppScope.launch {
+    // [fromStart]: Start over — from the beginning, not where the title was left.
+    fun playFile(path: String, label: String, from: Title? = null, poster: String? = null, fromStart: Boolean = false) = AppScope.launch {
         val file = java.io.File(path.removePrefix("file://"))
         if (!file.exists()) return@launch fail("That file is gone — it may have been deleted or the card removed.")
         gen++
@@ -296,8 +297,11 @@ class Watch(val engine: TorrentStream) {
         item = target
         // The full entry — logo, episodes — whatever the caller had to hand.
         target.imdb?.let { id -> launch { Meta.title(id, target.kind ?: "movie")?.let { if (item?.uri == target.uri) title = it } } }
-        meta = TorrentMeta(label, listOf(TorrentFile(0, file.path, file.name, file.length(), true, false)))
+        val local = TorrentMeta(label, listOf(TorrentFile(0, file.path, file.name, file.length(), true, false)))
+        meta = local
         playingIndex = 0
+        // Where the title was last left, whichever copy played it (a stream, before this one was downloaded); or the start.
+        if (fromStart) History.setPosition(file.path, 0, 0.0) else runCatching { carried(file.path, local, 0) }
         via = null
         torboxIndexed = false
         engine.progress.value = null

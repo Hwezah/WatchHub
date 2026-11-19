@@ -99,4 +99,17 @@ class FoldersTest {
         assertEquals("1923", lookupName("Pilot.mkv", listOf("Video", "Shows", "1923")))
         assertEquals("Interstellar.2014.720p.mkv", lookupName("Interstellar.2014.720p.mkv", listOf("Video", "Movies")))
     }
+
+    @Test
+    fun aSavedCopyIsItsFilmOrEpisode() {
+        assertTrue(isCopyOf("tt1", "movie", "Interstellar", "Interstellar.2014.720p.mkv", "tt1", null))
+        assertFalse(isCopyOf("tt2", "movie", "Interstellar", "Interstellar.2014.720p.mkv", "tt1", null))
+        assertFalse(isCopyOf(null, "movie", "Interstellar", "Interstellar.2014.720p.mkv", "tt1", null))
+        assertTrue(isCopyOf("tt9", "tv", "1923 · S01E04", "1923.S01E04.720p.mkv", "tt9", Ep(1, 4)))
+        // A link's file named only "1080p": the episode its download was for.
+        assertTrue(isCopyOf("tt9", "tv", "1923 · S01E04", "1080p.mkv", "tt9", Ep(1, 4)))
+        assertFalse(isCopyOf("tt9", "tv", "1923 · S01E04", "1923.S01E04.720p.mkv", "tt9", Ep(1, 5)))
+        // An episode is never the film.
+        assertFalse(isCopyOf("tt9", "tv", "1923 · S01E04", "1923.S01E04.720p.mkv", "tt9", null))
+    }
 }
