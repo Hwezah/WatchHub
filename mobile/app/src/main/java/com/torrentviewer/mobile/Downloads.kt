@@ -1344,6 +1344,9 @@ object Downloads {
     /** On mobile data with [dataSaver] on: the scan's lighter mode. */
     fun saving(): Boolean = ::app.isInitialized && dataSaver && onMetered()
 
+    /** Whether the phone is on mobile data (a metered network) right now: Play's Auto resolution goes lighter. */
+    fun metered(): Boolean = ::app.isInitialized && onMetered()
+
     private fun onMetered(): Boolean {
         val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
         return runCatching { cm.isActiveNetworkMetered }.getOrDefault(false)

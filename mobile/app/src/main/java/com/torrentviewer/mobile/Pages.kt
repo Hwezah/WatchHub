@@ -899,7 +899,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     ),
                     listOf(
                         Entry(L.drawable.lucide_ic_radio, "Streaming", "Storage, buffer and trackers", "cache magnet") { page = "Streaming" },
-                        Entry(L.drawable.lucide_ic_play, "Playback", "Player, languages and subtitles", "vlc media3 skip intro audio") { page = "Playback" },
+                        Entry(L.drawable.lucide_ic_play, "Playback", "Streaming resolution, languages and subtitles", "vlc media3 skip intro audio resolution quality 720p 1080p 480p stream") { page = "Playback" },
                         Entry(L.drawable.lucide_ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
                         Entry(L.drawable.lucide_ic_youtube, "YouTube", "Sign-in and the mini player", "youtube google login sign in account subscriptions tube mini player") { page = "YouTube" },
                         Entry(L.drawable.lucide_ic_shield, "VPN", "WireGuard: Mullvad, Proton… for this app or the whole phone", "vpn wireguard mullvad proton privacy") { page = "VPN" },
@@ -1075,6 +1075,16 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
 
         if (page == "Playback") Panel {
+        // What Play picks for a film or an episode, apart from what Download picks (Settings → Preferred download).
+        Section(
+            "Preferred Streaming Resolution",
+            "What the Play buttons stream: sources at this resolution first, then the nearest below, then above (and a note says so). " +
+                "Auto plays 1080p on Wi-Fi and 720p on mobile data. Separate from the download resolution.",
+        ) {
+            SpreadRow {
+                com.torrentviewer.core.STREAM_QUALITIES.forEach { q -> Chip(q.ifEmpty { "Auto" }, settings.streamQuality == q, onClick = { set(settings.copy(streamQuality = q)) }) }
+            }
+        }
         // Two-way choices are switches here, as Grabber's settings are (the owner's choice); three or more stay chips.
         ToggleSection("Skip intros automatically", "Where an episode's intro is known, jump past it by itself; off shows a Skip intro button instead. Once per episode — seek back to watch it.", settings.autoSkipIntro) {
             set(settings.copy(autoSkipIntro = it))

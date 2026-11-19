@@ -382,15 +382,26 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
      * What Play tries, in turn, until one plays: the preferred resolution's (720p) first — in the list's own order, plugin
      * links first — then the rest; never another app's or a dead torrent. A dozen at most.
      */
-    fun playLine(hits: List<Hit>): List<Hit> {
-        val wanted = downloadPrefs().quality
-        return hits.filter { !it.external && !deadTorrent(it) }.sortedBy { if (wanted.isNotEmpty() && it.quality == wanted) 0 else 1 }.take(12)
+    /** The resolution Play aims for now: the preferred streaming one (Settings → Playback), Auto by the connection. */
+    fun streamAim() = com.torrentviewer.core.streamTarget(com.torrentviewer.core.SettingsStore.value.value.streamQuality, Downloads.metered())
+
+    /**
+     * The sources Play tries, in order: at the preferred streaming resolution first (not the download one), then the
+     * nearest below, then above ([com.torrentviewer.core.streamOrder]); each one that fails gives way to the next.
+     */
+    fun playLine(hits: List<Hit>): List<Hit> =
+        com.torrentviewer.core.streamOrder(hits.filter { !it.external && !deadTorrent(it) }, streamAim()).take(12)
+
+    /** [line] played from its first; a note when that isn't at the resolution asked for. */
+    fun playFrom(line: List<Hit>, tag: String? = null, ep: Episode? = null) {
+        com.torrentviewer.core.streamNote(line.firstOrNull(), streamAim())?.let { watch.notes.tryEmit(it) }
+        watch.streamFirstOf(line, title, tag, ep)
     }
 
     fun playEpisode(ep: Episode) = scope.launch {
         val ready = if (episode?.id == ep.id && shown.isNotEmpty()) shown else findSources(ep).await()
         val line = playLine(ready)
-        if (line.isNotEmpty()) watch.streamFirstOf(line, title, episodeTag(ep.season, ep.episode), ep)
+        if (line.isNotEmpty()) playFrom(line, episodeTag(ep.season, ep.episode), ep)
         else watch.notes.tryEmit(noneFound(episodeTag(ep.season, ep.episode)))
     }
 
@@ -474,7 +485,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                 busy -> "Finding sources…"
                                 else -> "No sources"
                             },
-                            onClick = { playLine(shown).takeIf { it.isNotEmpty() }?.let { watch.streamFirstOf(it, title) } ?: watch.notes.tryEmit(if (busy) "Still finding sources…" else noneFound(title.title)) },
+                            onClick = { playLine(shown).takeIf { it.isNotEmpty() }?.let { playFrom(it) } ?: watch.notes.tryEmit(if (busy) "Still finding sources…" else noneFound(title.title)) },
                             modifier = Modifier.fillMaxWidth(),
                             icon = L.drawable.lucide_ic_play,
                             primary = true,
@@ -983,47 +994,52 @@ private fun Pill(text: String, tint: Color) {
     Text(text, Modifier.clip(CircleShape).background(tint.copy(alpha = 0.14f)).padding(horizontal = 10.dp, vertical = 3.dp), style = Type.meta.copy(fontSize = 12.sp, color = tint, fontWeight = FontWeight.SemiBold))
 }
 
-/** Netflix's phone episode row: still on the left, number and name beside it, the synopsis under both. */
+/**
+ * Netflix's phone episode row: still on the left, number and name beside it, the synopsis under both. A tap anywhere on
+ * it plays the episode (the owner's choice); the ⓘ and sources buttons keep their own taps.
+ */
 @Composable
 private fun EpisodeRow(ep: Episode, number: Int = ep.episode, fallback: String?, busy: Boolean, selected: Boolean, seen: Double, modifier: Modifier, onPlay: () -> Unit, onSources: () -> Unit, onDownload: () -> Unit, onStory: () -> Unit) {
-    Column(modifier.padding(horizontal = EDGE, vertical = 10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Tap(onPlay, Modifier.width(132.dp).aspectRatio(16f / 9f), RoundedCornerShape(5.dp)) {
-                Box {
-                    Artwork(ep.thumbnail ?: fallback, ep.name, Modifier.fillMaxSize(), fallback = fallback)
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (busy) 0.5f else 0.2f)), contentAlignment = Alignment.Center) {
-                        if (busy) Spinner(size = 26.dp)
-                        else Box(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).padding(8.dp)) { Lc(L.drawable.lucide_ic_play, tint = Color.White, size = 16.dp) }
-                    }
-                    if (selected && !busy) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Ink.accent))
-                    // How far it got, as on Continue watching; watched through says so beside the name instead.
-                    else if (seen > 0.02 && seen < com.torrentviewer.core.WATCHED_AT) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.3f))) {
-                        Box(Modifier.fillMaxWidth(seen.toFloat()).fillMaxHeight().background(Ink.accent))
-                    }
-                }
-            }
-            // Beside the picture, centred on it (the owner's choice): the name across the whole width, and under it the
-            // date with the info and sources buttons at the far right of the same line.
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text("$number. ${ep.name}", style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        // Watched as Stremio is told: an anime's ending song isn't worth waiting through for the tick.
-                        if (seen >= com.torrentviewer.core.WATCHED_AT) {
-                            Lc(L.drawable.lucide_ic_check, tint = Ink.good, size = 13.dp)
-                            Text(" Watched" + if (ep.released != null) "  ·  " else "", style = Type.meta.copy(color = Ink.good, fontSize = 12.sp, fontWeight = FontWeight.SemiBold), maxLines = 1)
+    Tap(onPlay, modifier.fillMaxWidth(), RoundedCornerShape(0.dp)) {
+        Column(Modifier.padding(horizontal = EDGE, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(132.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(5.dp))) {
+                    Box {
+                        Artwork(ep.thumbnail ?: fallback, ep.name, Modifier.fillMaxSize(), fallback = fallback)
+                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (busy) 0.5f else 0.2f)), contentAlignment = Alignment.Center) {
+                            if (busy) Spinner(size = 26.dp)
+                            else Box(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).padding(8.dp)) { Lc(L.drawable.lucide_ic_play, tint = Color.White, size = 16.dp) }
                         }
-                        ep.released?.take(10)?.let { Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 1) }
+                        if (selected && !busy) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Ink.accent))
+                        // How far it got, as on Continue watching; watched through says so beside the name instead.
+                        else if (seen > 0.02 && seen < com.torrentviewer.core.WATCHED_AT) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.3f))) {
+                            Box(Modifier.fillMaxWidth(seen.toFloat()).fillMaxHeight().background(Ink.accent))
+                        }
                     }
-                    // The episode's full summary ([StorySheet]).
-                    Tap(onStory, shape = CircleShape) { Lc(L.drawable.lucide_ic_info, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
-                    // Every release for this episode, to pick one by hand.
-                    Tap(onSources, shape = CircleShape) { Lc(L.drawable.lucide_ic_list_video, Modifier.padding(8.dp), tint = Ink.muted, size = 22.dp) }
                 }
+                // Beside the picture, centred on it (the owner's choice): the name across the whole width, and under it the
+                // date with the info and sources buttons at the far right of the same line.
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("$number. ${ep.name}", style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            // Watched as Stremio is told: an anime's ending song isn't worth waiting through for the tick.
+                            if (seen >= com.torrentviewer.core.WATCHED_AT) {
+                                Lc(L.drawable.lucide_ic_check, tint = Ink.good, size = 13.dp)
+                                Text(" Watched" + if (ep.released != null) "  ·  " else "", style = Type.meta.copy(color = Ink.good, fontSize = 12.sp, fontWeight = FontWeight.SemiBold), maxLines = 1)
+                            }
+                            ep.released?.take(10)?.let { Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 1) }
+                        }
+                        // The episode's full summary ([StorySheet]).
+                        Tap(onStory, shape = CircleShape) { Lc(L.drawable.lucide_ic_info, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
+                        // Every release for this episode, to pick one by hand.
+                        Tap(onSources, shape = CircleShape) { Lc(L.drawable.lucide_ic_list_video, Modifier.padding(8.dp), tint = Ink.muted, size = 22.dp) }
+                    }
+                }
+                // No ⬇ of its own (the owner's choice): the sources' list has one on every release, and the season its Download.
             }
-            // No ⬇ of its own (the owner's choice): the sources' list has one on every release, and the season its Download.
+            ep.overview?.let { Text(it, Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
-        ep.overview?.let { Text(it, Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 2, overflow = TextOverflow.Ellipsis) }
     }
 }
 
