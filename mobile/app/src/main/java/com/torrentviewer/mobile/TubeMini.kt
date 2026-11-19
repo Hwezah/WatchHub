@@ -171,15 +171,16 @@ fun TubeMiniPlayer(onOpen: () -> Unit, modifier: Modifier = Modifier) {
             androidx.compose.animation.AnimatedVisibility(controls, Modifier.fillMaxSize(), enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))) {
                     // Big enough to hit while it moves (the owner's choice).
-                    Tap(onOpen, Modifier.align(Alignment.TopStart).padding(6.dp).size(48.dp), CircleShape) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_maximize, tint = Color.White, size = 24.dp) }
+                    Tap(onOpen, Modifier.align(Alignment.TopStart).padding(6.dp).size(54.dp), CircleShape) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(R.drawable.ic_maximize_thin, tint = Color.White, size = 30.dp) }
                     }
-                    Tap({ TubeSession.closeMini(context) }, Modifier.align(Alignment.TopEnd).padding(6.dp).size(48.dp), CircleShape) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_x, tint = Color.White, size = 26.dp) }
+                    Tap({ TubeSession.closeMini(context) }, Modifier.align(Alignment.TopEnd).padding(6.dp).size(54.dp), CircleShape) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(R.drawable.ic_close_thin, tint = Color.White, size = 30.dp) }
                     }
-                    Tap({ if (player.playWhenReady) player.pause() else player.play(); shownAt = System.currentTimeMillis() }, Modifier.align(Alignment.Center).size(64.dp), CircleShape) {
+                    Tap({ if (player.playWhenReady) player.pause() else player.play(); shownAt = System.currentTimeMillis() }, Modifier.align(Alignment.Center).size(72.dp), CircleShape) {
                         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f), CircleShape), contentAlignment = Alignment.Center) {
-                            Lc(if (playing) R.drawable.ic_pause_bars else L.drawable.lucide_ic_play, tint = Color.White, size = 32.dp)
+                            // Light strokes, moderately big (the owner's choice).
+                            Lc(if (playing) R.drawable.ic_pause_bars else R.drawable.ic_play_thin, tint = Color.White, size = 38.dp)
                         }
                     }
                 }
