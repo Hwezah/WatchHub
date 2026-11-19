@@ -34,6 +34,7 @@ import com.torrentviewer.core.seasonsIn
 import com.torrentviewer.core.speed
 import com.torrentviewer.core.str
 import com.torrentviewer.core.withTrackers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -816,6 +817,8 @@ object Downloads {
                             attempt++
                             // A playlist never fetched more than LinkFetch's cap at once: halved from what it really used.
                             conns = maxOf(MIN_CONNECTIONS, (if (job.playlist) minOf(conns, LinkFetch.HLS_MAX) else conns) / 2)
+                            // Stopped meanwhile (paused, cancelled, its source swapped): it says nothing more.
+                            kotlinx.coroutines.currentCoroutineContext().ensureActive()
                             hostConns[host] = conns
                             Log.w(TAG, "${job.label}: ${e.message}; again with $conns connections")
                             update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Connection dropped — trying again", speed = 0) }
@@ -976,7 +979,8 @@ object Downloads {
         if (!row.job.link || row.job.imdb == null) return
         val run = synchronized(lock) { links.remove(uri) }
         run?.cancel()
-        val job = row.job.copy(rejected = (row.job.rejected + uri + rejectKey(row.job.source, row.job.linkName)).distinct())
+        // Asked for by hand: the new source starts, even on a paused download.
+        val job = row.job.copy(paused = false, rejected = (row.job.rejected + uri + rejectKey(row.job.source, row.job.linkName)).distinct())
         failedLinks.merge(job.label, setOf(uri)) { a, b -> a + b }
         fun mark() = synchronized(lock) {
             _live.value = _live.value.map { if (it.job.uri == uri) LiveDownload(job, DlState.RESOLVING, error = "Finding a different source…") else it }
@@ -1008,6 +1012,9 @@ object Downloads {
         val next = old.copy(
             paused = now.job.paused,
             uri = hit.uri,
+            // The new file's own release name, so its card's tags (and anything else read from the name) are its own.
+            // A download with no title of its own keeps its name: that's its label.
+            title = if (old.titleName != null) hit.release.ifBlank { hit.name } else old.title,
             link = hit.direct,
             headers = if (hit.direct) hit.headers else emptyMap(),
             playlist = hit.direct && isPlaylist(hit),
