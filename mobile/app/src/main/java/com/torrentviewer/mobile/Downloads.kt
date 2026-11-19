@@ -977,7 +977,7 @@ object Downloads {
      * link name, so the same file renewed doesn't come back. The sources are then asked again, as ↻ does, for the next
      * one at the resolution; nothing found leaves it failed, its ↻ asking again later.
      */
-    fun differentSource(uri: String) {
+    fun differentSource(uri: String, byHand: Boolean = true) {
         val row = _live.value.find { it.job.uri == uri } ?: return
         if (!canSwap(row.job)) return
         val run = synchronized(lock) { links.remove(uri) }
@@ -988,8 +988,9 @@ object Downloads {
         // Asked for by hand: the new source starts, even on a paused download.
         val job = row.job.copy(paused = false, rejected = (row.job.rejected + uri + rejectKey(row.job.source, row.job.linkName)).distinct())
         failedLinks.merge(job.label, setOf(uri)) { a, b -> a + b }
+        val note = if (byHand) "Finding a different source…" else "No peers — finding another source…"
         fun mark() = synchronized(lock) {
-            _live.value = _live.value.map { if (it.job.uri == uri) LiveDownload(job, DlState.RESOLVING, error = "Finding a different source…") else it }
+            _live.value = _live.value.map { if (it.job.uri == uri) LiveDownload(job, DlState.RESOLVING, error = note) else it }
             writeQueue(jobs())
         }
         mark()
@@ -1005,7 +1006,8 @@ object Downloads {
             // Any size: the one turned down may have been the odd one out. Not the same source's same link renewed either.
             val fresh = runCatching { LinkRefresh.fresh(job.copy(size = 0, linkName = null), tried(job) + uri, wide = true) }
                 .onFailure { Log.w(TAG, "different source: ${it.message}") }.getOrNull()
-            if (fresh != null) replaceLink(job.copy(refreshes = -1), fresh)
+            // By hand, the automatic refreshes start over; on its own (a dead torrent), it counts as one.
+            if (fresh != null) replaceLink(if (byHand) job.copy(refreshes = -1) else job, fresh)
             else update(uri) { it.copy(state = DlState.FAILED, speed = 0, error = "No other ${wantedQuality(job, downloadPrefs().quality) ?: ""} source found · tap ↻ to look again".replace("  ", " ")) }
             settle()
         }
@@ -1016,6 +1018,9 @@ object Downloads {
      * Not a whole pack — there's no single thing to search for — nor a page's or YouTube's download.
      */
     fun canSwap(job: DownloadJob) = job.imdb != null && job.season == null
+
+    /** A torrent nobody answered for: dead, most likely, or BitTorrent blocked on this network. */
+    private class NoPeersException : Exception("No peers answered. The torrent may be dead, or the network is blocking BitTorrent.")
 
     private fun replaceLink(old: DownloadJob, hit: Hit, failed: Boolean = true) {
         if (failed) failedLinks.merge(old.label, setOf(old.uri)) { a, b -> a + b }
@@ -1131,7 +1136,11 @@ object Downloads {
                         }
                         delay(500)
                     }
-                    found ?: error("No peers answered. The torrent may be dead, or the network is blocking BitTorrent.")
+                    // Not left in the session, asking an empty swarm.
+                    found ?: run {
+                        s.find(hash)?.let { dead -> runCatching { s.remove(dead, SessionHandle.DELETE_FILES) } }
+                        throw NoPeersException()
+                    }
                 } else {
                     val file = if (uri.startsWith("http", true)) File(app.cacheDir, "dl-${uri.hashCode()}.torrent").also { f -> URL(uri).openStream().use { i -> f.outputStream().use { i.copyTo(it) } } } else File(uri.removePrefix("file://"))
                     val ti = TorrentInfo(file)
@@ -1147,6 +1156,12 @@ object Downloads {
                 poll()
             } catch (e: Exception) {
                 Log.w(TAG, "download failed: ${e.message}")
+                // Nobody in the swarm: turned down and another source found, on its own, a few times — rather than left
+                // failed with a ↻ that would only ask the same dead torrent again.
+                if (e is NoPeersException && canSwap(job) && job.refreshes < MAX_REFRESHES && _live.value.any { it.job.uri == job.uri }) {
+                    differentSource(job.uri, byHand = false)
+                    return@launch
+                }
                 errors[job.uri] = e.message ?: "Couldn't start that download"
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri]) }
                 settle()

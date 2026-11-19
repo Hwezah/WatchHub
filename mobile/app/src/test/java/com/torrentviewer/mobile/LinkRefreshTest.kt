@@ -95,4 +95,12 @@ class LinkRefreshTest {
         val hits = listOf(link("Big 1080p", "A", "1080p", "https://a.example/1080.mkv", 3000 * mb))
         assertNull(refreshPick(hits, old, null, null, "720p"))
     }
+
+    /** A rescue takes a link before a torrent whose seed count may be stale, even a lighter torrent. */
+    @Test fun aLinkBeforeATorrent() {
+        val torrent = Hit("t", "1923.S01E04.720p.x265.mkv", "magnet:?xt=urn:btih:t", 40, 0, 250 * mb, "720p", "tv", Scope.EPISODE, null, addon = "Torrentio")
+        val link = link("Moviesmod Driveseed [324.6MB].mkv", "StreamPlay", "720p", "https://mm.example/324.mkv", 325 * mb)
+        assertEquals(link, refreshPick(listOf(torrent, link), old, null, null, "720p"))
+        assertEquals(torrent, refreshPick(listOf(torrent), old, null, null, "720p"))
+    }
 }

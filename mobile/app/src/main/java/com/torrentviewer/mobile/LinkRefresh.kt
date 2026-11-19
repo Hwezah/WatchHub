@@ -32,7 +32,11 @@ fun refreshPick(
             .ifEmpty { atQuality.filter { it.size <= (oldSize * GROWTH).toLong() } }.ifEmpty { atQuality }
     // The smallest that will work at that resolution, MKV first: codec and the rest of the preferences don't come into a rescue.
     val pick = prefs.copy(quality = quality ?: prefs.quality, codec = "", subs = false, source = "")
-    return near.filter { source != null && it.addon == source }.let { preferredPick(it, pick) } ?: preferredPick(near, pick)
+    // A direct link before any torrent: an addon's seed count is often stale, and a rescue that sits on "Finding peers"
+    // rescues nothing. A torrent only when no link at that resolution is left.
+    val links = near.filter { it.direct }
+    fun from(list: List<Hit>) = list.filter { source != null && it.addon == source }.let { preferredPick(it, pick) } ?: preferredPick(list, pick)
+    return from(links) ?: from(near)
 }
 
 /** The same source's link of the same name: the very file that failed, under a new address. */
