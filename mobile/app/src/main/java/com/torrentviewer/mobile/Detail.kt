@@ -809,10 +809,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     seasonPacks?.let { (s, packs) ->
         BottomSheet("Season $s packs", onDismiss = { seasonPacks = null }) {
             when {
-                packs == null -> Row(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Spinner(size = 24.dp)
-                    Text("   Asking your addons and plugins…", style = Type.body)
-                }
+                packs == null -> LoadingLine("Asking your addons and plugins…", Modifier.padding(horizontal = 20.dp, vertical = 16.dp), spinner = 24.dp, style = Type.body)
                 packs.isEmpty() -> EmptyNote(
                     if (lang.isEmpty()) "No season $s pack found yet — download the episodes one by one."
                     else "No season $s pack in ${langName(lang)} — change the language and try again, or download the episodes one by one.",

@@ -1029,6 +1029,21 @@ fun EmptyNote(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
+ * A spinner and what is being waited on, on one line: in the middle on an upright phone (the owner's rule for such
+ * lines), from the start elsewhere. The season sheet's "Checking episodes", the packs' "Asking your addons…".
+ */
+@Composable
+fun LoadingLine(text: String, modifier: Modifier = Modifier, spinner: Dp = 20.dp, style: androidx.compose.ui.text.TextStyle = Type.meta.copy(color = Ink.muted)) {
+    Row(
+        modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (isPortraitPhone()) Arrangement.Center else Arrangement.Start,
+    ) {
+        com.torrentviewer.core.Spinner(size = spinner)
+        Text(text, Modifier.padding(start = 10.dp), style = style)
+    }
+}
+
+/**
  * A page's top with a back button: the button on the left, the [title] (and a [subtitle] under it) beside it — in the
  * middle of the screen on an upright phone (the owner's rule for every titled page), from the left elsewhere. Space
  * the button's width is kept on the right so "the middle" is the screen's, unless [trailing] fills it.

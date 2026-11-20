@@ -351,10 +351,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
     BottomSheet("Download season $season", onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = CARD).padding(bottom = 12.dp)) {
             if (scan == null) {
-                Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Spinner(size = 20.dp)
-                    Text("   Starting…", style = Type.meta.copy(color = Ink.muted))
-                }
+                LoadingLine("Starting…", Modifier.padding(bottom = 12.dp))
                 return@Column
             }
             /** What the plan may take from an episode's releases: for another app, the links that need no headers when there are any. */
@@ -366,10 +363,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             }
             // What a pick may take: the chips count only that, thin torrents left out as in the lists.
             val all = prefs.usable(scan.found.values.flatten())
-            if (!scan.done) Row(Modifier.padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Spinner(size = 20.dp)
-                Text("   Checking episodes · ${scan.checked} of ${scan.episodes.size}", style = Type.meta.copy(color = Ink.muted))
-            }
+            if (!scan.done) LoadingLine("Checking episodes · ${scan.checked} of ${scan.episodes.size}", Modifier.padding(bottom = 12.dp))
 
             if (scan.done && all.none(::batchable)) {
                 EmptyNote("Nothing downloadable was found for this season's episodes.")
