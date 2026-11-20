@@ -237,18 +237,21 @@ fun Button(
             horizontalArrangement = Arrangement.Center,
         ) {
             if (icon != null) {
+                // The hero's My Listing switched on: a smaller tick in the words' own colour — black on the dark theme's
+                // near-white button, white on the light theme's near-black one — not the green disc (the owner's choice).
+                val quietTick = glass && !primary && on != null
                 Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
                     if (on != null) Box(
-                        Modifier.size(24.dp).graphicsLayer {
+                        Modifier.size(if (quietTick) 18.dp else 24.dp).graphicsLayer {
                             scaleX = disc
                             scaleY = disc
                             alpha = disc.coerceIn(0f, 1f)
-                        }.clip(CircleShape).background(onColor),
+                        }.clip(CircleShape).background(if (quietTick) fg else onColor),
                     )
                     Lc(icon, Modifier.graphicsLayer {
                         scaleX = pop.value
                         scaleY = pop.value
-                    }, tint = lerp(fg, Color.White, disc.coerceIn(0f, 1f)), size = if (on != null) 16.dp else 18.dp)
+                    }, tint = lerp(fg, if (quietTick) glassFill else Color.White, disc.coerceIn(0f, 1f)), size = if (quietTick) 12.dp else if (on != null) 16.dp else 18.dp)
                 }
                 // The hero's pair keep their icon close to the word.
                 Spacer(Modifier.width(if (glass) 2.dp else 8.dp))
