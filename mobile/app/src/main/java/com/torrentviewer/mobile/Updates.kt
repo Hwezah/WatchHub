@@ -127,12 +127,12 @@ fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
     }
 }
 
-/** The strip's small pill: the accent a notch toward black (12%), white words, fully rounded. */
+/** The strip's small pill: the accent a notch toward black (12%), white words, the app's squared-off [PILL]. */
 @Composable
 private fun StripPill(label: String, onClick: () -> Unit) {
-    Tap(onClick, shape = CircleShape) { pressed ->
+    Tap(onClick, shape = PILL) { pressed ->
         Box(
-            Modifier.height(34.dp).clip(CircleShape).background(lerp(Ink.accent, Color.Black, if (pressed) 0.28f else 0.12f), CircleShape).grain().padding(horizontal = 13.dp),
+            Modifier.height(34.dp).clip(PILL).background(lerp(Ink.accent, Color.Black, if (pressed) 0.28f else 0.12f), PILL).grain().padding(horizontal = 13.dp),
             contentAlignment = Alignment.Center,
         ) { Text(label, style = Type.label.copy(fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White), maxLines = 1) }
     }

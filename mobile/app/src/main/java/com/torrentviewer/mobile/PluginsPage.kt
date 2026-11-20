@@ -81,7 +81,7 @@ fun PluginsSection(watch: Watch) {
         Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
     )
     Text("Add a repository", Modifier.padding(start = 4.dp, top = 6.dp, bottom = 10.dp), style = Type.overline.copy(color = Ink.faint))
-    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).frosted(RoundedCornerShape(12.dp)).padding(CARD)) {
+    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(9.dp)).frosted(RoundedCornerShape(9.dp)).padding(CARD)) {
         Field(link, { link = it.trim() }, "Shortcode or https://…/repo.json", Modifier.fillMaxWidth(), onSubmit = ::add, leading = L.drawable.lucide_ic_link)
         Button(if (adding) "Adding…" else "Add repository", ::add, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_plus, primary = true)
         Text(
@@ -123,9 +123,9 @@ private fun RepoCard(repo: RepositoryData, installed: List<PluginData>, changes:
         }
     }
     // Thin inside padding: the plugin list gets the width.
-    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).frosted(RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 14.dp)) {
+    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(9.dp)).frosted(RoundedCornerShape(9.dp)).padding(horizontal = 10.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
                 Lc(L.drawable.lucide_ic_puzzle, tint = Ink.muted, size = 22.dp)
                 repo.iconUrl?.takeIf { it.startsWith("http") }?.let { Artwork(it, repo.name, Modifier.fillMaxSize(), fill = false) }
             }
@@ -226,7 +226,7 @@ private fun OfferedRow(w: PluginWrapper, busy: androidx.compose.runtime.MutableS
     val below = have != null && !working
     Column(Modifier.padding(top = 14.dp).fillMaxWidth()) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(7.dp)).background(Ink.text.copy(alpha = 0.06f)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(5.dp)).background(Ink.text.copy(alpha = 0.06f)), contentAlignment = Alignment.Center) {
             Lc(L.drawable.lucide_ic_puzzle, tint = Ink.faint, size = 18.dp)
             p.iconUrl?.takeIf { it.startsWith("http") }?.let { Artwork(it, p.name, Modifier.fillMaxSize(), fill = false) }
         }
@@ -281,7 +281,7 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
         }
     }
     // The words take the card's full width; the buttons sit on a row of their own under them, one at each end.
-    Column(Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).frosted(RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp)) {
+    Column(Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).frosted(RoundedCornerShape(8.dp)).padding(horizontal = 14.dp, vertical = 10.dp)) {
         Column(Modifier.fillMaxWidth()) {
             Text("${p.internalName}  ·  v${p.version}", style = Type.body.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
             // A failure in full: the missing class it names is what tells what to add.
@@ -297,7 +297,7 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
         Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             // The plugin's own settings — accounts, which sources it asks, languages — as CloudStream's sliders icon.
             if (CsPlugins.loaded(p) && CsPlugins.settingsOf(p) != null) {
-                Tap({ CsPlugins.openSettings(p)?.let { watch.notes.tryEmit(it) } }, shape = RoundedCornerShape(20.dp)) {
+                Tap({ CsPlugins.openSettings(p)?.let { watch.notes.tryEmit(it) } }, shape = RoundedCornerShape(15.dp)) {
                     Row(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Lc(L.drawable.lucide_ic_sliders_horizontal, tint = Ink.text, size = 22.dp)
                         Text("  Settings", style = Type.label.copy(fontWeight = FontWeight.SemiBold))
@@ -317,9 +317,9 @@ private fun InstalledRow(p: PluginData, changes: Int, starting: Boolean, watch: 
 /** The outlined secondary button the Addons cards use. */
 @Composable
 private fun Outline(label: String, onClick: () -> Unit) {
-    Tap(onClick, shape = RoundedCornerShape(20.dp)) { pressed ->
+    Tap(onClick, shape = RoundedCornerShape(15.dp)) { pressed ->
         Box(
-            Modifier.height(40.dp).border(1.dp, Ink.text.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
+            Modifier.height(40.dp).border(1.dp, Ink.text.copy(alpha = 0.3f), RoundedCornerShape(15.dp))
                 .background(Ink.text.copy(alpha = if (pressed) 0.12f else 0f)).padding(horizontal = 16.dp),
             contentAlignment = Alignment.Center,
         ) { Text(label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.muted)) }

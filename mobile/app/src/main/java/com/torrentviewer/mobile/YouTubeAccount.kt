@@ -287,7 +287,7 @@ fun YouTubeAccountCard(modifier: Modifier = Modifier) {
     var said by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(signedIn) { if (signedIn && account == null) YouTubeAccount.refresh() }
-    Column(modifier.fillMaxWidth().frosted(RoundedCornerShape(16.dp)).padding(16.dp)) {
+    Column(modifier.fillMaxWidth().frosted(RoundedCornerShape(12.dp)).padding(16.dp)) {
         if (!signedIn) {
             Text("YouTube", style = Type.title.copy(fontWeight = FontWeight.Bold))
             Text(

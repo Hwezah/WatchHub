@@ -92,7 +92,7 @@ private sealed interface TubeRoute {
 }
 
 /** A video's thumbnail and a channel's picture: rounded, as the screenshot's cards. */
-private val THUMB = RoundedCornerShape(14.dp)
+private val THUMB = RoundedCornerShape(10.dp)
 
 /** One short message for a failed read: YouTube's own words are long and technical. */
 private fun tubeError(e: Throwable): String = when {
@@ -249,7 +249,7 @@ private fun TubeHeader(typed: String, onTyped: (String) -> Unit, onSubmit: () ->
     // One container for the whole bar, barely rounded; the input has no box of its own, only its green cursor.
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp)
-            .height(58.dp).frosted(RoundedCornerShape(18.dp)).padding(horizontal = 4.dp),
+            .height(58.dp).frosted(RoundedCornerShape(14.dp)).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Tap(onSubmit, shape = CircleShape) { Lc(R.drawable.ic_search_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp) }
@@ -376,7 +376,7 @@ private fun HistoryList(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit
         item {
             Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("${history.size} watched", Modifier.weight(1f), style = Type.meta)
-                Tap({ clearing = true }, shape = RoundedCornerShape(6.dp)) { Text("Clear All", Modifier.padding(8.dp), style = Type.label.copy(color = Ink.accent)) }
+                Tap({ clearing = true }, shape = RoundedCornerShape(5.dp)) { Text("Clear All", Modifier.padding(8.dp), style = Type.label.copy(color = Ink.accent)) }
             }
         }
         items(history, key = { it.id }) { SmallVideoRow(it, onOpen, onMenu) }
@@ -466,7 +466,7 @@ private fun YouPage(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, on
             }
         }
         items(subs, key = { "sub-" + it.url }) { ch ->
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onChannel(ch.url, ch.name) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onChannel(ch.url, ch.name) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 ChannelAvatar(ch.avatar, ch.name, 40.dp)
                 Text(ch.name, Modifier.weight(1f).padding(horizontal = 12.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Tap({ leaving = ch }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 18.dp) }
@@ -528,13 +528,13 @@ private fun ChannelAvatar(url: String?, name: String, size: androidx.compose.ui.
 
 /** A thumbnail, 16:9 and rounded, with its length (or LIVE) in the corner. */
 @Composable
-private fun Thumb(url: String?, name: String, modifier: Modifier = Modifier, seconds: Long = 0, live: Boolean = false, corner: androidx.compose.ui.unit.Dp = 10.dp) {
+private fun Thumb(url: String?, name: String, modifier: Modifier = Modifier, seconds: Long = 0, live: Boolean = false, corner: androidx.compose.ui.unit.Dp = 8.dp) {
     Box(modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(corner)).background(Ink.surface)) {
         Artwork(url, name, Modifier.fillMaxSize())
         val tag = if (live) "LIVE" else clockText(seconds)
         if (tag.isNotEmpty()) Text(
             tag,
-            Modifier.align(Alignment.BottomEnd).padding(8.dp).background(if (live) Color(0xFFCC0000) else Color.Black.copy(alpha = 0.78f), RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+            Modifier.align(Alignment.BottomEnd).padding(8.dp).background(if (live) Color(0xFFCC0000) else Color.Black.copy(alpha = 0.78f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
             style = Type.meta.copy(color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp),
         )
     }
@@ -544,7 +544,7 @@ private fun Thumb(url: String?, name: String, modifier: Modifier = Modifier, sec
 @Composable
 private fun VideoCard(v: TubeVideo, onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(bottom = 22.dp)) {
-        Tap({ onOpen(v) }, Modifier.fillMaxWidth(), THUMB, onLongClick = { onMenu(v) }) { Thumb(v.thumb, v.title, Modifier.fillMaxWidth(), v.seconds, v.live, corner = 14.dp) }
+        Tap({ onOpen(v) }, Modifier.fillMaxWidth(), THUMB, onLongClick = { onMenu(v) }) { Thumb(v.thumb, v.title, Modifier.fillMaxWidth(), v.seconds, v.live, corner = 10.dp) }
         Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
             Box(Modifier.padding(start = 4.dp, end = 12.dp).clip(CircleShape).clickable { v.channelUrl?.let { onChannel(it, v.channel) } }) { ChannelAvatar(v.avatar, v.channel, 40.dp) }
             Column(Modifier.weight(1f).clickable(remember { MutableInteractionSource() }, indication = null) { onOpen(v) }) {
@@ -559,7 +559,7 @@ private fun VideoCard(v: TubeVideo, onOpen: (TubeVideo) -> Unit, onMenu: (TubeVi
 /** A smaller row (History, Watch Later, Up Next): thumbnail on the left, words beside it. */
 @Composable
 private fun SmallVideoRow(v: TubeVideo, onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit) {
-    Tap({ onOpen(v) }, Modifier.fillMaxWidth().padding(bottom = 12.dp), RoundedCornerShape(10.dp), onLongClick = { onMenu(v) }) {
+    Tap({ onOpen(v) }, Modifier.fillMaxWidth().padding(bottom = 12.dp), RoundedCornerShape(8.dp), onLongClick = { onMenu(v) }) {
         Row {
             Thumb(v.thumb, v.title, Modifier.width(160.dp), v.seconds, v.live)
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
@@ -574,12 +574,12 @@ private fun SmallVideoRow(v: TubeVideo, onOpen: (TubeVideo) -> Unit, onMenu: (Tu
 /** A channel or playlist among search results. */
 @Composable
 private fun LinkRow(link: TubeLink, onOpen: () -> Unit) {
-    Tap(onOpen, Modifier.fillMaxWidth().padding(bottom = 14.dp), RoundedCornerShape(10.dp)) {
+    Tap(onOpen, Modifier.fillMaxWidth().padding(bottom = 14.dp), RoundedCornerShape(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (link.channel) Box(Modifier.width(160.dp), contentAlignment = Alignment.Center) { ChannelAvatar(link.thumb, link.name, 76.dp) }
             else Box(Modifier.width(160.dp)) {
                 Thumb(link.thumb, link.name, Modifier.fillMaxWidth())
-                Lc(L.drawable.lucide_ic_list_video, Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(5.dp)).padding(4.dp), tint = Color.White, size = 16.dp)
+                Lc(L.drawable.lucide_ic_list_video, Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(4.dp)).padding(4.dp), tint = Color.White, size = 16.dp)
             }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(link.name, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -676,7 +676,7 @@ private fun ChannelPage(url: String, name: String, onOpen: (TubeVideo) -> Unit, 
                 val header: LazyListScope.() -> Unit = {
                     item {
                         Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                            p.banner?.let { Artwork(it, p.channel.name, Modifier.fillMaxWidth().aspectRatio(5f).clip(RoundedCornerShape(12.dp))) }
+                            p.banner?.let { Artwork(it, p.channel.name, Modifier.fillMaxWidth().aspectRatio(5f).clip(RoundedCornerShape(9.dp))) }
                             Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 ChannelAvatar(p.channel.avatar, p.channel.name, 64.dp)
                                 Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
@@ -687,7 +687,7 @@ private fun ChannelPage(url: String, name: String, onOpen: (TubeVideo) -> Unit, 
                             SubscribeButton(p.channel, subs.isNotEmpty() && Tube.subscribed(p.channel.url), Modifier.padding(top = 14.dp).fillMaxWidth())
                             if (p.playlists != null) Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                                 listOf("Videos", "Playlists").forEachIndexed { i, label ->
-                                    Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable { tab = i }.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Row(Modifier.clip(RoundedCornerShape(5.dp)).clickable { tab = i }.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(label, style = Type.title.copy(fontWeight = if (tab == i) FontWeight.Bold else FontWeight.Medium, color = if (tab == i) Ink.text else Ink.muted))
                                         if (tab == i) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.accent))
                                     }
@@ -862,7 +862,7 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
                     }
                     item {
                         Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Row(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable { v.channelUrl?.let { onChannel(it, v.channel) } }, verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { v.channelUrl?.let { onChannel(it, v.channel) } }, verticalAlignment = Alignment.CenterVertically) {
                                 ChannelAvatar(v.avatar, v.channel, 40.dp)
                                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                     Text(v.channel, style = Type.label.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -877,7 +877,7 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
                     if (d != null && d.description.isNotBlank()) item {
                         Text(
                             androidx.core.text.HtmlCompat.fromHtml(d.description, androidx.core.text.HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim(),
-                            Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(12.dp)).background(Ink.text.copy(alpha = 0.06f))
+                            Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(9.dp)).background(Ink.text.copy(alpha = 0.06f))
                                 .clickable { more = !more }.padding(12.dp),
                             style = Type.body.copy(fontSize = 14.sp), maxLines = if (more) 400 else 3, overflow = TextOverflow.Ellipsis,
                         )
@@ -934,7 +934,7 @@ private fun speedLabel(s: Float) = if (s == 1f) "Normal" else (if (s % 1f == 0f)
 /** One of the video page's actions: an icon over a word. */
 @Composable
 private fun TubeAction(icon: Int, label: String, on: Boolean = false, onClick: () -> Unit) {
-    Tap(onClick, shape = RoundedCornerShape(12.dp)) {
+    Tap(onClick, shape = RoundedCornerShape(9.dp)) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Lc(icon, tint = if (on) Ink.accent else Ink.text, size = 22.dp)
             Text(label, Modifier.padding(top = 4.dp), style = Type.meta.copy(fontSize = 12.sp, color = if (on) Ink.accent else Ink.text))
@@ -1048,7 +1048,7 @@ private fun VideoMenu(v: TubeVideo, onPlay: () -> Unit, onDownload: () -> Unit, 
     BottomSheet("", onDismiss) {
         Column(Modifier.padding(bottom = 6.dp)) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Thumb(v.thumb, v.title, Modifier.width(120.dp), v.seconds, v.live, corner = 8.dp)
+                Thumb(v.thumb, v.title, Modifier.width(120.dp), v.seconds, v.live, corner = 6.dp)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text(v.title, style = Type.label.copy(fontWeight = FontWeight.SemiBold, lineHeight = 19.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(tubeLine(v), Modifier.padding(top = 3.dp), style = Type.meta.copy(fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)

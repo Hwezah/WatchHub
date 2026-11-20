@@ -152,7 +152,7 @@ fun TubeMiniPlayer(onOpen: () -> Unit, modifier: Modifier = Modifier) {
     }
     var dx by remember { mutableStateOf(0f) }
     var dy by remember { mutableStateOf(0f) }
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(10.dp)
     BoxWithConstraints(modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val maxX = with(density) { (maxWidth / 2).toPx() }

@@ -439,7 +439,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 if (external && !magnetsGo) null else lightPack(scan.found.values.flatten(), season, scan.episodes.size, prefs)
             }
             if (pack != null && filter == BatchFilter()) Column(
-                Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Ink.text.copy(alpha = 0.06f)).padding(12.dp),
+                Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Ink.text.copy(alpha = 0.06f)).padding(12.dp),
             ) {
                 Text("Season pack", style = Type.overline.copy(color = Ink.muted))
                 Text(

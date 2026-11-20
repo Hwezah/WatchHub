@@ -84,15 +84,15 @@ fun BrowserScreen() {
             Row(
                 // One container for the whole bar, barely rounded, as Tube's; the address has no box, only its green cursor.
                 Modifier.statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 8.dp).fillMaxWidth().height(58.dp)
-                    .frosted(RoundedCornerShape(18.dp)).padding(start = 6.dp, end = 2.dp),
+                    .frosted(RoundedCornerShape(14.dp)).padding(start = 6.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Tabs: a squircle with how many are open.
-                Tap({ tabsOpen = true }, Modifier.size(42.dp), RoundedCornerShape(10.dp)) {
+                Tap({ tabsOpen = true }, Modifier.size(42.dp), RoundedCornerShape(8.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         // Incognito: the mask in place of the count, so it's plain which kind of tab this is.
                         if (Browser.tab.incognito) Lc(L.drawable.lucide_ic_venetian_mask, tint = Ink.accent, size = 26.dp)
-                        else Box(Modifier.size(28.dp).border(1.6.dp, Ink.text, RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
+                        else Box(Modifier.size(28.dp).border(1.6.dp, Ink.text, RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
                             Text("${Browser.tabs.size}", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.Bold))
                         }
                     }
@@ -125,7 +125,7 @@ fun BrowserScreen() {
             Browser.tab.stopped?.let { to ->
                 Row(Modifier.fillMaxWidth().frosted(RoundedCornerShape(0.dp)).padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Stopped a jump to ${android.net.Uri.parse(to).host.orEmpty().removePrefix("www.")}", Modifier.weight(1f), style = Type.meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Tap({ Browser.openStopped() }, Modifier.height(40.dp), RoundedCornerShape(8.dp)) {
+                    Tap({ Browser.openStopped() }, Modifier.height(40.dp), RoundedCornerShape(6.dp)) {
                         Box(Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) { Text("Open Anyway", style = Type.meta.copy(color = Ink.accent, fontWeight = FontWeight.SemiBold)) }
                     }
                     BarIcon(L.drawable.lucide_ic_x) { Browser.tab.stopped = null }
@@ -237,7 +237,7 @@ fun BrowserScreen() {
             Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                 Browser.tabs.forEachIndexed { i, t ->
                     val on = i == Browser.current
-                    Tap({ Browser.select(i); tabsOpen = false }, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) {
+                    Tap({ Browser.select(i); tabsOpen = false }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
                         Row(Modifier.background(if (on) Ink.text.copy(alpha = 0.07f) else Color.Transparent).padding(start = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Lc(if (t.incognito) L.drawable.lucide_ic_venetian_mask else L.drawable.lucide_ic_globe, tint = if (on) Ink.accent else Ink.muted, size = 18.dp)
                             Spacer(Modifier.width(10.dp))
@@ -266,7 +266,7 @@ fun BrowserScreen() {
             if (Browser.found.isEmpty()) EmptyNote("Nothing loaded yet. Start the video playing and it will show up here.")
             Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                 Browser.found.toList().forEach { s ->
-                    Tap({ picking = false; Browser.offer(s) }, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
+                    Tap({ picking = false; Browser.offer(s) }, Modifier.fillMaxWidth(), RoundedCornerShape(6.dp)) {
                         Row(Modifier.padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                             // A bare icon in green, no disc behind it (the owner's choice).
                             Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
@@ -338,7 +338,7 @@ private fun BarIcon(icon: Int, onClick: () -> Unit) {
 /** A bookmark or a visited page: its title and address; tap to open, ✕ to remove. */
 @Composable
 private fun PlaceRow(p: Place, onOpen: () -> Unit, onRemove: (() -> Unit)?) {
-    Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) {
+    Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
         Row(Modifier.padding(vertical = 8.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(p.title, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)

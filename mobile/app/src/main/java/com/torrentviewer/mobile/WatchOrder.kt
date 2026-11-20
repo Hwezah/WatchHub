@@ -76,8 +76,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
-private val CARD_SHAPE = RoundedCornerShape(12.dp)
-private val POSTER_SHAPE = RoundedCornerShape(5.dp)
+private val CARD_SHAPE = RoundedCornerShape(9.dp)
+private val POSTER_SHAPE = RoundedCornerShape(4.dp)
 
 /** Everything seen so far, here or on a connected account. */
 @Composable
@@ -146,7 +146,7 @@ fun WatchOrderRow(genres: List<String>, onOpen: (WatchOrder) -> Unit) {
 /** A film's place in its order, as a poster: its number on it, a tick once seen, a ring on the one open now. */
 @Composable
 private fun OrderPoster(number: Int, imdb: String, here: Boolean, watched: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(6.dp)
     Tap(onClick, Modifier.width(100.dp), shape) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape).background(Ink.surface)
@@ -303,7 +303,7 @@ fun WatchOrderScreen(order: WatchOrder, onOpen: (Title) -> Unit, onBack: () -> U
 fun ArtTag(text: String, colour: Color, modifier: Modifier = Modifier, words: Color = Color.White) {
     Text(
         text,
-        modifier.background(colour, RoundedCornerShape(5.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
+        modifier.background(colour, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
         style = Type.overline.copy(color = words, letterSpacing = 0.6.sp),
     )
 }
@@ -314,7 +314,7 @@ fun ArtTag(text: String, colour: Color, modifier: Modifier = Modifier, words: Co
  */
 @Composable
 private fun FilmCard(number: Int, title: Title, watched: Boolean, next: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(10.dp)
     Tap(onClick, Modifier.fillMaxWidth().padding(start = EDGE, end = EDGE, bottom = 14.dp), shape) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(Color.Black)

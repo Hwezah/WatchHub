@@ -146,7 +146,7 @@ fun isWide(): Boolean = LocalConfiguration.current.let { it.screenWidthDp > it.s
 fun Tap(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(7.dp),
+    shape: Shape = RoundedCornerShape(5.dp),
     onLongClick: (() -> Unit)? = null,
     /** What a hold does, in words, for TalkBack ("Options"): read out with "double-tap and hold to…". */
     longClickLabel: String? = null,
@@ -206,7 +206,7 @@ fun Button(
         seen = on
         pop.animateTo(1f, keyframes { durationMillis = 360; 0.72f at 100; 1.15f at 230; 1f at 360 })
     }
-    Tap(onClick, modifier, RoundedCornerShape(7.dp), onLongClick = onLongClick) { pressed ->
+    Tap(onClick, modifier, RoundedCornerShape(5.dp), onLongClick = onLongClick) { pressed ->
         val bg by animateColorAsState(
             when {
                 fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
@@ -260,13 +260,19 @@ fun Button(
     }
 }
 
+/**
+ * A pill's shape: a rounded rectangle, not a full half-circle at each end (the owner's choice: everything squared off a
+ * notch). Chips, the update strip's button, the player's notes.
+ */
+val PILL = RoundedCornerShape(10.dp)
+
 /** A pill of choices — seasons, qualities, genres, sorts. */
 @Composable
 fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, @DrawableRes icon: Int? = null, @DrawableRes trailing: Int? = null, compact: Boolean = false, trailingTint: Color? = null,
     /** A pill standing alone as a button ([Solo]: "Ask Every Source Again"), with room above and below its words. */
     tall: Boolean = false,
 ) {
-    Tap(onClick, modifier, CircleShape) { pressed ->
+    Tap(onClick, modifier, PILL) { pressed ->
         val bg = when {
             on -> Ink.accent
             pressed -> Ink.text.copy(alpha = 0.18f)
@@ -396,7 +402,7 @@ fun Field(
     // Very faint (the owner's choice): enough to show where the typing goes, not a frame.
     val ring by animateColorAsState(if (focused) Ink.text.copy(alpha = 0.16f) else Color.Transparent, Motion.effects(), label = "ring")
     Row(
-        modifier.height(50.dp).clip(RoundedCornerShape(7.dp)).background(if (focused) Ink.text.copy(alpha = 0.12f) else QUIET_FILL).border(1.dp, ring, RoundedCornerShape(7.dp)).padding(horizontal = 14.dp),
+        modifier.height(50.dp).clip(RoundedCornerShape(5.dp)).background(if (focused) Ink.text.copy(alpha = 0.12f) else QUIET_FILL).border(1.dp, ring, RoundedCornerShape(5.dp)).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading?.let {
@@ -457,7 +463,7 @@ fun <T> Sheet(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             if (option.image != null) {
-                                coil3.compose.AsyncImage(option.image, option.label, Modifier.size(24.dp).clip(RoundedCornerShape(5.dp)))
+                                coil3.compose.AsyncImage(option.image, option.label, Modifier.size(24.dp).clip(RoundedCornerShape(4.dp)))
                             } else if (option.icon != null) {
                                 Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { Lc(option.icon, tint = option.iconTint ?: Ink.muted, size = 20.dp) }
                             } else {
@@ -467,7 +473,7 @@ fun <T> Sheet(
                             option.tag?.let {
                                 Text(
                                     it,
-                                    Modifier.background(Ink.text.copy(alpha = 0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
+                                    Modifier.background(Ink.text.copy(alpha = 0.1f), RoundedCornerShape(3.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
                                     style = Type.overline.copy(color = Ink.text, letterSpacing = 0.5.sp),
                                 )
                                 Spacer(Modifier.width(12.dp))
@@ -543,7 +549,7 @@ fun BottomSheet(
                     .graphicsLayer { translationY = offset }
                     .nestedScroll(pull)
                     // Frosted, as the tab bar: its colour with the app's grain (the owner's choice).
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).background(SHEET_FACE).grain()
+                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)).background(SHEET_FACE).grain()
                     // Taps on the sheet stay on the sheet.
                     .clickable(remember { MutableInteractionSource() }, indication = null) {}
                     .navigationBarsPadding().padding(bottom = 10.dp),
@@ -619,7 +625,7 @@ fun StatusIconsOverArt(overArt: Boolean, navigationToo: Boolean = false) {
     }
 }
 
-private val POSTER_SHAPE = RoundedCornerShape(8.dp)
+private val POSTER_SHAPE = RoundedCornerShape(6.dp)
 
 /**
  * A poster with its name and a line of facts under it, as the streaming apps set them:
@@ -638,7 +644,7 @@ fun TitleCard(
             rating?.takeIf { it.isNotBlank() }?.let { ImdbMark(it, Modifier.align(Alignment.BottomStart).padding(6.dp)) }
             badge?.let {
                 Text(
-                    it, Modifier.align(Alignment.TopStart).padding(6.dp).wrapContentSize(Alignment.TopStart).background(Ink.accent, RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+                    it, Modifier.align(Alignment.TopStart).padding(6.dp).wrapContentSize(Alignment.TopStart).background(Ink.accent, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
                     style = Type.meta.copy(fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold), maxLines = 1,
                 )
             }
@@ -661,8 +667,8 @@ fun CardPlaceholder(modifier: Modifier = Modifier) {
     val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(0.45f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "alpha")
     Column(modifier.graphicsLayer { alpha = pulse }) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(Ink.surface, POSTER_SHAPE))
-        Box(Modifier.padding(top = 9.dp).fillMaxWidth(0.8f).height(11.dp).background(Ink.surface, RoundedCornerShape(4.dp)))
-        Box(Modifier.padding(top = 6.dp).fillMaxWidth(0.5f).height(9.dp).background(Ink.surface, RoundedCornerShape(4.dp)))
+        Box(Modifier.padding(top = 9.dp).fillMaxWidth(0.8f).height(11.dp).background(Ink.surface, RoundedCornerShape(3.dp)))
+        Box(Modifier.padding(top = 6.dp).fillMaxWidth(0.5f).height(9.dp).background(Ink.surface, RoundedCornerShape(3.dp)))
     }
 }
 
@@ -835,7 +841,7 @@ fun BarChoices(labels: List<String>, chosen: Int?, modifier: Modifier = Modifier
             if (i > 0) Box(Modifier.size(width = 2.dp, height = 18.dp).clip(RoundedCornerShape(1.dp)).background(bars[(i - 1) % bars.size].copy(alpha = 0.8f)))
             val on = i == chosen
             Row(
-                Modifier.clip(RoundedCornerShape(5.dp)).clickable { onPick(i) }.padding(horizontal = 4.dp, vertical = 8.dp),
+                Modifier.clip(RoundedCornerShape(4.dp)).clickable { onPick(i) }.padding(horizontal = 4.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (on) Box(Modifier.padding(end = 6.dp).size(6.dp).clip(CircleShape).background(Ink.accent))
@@ -999,7 +1005,7 @@ fun BareInput(
  */
 @Composable
 fun LabeledToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.clip(RoundedCornerShape(20.dp)).toggleable(checked, remember { MutableInteractionSource() }, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.clip(RoundedCornerShape(15.dp)).toggleable(checked, remember { MutableInteractionSource() }, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.padding(end = 10.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = if (checked) Ink.text else Ink.muted))
         Toggle(checked, onChange)
     }

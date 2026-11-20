@@ -305,7 +305,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                                     // Played from more than one release: ask which, each resuming where it was left.
                                     val all = history.filter { it.titleKey == item.titleKey }.sortedByDescending { it.at }
                                     if (all.size > 1) releases = all else watch.resume(item)
-                                }, Modifier.fillMaxWidth().aspectRatio(2f / 3f), RoundedCornerShape(5.dp), onLongClick = { menu = item }) {
+                                }, Modifier.fillMaxWidth().aspectRatio(2f / 3f), RoundedCornerShape(4.dp), onLongClick = { menu = item }) {
                                     LandscapeCard(remoteArt(item.poster) ?: item.art(), item.label, resumeStamp(item), item.ratio.toFloat())
                                 }
                                 Text(item.label.substringBefore(" · "), Modifier.padding(top = 6.dp), style = Type.label.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -314,7 +314,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                         // No release to resume from yet: the title opens, and the one picked starts at Stremio's spot.
                         items(fromStremio, key = { "stremio:${it.imdb}" }) { p ->
                             Column(Modifier.width(posterWidth())) {
-                                Tap({ onOpen(Title(p.imdb, p.kind, p.title, year = p.year)) }, Modifier.fillMaxWidth().aspectRatio(2f / 3f), RoundedCornerShape(5.dp)) {
+                                Tap({ onOpen(Title(p.imdb, p.kind, p.title, year = p.year)) }, Modifier.fillMaxWidth().aspectRatio(2f / 3f), RoundedCornerShape(4.dp)) {
                                     LandscapeCard(
                                         "https://images.metahub.space/poster/medium/${p.imdb}/img", p.title,
                                         listOfNotNull(p.ep?.let { "S${it.season}:E${it.episode}" }, "${p.progress.toInt()}%").joinToString("  ·  "),
@@ -384,7 +384,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         if (!online) {
             Text(
                 "You're offline — showing what was saved",
-                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 52.dp).background(Ink.surface2, RoundedCornerShape(7.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
+                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 52.dp).background(Ink.surface2, RoundedCornerShape(5.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
                 style = Type.meta.copy(color = Ink.text),
             )
         }
@@ -447,7 +447,7 @@ private fun GenreTile(name: String, kind: String, key: String, taken: MutableMap
     val art by produceState(taken[key], key) {
         if (value == null) value = claim(Meta.peekCatalog(kind, key) ?: Meta.catalog(kind, key))
     }
-    Tap(onOpen, Modifier.width(220.dp).aspectRatio(16f / 9f), RoundedCornerShape(8.dp)) {
+    Tap(onOpen, Modifier.width(220.dp).aspectRatio(16f / 9f), RoundedCornerShape(6.dp)) {
         Box(Modifier.fillMaxSize().background(Ink.surface)) {
             art?.let { Artwork(it, name, Modifier.fillMaxSize()) }
             Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.75f))))

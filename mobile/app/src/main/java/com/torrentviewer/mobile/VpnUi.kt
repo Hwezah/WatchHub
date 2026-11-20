@@ -94,7 +94,7 @@ fun VpnSettings(say: (String) -> Unit) {
         else {
             androidx.compose.foundation.text.BasicTextField(
                 pasted, { pasted = it },
-                Modifier.padding(top = 10.dp).fillMaxWidth().heightIn(min = 140.dp).frosted(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(12.dp),
+                Modifier.padding(top = 10.dp).fillMaxWidth().heightIn(min = 140.dp).frosted(androidx.compose.foundation.shape.RoundedCornerShape(9.dp)).padding(12.dp),
                 textStyle = Type.meta.copy(color = Ink.text), cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink.download),
             )
             Button("Use This Config", {

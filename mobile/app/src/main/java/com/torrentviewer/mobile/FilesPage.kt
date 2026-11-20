@@ -99,7 +99,7 @@ private fun kindOf(f: File): Kind = when (f.extension.lowercase()) {
 private enum class Act(val label: String) { MOVE("Move"), COPY("Copy"), RENAME("Rename"), DELETE("Delete") }
 
 /** The same rounded card the Downloads list uses, so the two pages read as one. */
-private val FILE_CARD = RoundedCornerShape(18.dp)
+private val FILE_CARD = RoundedCornerShape(14.dp)
 
 /** A folder's contents: folders first (A–Z, "Season 2" before "Season 10"), then files newest first; hidden and half-written ones left out. */
 private fun listEntries(dir: File): List<FileEntry> {
@@ -302,7 +302,7 @@ fun FilesScreen(watch: Watch) {
                     val here = i == parts.lastIndex
                     Text(
                         name,
-                        Modifier.weight(1f, fill = false).clip(RoundedCornerShape(6.dp)).clickable(enabled = !here) { trail = trail.take(i) }.padding(horizontal = 4.dp, vertical = 6.dp),
+                        Modifier.weight(1f, fill = false).clip(RoundedCornerShape(5.dp)).clickable(enabled = !here) { trail = trail.take(i) }.padding(horizontal = 4.dp, vertical = 6.dp),
                         style = Type.meta.copy(color = if (here) Ink.text else Ink.muted, fontSize = 16.sp, fontWeight = if (here) FontWeight.SemiBold else FontWeight.Normal),
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )

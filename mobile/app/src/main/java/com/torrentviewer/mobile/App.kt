@@ -743,8 +743,8 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
         // Just wider than the pages' content (16 dp in), clear of the screen's edges (the owner's choice).
         modifier.navigationBarsPadding().padding(start = 10.dp, end = 10.dp, bottom = 10.dp).fillMaxWidth()
             // A soft shadow, not a border, lifts it off the page in the light theme.
-            .then(if (Ink.isDark) Modifier else Modifier.shadow(10.dp, RoundedCornerShape(26.dp), ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f)))
-            .clip(RoundedCornerShape(26.dp))
+            .then(if (Ink.isDark) Modifier else Modifier.shadow(10.dp, RoundedCornerShape(20.dp), ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f)))
+            .clip(RoundedCornerShape(20.dp))
             // Dark: a shade lighter than the page. Light: a tint — near-white on the paper page, edged faintly —
             // so the bar stands apart in both (the owner's choice: light plays with tints as dark with shades).
             // Flat, no edge (the owner's choice). Light theme: a deeper paper than the page, so it reads apart from it.
@@ -758,7 +758,7 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                     ),
                 ) else Modifier.background(face).grain(),
             )
-            .border(1.dp, edge, RoundedCornerShape(26.dp))
+            .border(1.dp, edge, RoundedCornerShape(20.dp))
             // A little more room above, below and between the rows (the owner's choice).
             .padding(horizontal = 8.dp, vertical = 13.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -771,12 +771,12 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                 row.forEach { t ->
                     val on = t == tab
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        Tap({ onTab(t) }, shape = RoundedCornerShape(18.dp)) {
+                        Tap({ onTab(t) }, shape = RoundedCornerShape(14.dp)) {
                             Box(
                                 // The chosen tab's capsule in the accent the viewer picked.
                                 // Slim enough to stay clear of the line between the rows and the panel's top and bottom.
                                 // Its colour as chosen in Settings → Appearance (frosted grey by default), with the app's grain.
-                                Modifier.clip(RoundedCornerShape(15.dp)).background(if (on) NavActive.fill else Color.Transparent)
+                                Modifier.clip(RoundedCornerShape(11.dp)).background(if (on) NavActive.fill else Color.Transparent)
                                     .then(if (on && NavActive.style != "Accent") Modifier.grain() else Modifier)
                                     .padding(horizontal = 20.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center,
@@ -871,7 +871,7 @@ private fun Toast(watch: Watch) {
     Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 72.dp, start = EDGE, end = EDGE), contentAlignment = Alignment.BottomCenter) {
         AnimatedVisibility(note != null, enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut() + slideOutVertically { it / 2 }) {
             Row(
-                Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(8.dp)).background(Ink.surface2).padding(horizontal = 16.dp, vertical = 12.dp),
+                Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(6.dp)).background(Ink.surface2).padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start,
             ) {

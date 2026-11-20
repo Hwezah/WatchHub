@@ -106,12 +106,12 @@ fun TrailerSheet(youtubeId: String, title: String, onDismiss: () -> Unit) {
                     full -> Modifier.fillMaxSize()
                     // Tablet: centred, rounded all round, a little off the edges.
                     wide -> Modifier.padding(24.dp).widthIn(max = 760.dp).fillMaxWidth()
-                        .clip(RoundedCornerShape(22.dp)).background(Ink.surface)
+                        .clip(RoundedCornerShape(17.dp)).background(Ink.surface)
                         .clickable(remember { MutableInteractionSource() }, indication = null) {}
                         .padding(8.dp)
                     // Phone: flush with the bottom edge, top corners rounded; thin padding inside, kept above the gesture bar.
                     else -> Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)).background(Ink.surface)
+                        .clip(RoundedCornerShape(topStart = 17.dp, topEnd = 17.dp)).background(Ink.surface)
                         .clickable(remember { MutableInteractionSource() }, indication = null) {}
                         .navigationBarsPadding()
                         .padding(8.dp)
@@ -135,7 +135,7 @@ fun TrailerSheet(youtubeId: String, title: String, onDismiss: () -> Unit) {
                 // The same view in both layouts, so going full screen doesn't restart the video. Black from the first
                 // frame: the picture's space is there, spinner in it, while the trailer is found.
                 Box(
-                    (if (full) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp))).background(Color.Black),
+                    (if (full) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))).background(Color.Black),
                     contentAlignment = Alignment.TopEnd,
                 ) {
                     TrailerPlayer(youtubeId, ZOOMS[zoom].first)
