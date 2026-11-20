@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's pause mark: two solid, slim, tall bars with a wide gap between (Lucide's is two hollow boxes). Tinted where drawn. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7.6,4h1.3a0.6,0.6 0,0 1,0.6 0.6v14.8a0.6,0.6 0,0 1,-0.6 0.6h-1.3a0.6,0.6 0,0 1,-0.6 -0.6v-14.8a0.6,0.6 0,0 1,0.6 -0.6z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M15.1,4h1.3a0.6,0.6 0,0 1,0.6 0.6v14.8a0.6,0.6 0,0 1,-0.6 0.6h-1.3a0.6,0.6 0,0 1,-0.6 -0.6v-14.8a0.6,0.6 0,0 1,0.6 -0.6z" />
+</vector>

@@ -24,7 +24,7 @@ import java.security.MessageDigest
  * the same key and a higher versionCode.
  */
 object Updates {
-    private const val LATEST = "https://api.github.com/repos/sammyZi/Watchly/releases/latest"
+    private const val LATEST = "https://api.github.com/repos/$RELEASE_REPO/releases/latest"
     /** The version "Not now" was said to. */
     private const val SKIPPED = "update-skipped"
 
@@ -44,6 +44,78 @@ object Updates {
     val progress: StateFlow<Float?> = _progress
 
     private var job: Job? = null
+
+    private val _ready = MutableStateFlow<AppRelease?>(null)
+    /** A newer phone build downloaded in the background ([prepare]), waiting for "Install". */
+    val ready: StateFlow<AppRelease?> = _ready
+
+    private val _failed = MutableStateFlow<String?>(null)
+    /** The version whose background download failed, for the strip to offer a retry; it's tried again by itself too. */
+    val failed: StateFlow<String?> = _failed
+
+    private val _failReason = MutableStateFlow<String?>(null)
+    /** Why the last background download failed, in a few words, for the strip. */
+    val failReason: StateFlow<String?> = _failReason
+
+    /** Automatic retries made for a version ([prepare]): a few, a minute apart, then only the strip's Retry. */
+    private val retries = HashMap<String, Int>()
+    private const val AUTO_RETRIES = 3
+
+    /** The strip's ✕ was tapped: no build is offered again until the app is next opened (or asked for in Settings). */
+    private var dismissed = false
+
+    /** The phone strip's ✕: hidden until the app is next opened; a download under way carries on. */
+    fun dismiss() {
+        dismissed = true
+        _hidden.value = true
+    }
+
+    /**
+     * [r] downloaded in the background as soon as it's found, the phone strip's way, so "Install" is instant: [ready] once
+     * it's whole and checked. Quiet when it fails ([failed]): the strip offers a retry.
+     */
+    fun prepare(context: Context, r: AppRelease) {
+        if (_ready.value == r || job?.isActive == true) return
+        val app = context.applicationContext
+        _ready.value = null
+        _failed.value = null
+        _failReason.value = null
+        job = AppScope.launch {
+            _progress.value = 0f
+            try {
+                withContext(Dispatchers.IO) { fetch(r, file(app)) }
+                _ready.value = r
+                retries.remove(r.version)
+            } catch (e: CancellationException) {
+                file(app).delete()
+                throw e
+            } catch (e: Exception) {
+                file(app).delete()
+                _failed.value = r.version
+                _failReason.value = (if (e is java.io.FileNotFoundException) "the build was still being published" else e.message)?.take(80)
+                // Mostly a build caught mid-publish (each push replaces the files): tried again a minute later, a few times.
+                val n = (retries[r.version] ?: 0) + 1
+                retries[r.version] = n
+                // Its own job, not this one's child: the download job must end for [prepare] to start another.
+                if (n <= AUTO_RETRIES) AppScope.launch {
+                    kotlinx.coroutines.delay(60_000L)
+                    if (_failed.value == r.version) prepare(app, r)
+                }
+            } finally {
+                _progress.value = null
+            }
+        }
+    }
+
+    /** The build [prepare] downloaded, handed to Android's installer; downloaded again if the file has gone. */
+    fun installReady(context: Context) {
+        val app = context.applicationContext
+        val r = _ready.value ?: return
+        if (file(app).isFile) install(app, file(app)) else {
+            _ready.value = null
+            prepare(app, r)
+        }
+    }
 
     private fun file(context: Context) = File(context.filesDir, "update.apk")
 
@@ -82,6 +154,37 @@ object Updates {
         }
     }
 
+    private const val PHONE_LATEST = "https://api.github.com/repos/$RELEASE_REPO/releases/tags/phone-latest"
+    private var lastPhoneCheck = 0L
+
+    /**
+     * The phone's builds: every push builds a new "phone-latest", with a higher versionCode than the one
+     * installed. Asked at launch and whenever the app comes back to the front (at most every 5 minutes), so a
+     * new build is offered soon after it's out. The debug and release apps alike: each installs over itself.
+     */
+    fun checkPhoneBuild(versionCode: Int, prefix: String, force: Boolean = false, say: ((String) -> Unit)? = null) {
+        val now = System.currentTimeMillis()
+        // At most once a minute: often enough that a build finished a moment ago shows the next time the app comes back.
+        if (!force && now - lastPhoneCheck < 60_000L) return
+        lastPhoneCheck = now
+        AppScope.launch {
+            val abis = Build.SUPPORTED_ABIS.toList()
+            // GitHub's API first; when it won't answer (its hourly limit, a moment mid-publish), the version file
+            // published beside the APKs, which has no limit.
+            val build = runCatching { Net.get(PHONE_LATEST, 15_000, quiet = true, headers = mapOf("Accept" to "application/vnd.github+json")) }.getOrNull()
+                ?.let { parsePhoneBuild(it, abis, prefix) }
+                ?: runCatching { Net.get(PHONE_VERSION_URL, 15_000, quiet = true) }.getOrNull()?.let { parsePhoneVersion(it, abis, prefix) }
+            if (build == null) return@launch say?.invoke("Couldn't reach GitHub to check — try again in a minute") ?: Unit
+            val (code, found) = build
+            if (code <= versionCode) return@launch say?.invoke("You're on the latest build (${versionCode - 100})") ?: Unit
+            // Asked for from Settings: shown even if it was put off with "Not now" or the strip's ✕.
+            if (force) dismissed = false
+            _hidden.value = !force && (dismissed || Kv.global(SKIPPED) == found.version)
+            _release.value = found
+            say?.invoke("Build ${code - 100} is ready — see the update card")
+        }
+    }
+
     fun skip(version: String) {
         Kv.setGlobal(SKIPPED, version)
         _hidden.value = true
@@ -111,11 +214,37 @@ object Updates {
         }
     }
 
+    /**
+     * [fetchOnce], tried again a few times: a phone's lookup of github.com fails now and then for a moment (a network
+     * switching, a slow DNS) and the next try finds it. Said in plain words if it never does.
+     */
     private suspend fun fetch(r: AppRelease, to: File) {
+        var last: IOException? = null
+        repeat(3) { attempt ->
+            try {
+                return fetchOnce(r, to)
+            } catch (e: java.net.UnknownHostException) {
+                last = e
+            } catch (e: java.net.SocketTimeoutException) {
+                last = e
+            } catch (e: java.net.ConnectException) {
+                last = e
+            }
+            _progress.value = 0f
+            kotlinx.coroutines.delay(2_000L * (attempt + 1))
+        }
+        throw IOException(if (last is java.net.UnknownHostException) "Couldn't reach GitHub — check the connection (or a VPN / DNS blocker) and tap Update again" else "The download kept stalling — tap Update to try again", last)
+    }
+
+    private suspend fun fetchOnce(r: AppRelease, to: File) {
         val sha = MessageDigest.getInstance("SHA-256")
         var done = 0L
         // Timed out, not left blocked in a read: nothing could cancel that, and every retry found it still running.
-        URL(r.url).openConnection().apply { connectTimeout = 15_000; readTimeout = 30_000 }.getInputStream().use { input ->
+        val conn = URL(r.url).openConnection().apply { connectTimeout = 15_000; readTimeout = 30_000 }
+        // What the server says it is sending: a newer build may have replaced the file since the card read its size.
+        val length = conn.contentLengthLong
+        val expected = if (length > 0) length else r.size
+        conn.getInputStream().use { input ->
             to.outputStream().use { output ->
                 val buffer = ByteArray(64 * 1024)
                 while (true) {
@@ -125,13 +254,20 @@ object Updates {
                     output.write(buffer, 0, n)
                     sha.update(buffer, 0, n)
                     done += n
-                    if (r.size > 0) _progress.value = done.toFloat() / r.size
+                    if (expected > 0) _progress.value = done.toFloat() / expected
                 }
             }
         }
         val got = sha.digest().joinToString("") { "%02x".format(it) }
-        if (r.size > 0 && done != r.size || r.sha256 != null && got != r.sha256) throw IOException("The update didn't download properly. Try again.")
+        // Cut short: what arrived isn't all the server sent. The checksum is only the card's file's: when a newer build
+        // replaced it mid-way (every push publishes over "phone-latest"), the newer, whole file is taken instead.
+        val whole = expected <= 0 || done == expected
+        val same = r.size <= 0 || done == r.size
+        if (!whole || same && r.sha256 != null && got != r.sha256 || !looksLikeApk(to)) throw IOException("The update didn't download properly. Try again.")
     }
+
+    /** An APK is a zip: it starts with "PK". A web page or an error sent instead does not. */
+    private fun looksLikeApk(f: File): Boolean = runCatching { f.inputStream().use { val b = ByteArray(2); it.read(b) == 2 && b[0] == 'P'.code.toByte() && b[1] == 'K'.code.toByte() } }.getOrDefault(false)
 
     /** The first time, Android stops to ask for leave to install from this app, then carries on by itself. */
     private fun install(context: Context, apk: File) {

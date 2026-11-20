@@ -2,11 +2,21 @@ package com.torrentviewer.core
 
 import org.json.JSONObject
 
-/** Where this project's release files are. An update from anywhere else is not offered. */
-internal const val RELEASE_FILES = "https://github.com/sammyZi/Watchly/releases/download/"
+/** The GitHub repository this build's releases come from: this fork, not upstream Watchly. */
+internal const val RELEASE_REPO = "Hwezah/WatchHub"
 
-/** A published version, and the one file of it for this device. */
-data class AppRelease(val version: String, val url: String, val size: Long, val sha256: String?)
+/** Where this project's release files are. An update from anywhere else is not offered. */
+internal const val RELEASE_FILES = "https://github.com/$RELEASE_REPO/releases/download/"
+
+/** A published version, and the one file of it for this device; [summary]: what the build changed, in a line (phone builds). */
+data class AppRelease(val version: String, val url: String, val size: Long, val sha256: String?, val summary: String? = null)
+
+/**
+ * A phone build's one-line summary from its commit's subject, as the build publishes it: the area prefix ("Phone: ",
+ * "Core: ") dropped. Null when there's none.
+ */
+fun buildSummary(subject: String?): String? =
+    subject?.lineSequence()?.firstOrNull()?.trim()?.replace(Regex("""^(Phone|Core|CI)\s*:\s*""", RegexOption.IGNORE_CASE), "")?.takeIf { it.isNotBlank() }
 
 /** "v2.4.1" against "2.4.0", number by number: 2.10 is newer than 2.9. */
 fun isNewerVersion(latest: String, current: String): Boolean {
@@ -32,4 +42,46 @@ fun parseRelease(json: String, abis: List<String>, prefix: String): AppRelease? 
         // Only this project's own release files, and only with the checksum GitHub states for them.
         ?.takeIf { it.optString("browser_download_url").startsWith(RELEASE_FILES) && it.str("digest") != null }
         ?.let { AppRelease(version, it.getString("browser_download_url"), it.optLong("size"), it.str("digest")?.removePrefix("sha256:")) }
+}.getOrNull()
+
+/**
+ * The phone's rolling "phone-latest" pre-release, rebuilt on every push: its versionCode (stated in the notes
+ * as "versionCode N") and its [prefix] APK for the first of [abis], else the universal one. Null when the notes
+ * don't say, or no file of this project's (with GitHub's checksum) fits.
+ */
+fun parsePhoneBuild(json: String, abis: List<String>, prefix: String): Pair<Int, AppRelease>? = runCatching {
+    val o = JSONObject(json)
+    val code = Regex("""versionCode (\d+)""").find(o.optString("body"))?.groupValues?.get(1)?.toIntOrNull() ?: return null
+    val assets = o.getJSONArray("assets").objects().filter { it.optString("name").startsWith(prefix) }
+    (abis + "universal").firstNotNullOfOrNull { abi -> assets.find { it.optString("name").endsWith("-$abi.apk") } }
+        ?.takeIf { it.optString("browser_download_url").startsWith(RELEASE_FILES) && it.str("digest") != null }
+        ?.let {
+            // The notes' "Summary: …" line, when the build wrote one.
+            val summary = buildSummary(Regex("""^Summary: (.+)$""", RegexOption.MULTILINE).find(o.optString("body"))?.groupValues?.get(1))
+            code to AppRelease("build ${code - 100}", it.getString("browser_download_url"), it.optLong("size"), it.str("digest")?.removePrefix("sha256:"), summary)
+        }
+}.getOrNull()
+
+/**
+ * What the phone build publishes beside its APKs, as one of the release's files: its versionCode and each APK's
+ * size and checksum. Read when GitHub's API won't answer — it allows a network 60 calls an hour, and an app
+ * checking every time it comes back can run out — since release files have no such limit.
+ */
+const val PHONE_VERSION_FILE = "phone-version.json"
+
+/** [PHONE_VERSION_FILE]'s address on the rolling pre-release. */
+internal const val PHONE_VERSION_URL = "${RELEASE_FILES}phone-latest/$PHONE_VERSION_FILE"
+
+/**
+ * [PHONE_VERSION_FILE] read as [parsePhoneBuild] reads the release: the versionCode and the [prefix] APK for the
+ * first of [abis], else the universal one, only with its checksum. Null when the file doesn't say.
+ */
+fun parsePhoneVersion(json: String, abis: List<String>, prefix: String): Pair<Int, AppRelease>? = runCatching {
+    val o = JSONObject(json)
+    val code = o.getInt("versionCode")
+    val files = o.getJSONObject("files")
+    val name = (abis + "universal").map { "$prefix$it.apk" }.firstOrNull(files::has) ?: return null
+    val f = files.getJSONObject(name)
+    val sha = f.optString("sha256").ifEmpty { null } ?: return null
+    code to AppRelease("build ${code - 100}", "${RELEASE_FILES}phone-latest/$name", f.optLong("size"), sha, buildSummary(o.str("summary")))
 }.getOrNull()

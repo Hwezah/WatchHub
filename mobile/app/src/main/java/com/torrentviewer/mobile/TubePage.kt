@@ -1,0 +1,1121 @@
+package com.torrentviewer.mobile
+
+import android.content.Intent
+import android.content.pm.ActivityInfo
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.torrentviewer.core.Artwork
+import com.torrentviewer.core.Ink
+import com.torrentviewer.core.Lc
+import com.torrentviewer.core.Spinner
+import com.torrentviewer.core.TubeChannel
+import com.torrentviewer.core.TubeVideo
+import com.torrentviewer.core.Type
+import com.torrentviewer.core.Watch
+import com.torrentviewer.core.grain
+import com.torrentviewer.core.bytes
+import com.torrentviewer.core.clockText
+import com.torrentviewer.core.compactCount
+import com.torrentviewer.core.parseSubscriptions
+import com.torrentviewer.core.tubeLine
+import kotlinx.coroutines.delay
+import com.composables.icons.lucide.R as L
+
+/** The Tube tab's five parts, chosen along its top (the screenshot's bottom bar, moved up: the app has its own). */
+private enum class TubeSection(val label: String) { SUBS("Subscriptions"), HISTORY("History"), DOWNLOADS("Downloads"), YOU("Later") }
+
+/** A page opened over the sections: a search, a channel, or a playlist. Back closes it. */
+private sealed interface TubeRoute {
+    data object You : TubeRoute
+    data class Channel(val url: String, val name: String) : TubeRoute
+    data class Playlist(val url: String, val name: String) : TubeRoute
+}
+
+/** A video's thumbnail and a channel's picture: rounded, as the screenshot's cards. */
+private val THUMB = RoundedCornerShape(10.dp)
+
+/** One short message for a failed read: YouTube's own words are long and technical. */
+private fun tubeError(e: Throwable): String = when {
+    e is java.net.UnknownHostException || e is java.net.SocketTimeoutException -> "No connection to YouTube."
+    e.javaClass.simpleName.contains("ReCaptcha") -> "YouTube is asking to slow down. Try again in a minute."
+    e.javaClass.simpleName.contains("AgeRestricted") -> "YouTube needs a sign-in for this one (age restricted)."
+    e.javaClass.simpleName.contains("Unavailable") || e.javaClass.simpleName.contains("Private") -> "This video isn't available."
+    else -> "Couldn't reach YouTube."
+}
+
+/**
+ * The Tube tab: a YouTube client of our own (NewPipeExtractor underneath, see [Tube]). Home is the newest from
+ * subscriptions and then what's trending; Subscriptions, History, Downloads and You along the top; Search and
+ * Cast in the header. A video opens on its own page over everything, as YouTube's does.
+ */
+@Composable
+fun TubeScreen(watch: Watch) {
+    var section by rememberSaveable { mutableStateOf(TubeSection.SUBS) }
+    // The last search is where Tube opens (the owner's choice), until it's cleared with ✕ or Back.
+    var typed by rememberSaveable { mutableStateOf(Tube.recentSearches().firstOrNull().orEmpty()) }
+    var query by rememberSaveable { mutableStateOf(typed) }
+    LaunchedEffect(query) { if (query.isNotBlank()) Tube.remember(query) }
+    var hints by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(typed) {
+        if (typed.isBlank() || typed == query) { hints = emptyList(); return@LaunchedEffect }
+        delay(250)
+        hints = runCatching { Tube.suggestions(typed) }.getOrDefault(emptyList()).take(8)
+    }
+    val routes = remember { mutableStateListOf<TubeRoute>() }
+    /** The videos opened, the newest on top: Back from a related video returns to the one before. */
+    val playing = TubeSession.playing
+    var menu by remember { mutableStateOf<TubeVideo?>(null) }
+    var saving by remember { mutableStateOf<TubeVideo?>(null) }
+    /** Download pressed: this app's downloader or another app first, as everywhere else in the app. */
+    var downloading by remember { mutableStateOf<TubeVideo?>(null) }
+    val context = LocalContext.current
+    /** The video reopened at launch: it waits paused where it was left, rather than starting by itself. */
+    var resumedId by remember { mutableStateOf<String?>(null) }
+    // No History to dig through (the owner's choice): Tube opens on what was watched last, once per launch.
+    LaunchedEffect(Unit) {
+        YouTubeAccount.init(context)
+        if (!Tube.reopened && playing.isEmpty()) Tube.history.value.firstOrNull()?.let { last ->
+            resumedId = last.id
+            playing.add(last)
+        }
+        Tube.reopened = true
+    }
+
+    val open: (TubeVideo) -> Unit = { TubeSession.open(it) }
+    val openChannel: (String, String) -> Unit = { url, name ->
+        playing.clear()
+        routes.add(TubeRoute.Channel(url, name))
+    }
+
+    BackHandler(LocalShown.current && playing.isEmpty() && routes.isNotEmpty()) { routes.removeAt(routes.lastIndex) }
+    // Searching: Back clears the search and the feed comes back.
+    BackHandler(LocalShown.current && playing.isEmpty() && routes.isEmpty() && (query.isNotEmpty() || hints.isNotEmpty())) {
+        typed = ""; query = ""; hints = emptyList()
+    }
+    val playlist: (String, String) -> Unit = { url, name -> routes.add(TubeRoute.Playlist(url, name)) }
+
+    Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
+        when (val route = routes.lastOrNull()) {
+            null -> Column(Modifier.fillMaxSize()) {
+                TubeHeader(typed, { typed = it }, onSubmit = { query = typed.trim(); hints = emptyList() }, onLogin = { routes.add(TubeRoute.You) })
+                when {
+                    hints.isNotEmpty() -> LazyColumn(Modifier.fillMaxSize()) {
+                        items(hints) { h ->
+                            Row(Modifier.fillMaxWidth().clickable { typed = h; query = h; hints = emptyList() }.padding(horizontal = 22.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Lc(R.drawable.ic_search_thin, tint = Ink.faint, size = 18.dp)
+                                Text(h, Modifier.padding(start = 14.dp), style = Type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    query.isNotBlank() -> Paged(query, { Tube.search(query) }, "Nothing found for \"$query\".", open, { menu = it }, openChannel, playlist)
+                    else -> HomeFeed(open, { menu = it }, openChannel)
+                }
+            }
+            TubeRoute.You -> Column(Modifier.fillMaxSize()) {
+                BackBar("You", onBack = { routes.removeAt(routes.lastIndex) })
+                SectionRow(section) { section = it }
+                when (section) {
+                    TubeSection.SUBS -> SubsFeed(open, { menu = it }, openChannel)
+                    TubeSection.HISTORY -> HistoryList(open, { menu = it }, openChannel)
+                    TubeSection.DOWNLOADS -> TubeDownloads(watch)
+                    TubeSection.YOU -> YouPage(open, { menu = it }, openChannel)
+                }
+            }
+            is TubeRoute.Channel -> androidx.compose.runtime.key(route) {
+                ChannelPage(route.url, route.name, open, { menu = it }, onPlaylist = { url, name -> routes.add(TubeRoute.Playlist(url, name)) }, onBack = { routes.removeAt(routes.lastIndex) })
+            }
+            is TubeRoute.Playlist -> androidx.compose.runtime.key(route) {
+                PlaylistPage(route.url, route.name, open, { menu = it }, openChannel, onBack = { routes.removeAt(routes.lastIndex) })
+            }
+        }
+    }
+
+    playing.lastOrNull()?.let { v ->
+        androidx.compose.runtime.key(v.id + playing.size) {
+            WatchPage(
+                v,
+                // Dropped down: into the mini player (Settings → YouTube), or closed; a related video back to the one before.
+                onClose = {
+                    if (playing.size > 1) playing.removeAt(playing.lastIndex)
+                    else if (TubeSession.miniEnabled) TubeSession.minimize(v) else playing.clear()
+                },
+                onOpen = open,
+                onChannel = openChannel,
+                onDownload = { downloading = it },
+                resumed = v.id == resumedId && playing.size == 1,
+                onMenu = { menu = it },
+            )
+        }
+    }
+
+    // Over the video page (its own window) when one is open, so these sheets show above it rather than behind.
+    val over = playing.isNotEmpty()
+    menu?.let { v -> Above(over, { menu = null }) {
+        VideoMenu(
+            v,
+            onPlay = { open(v) },
+            onDownload = { downloading = v },
+            onChannel = { v.channelUrl?.let { url -> openChannel(url, v.channel) } },
+            say = { watch.notes.tryEmit(it) },
+            onDismiss = { menu = null },
+        )
+    } }
+
+    downloading?.let { v ->
+        DownloadChoice(
+            v.title,
+            onInternal = { saving = v },
+            onExternal = { to ->
+                // Another app (Grabber, Snaptube, 1DM…) is handed the video's YouTube link and does the rest.
+                val handed = ExternalDownloaders.hand(context, ExternalDownloaders.shareOf(v.url, v.title), to, "Send link to", v.url)
+                ExternalDownloaders.note(handed, many = false)?.let { watch.notes.tryEmit(it) }
+                if (handed != Handed.Failed) downloading = null
+            },
+            onDismiss = { downloading = null },
+            internalNote = "Pick a height, or MP3, M4A, Opus, FLAC or WAV. Saved in Grabber!/Video/YouTube or Grabber!/Audio.",
+            externalNote = "Grabber, Snaptube, 1DM or another app gets the video's link and saves it.",
+            probe = ExternalDownloaders.sendProbe(),
+        )
+    }
+    saving?.let { v -> Above(over, { saving = null }) { SaveSheet(v.url, v.title, v.thumb, tube = v, onDone = { saving = null }) } }
+}
+
+/**
+ * The Tube tab's only bar (the owner's choice: very basic): a thin search mark, a roomy, quiet input, and a thin
+ * sign-in mark that opens You — subscriptions, history, downloads, Watch Later. No account: everything is kept here.
+ */
+@Composable
+private fun TubeHeader(typed: String, onTyped: (String) -> Unit, onSubmit: () -> Unit, onLogin: () -> Unit) {
+    // One container for the whole bar, barely rounded; the input has no box of its own, only its green cursor.
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp)
+            .height(58.dp).frosted(RoundedCornerShape(14.dp)).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Tap(onSubmit, shape = CircleShape) { Lc(R.drawable.ic_search_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp) }
+        BareInput(typed, onTyped, "Search YouTube", Modifier.weight(1f).padding(horizontal = 6.dp), onSubmit = onSubmit)
+        if (typed.isNotEmpty()) Tap({ onTyped("") }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 18.dp) }
+        // Signed in: the account's picture; else the thin sign-in mark. Either opens You.
+        val account by YouTubeAccount.account.collectAsState()
+        val photo = account?.photo
+        Tap(onLogin, shape = CircleShape) {
+            if (photo != null) Box(Modifier.padding(8.dp).size(30.dp).clip(CircleShape)) { Artwork(photo, account?.name ?: "", Modifier.fillMaxSize()) }
+            else Lc(R.drawable.ic_user_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp)
+        }
+    }
+}
+
+/** The You page's parts, spread across the width and separated by bars, the chosen one marked (the app's BarChoices). */
+@Composable
+private fun SectionRow(on: TubeSection, onPick: (TubeSection) -> Unit) {
+    BarChoices(TubeSection.entries.map { it.label }, on.ordinal, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp)) { onPick(TubeSection.entries[it]) }
+}
+
+/**
+ * A list read from YouTube: a spinner while it comes, a short message and ↻ if it fails, [empty] when there's
+ * nothing. [load] runs again when [key] changes or ↻ is pressed.
+ */
+@Composable
+private fun Loaded(key: Any, load: suspend (fresh: Boolean) -> List<TubeVideo>, empty: String, header: LazyListScope.() -> Unit = {}, row: @Composable (TubeVideo) -> Unit) {
+    var videos by remember(key) { mutableStateOf<List<TubeVideo>?>(null) }
+    var error by remember(key) { mutableStateOf<String?>(null) }
+    var round by remember(key) { mutableIntStateOf(0) }
+    LaunchedEffect(key, round) {
+        error = null
+        runCatching { load(round > 0) }.onSuccess { videos = it }.onFailure { error = tubeError(it) }
+    }
+    val list = videos
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 190.dp)) {
+        header()
+        when {
+            error != null && list == null -> item { Retry(error!!) { round++ } }
+            list == null -> item { Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) { Spinner(size = 40.dp) } }
+            list.isEmpty() -> item { EmptyNote(empty, Modifier.padding(vertical = 16.dp, horizontal = 4.dp)) }
+            else -> {
+                items(list, key = { it.id }) { row(it) }
+                item { Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) { Tap({ round++ }, shape = CircleShape) { Lc(L.drawable.lucide_ic_refresh_cw, Modifier.padding(12.dp), tint = Ink.muted, size = 20.dp) } } }
+            }
+        }
+    }
+}
+
+/** A failed read: what went wrong in one line, and ↻. */
+@Composable
+private fun Retry(message: String, onRetry: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(message, Modifier.weight(1f), style = Type.body.copy(color = Ink.muted), maxLines = 2)
+        Tap(onRetry, shape = CircleShape) { Lc(L.drawable.lucide_ic_refresh_cw, Modifier.padding(10.dp), tint = Ink.text, size = 20.dp) }
+    }
+}
+
+@Composable
+private fun HomeFeed(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit) {
+    val subs by Tube.subscriptions.collectAsState()
+    val signedIn by YouTubeAccount.signedIn.collectAsState()
+    val problem by YouTubeAccount.problem.collectAsState()
+    // Shown for a minute, then gone (the owner's choice); a new problem shows afresh.
+    var shownProblem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(problem) {
+        shownProblem = problem
+        if (problem != null) { delay(60_000); shownProblem = null }
+    }
+    val centred = isPortraitPhone()
+    Loaded(subs.size to signedIn, { Tube.home(it) }, "Nothing from YouTube right now.", header = {
+        // Signed in, but the account's own feed didn't come: said (with why), not hidden behind other videos.
+        shownProblem?.let { p ->
+            item {
+                Text(
+                    p, Modifier.fillMaxWidth().padding(bottom = 12.dp), style = Type.meta.copy(color = Ink.danger), maxLines = 3,
+                    textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                )
+            }
+        }
+    }) { VideoCard(it, onOpen, onMenu, onChannel) }
+}
+
+/** The subscribed channels' pictures in a row, then their newest videos. */
+@Composable
+private fun SubsFeed(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit) {
+    val subs by Tube.subscriptions.collectAsState()
+    if (subs.isEmpty()) {
+        // Centred on the page (the owner's choice).
+        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("No subscriptions yet. Turn on Subscribed on a channel.", style = Type.body.copy(color = Ink.faint), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+        return
+    }
+    Loaded(subs.map { it.url }, { Tube.subscriptionFeed(it) }, "No new videos from your channels.", header = {
+        item {
+            LazyRow(Modifier.fillMaxWidth().padding(bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                items(subs, key = { it.url }) { ch ->
+                    Column(Modifier.width(64.dp).clickable { onChannel(ch.url, ch.name) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                        ChannelAvatar(ch.avatar, ch.name, 54.dp)
+                        Text(ch.name, Modifier.padding(top = 4.dp), style = Type.meta.copy(fontSize = 11.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }) { VideoCard(it, onOpen, onMenu, onChannel) }
+}
+
+@Composable
+private fun HistoryList(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit) {
+    // Signed in: the account's own watch history on YouTube, as YouTube keeps it.
+    val signedIn by YouTubeAccount.signedIn.collectAsState()
+    if (signedIn) {
+        Loaded("account-history", { YouTubeAccount.noted { YouTubeAccount.watchHistory() } }, "Nothing in your YouTube history yet.") { SmallVideoRow(it, onOpen, onMenu) }
+        return
+    }
+    val history by Tube.history.collectAsState()
+    var clearing by remember { mutableStateOf(false) }
+    if (history.isEmpty()) {
+        EmptyNote("Videos you watch show up here.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 190.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${history.size} watched", Modifier.weight(1f), style = Type.meta)
+                Tap({ clearing = true }, shape = RoundedCornerShape(5.dp)) { Text("Clear All", Modifier.padding(8.dp), style = Type.label.copy(color = Ink.accent)) }
+            }
+        }
+        items(history, key = { it.id }) { SmallVideoRow(it, onOpen, onMenu) }
+    }
+    if (clearing) Sheet(
+        title = "Clear your Tube history?",
+        options = listOf(Option(true, "Clear History", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep It", icon = L.drawable.lucide_ic_check)),
+        selected = null,
+        onPick = { if (it) Tube.clearHistory(); clearing = false },
+        onDismiss = { clearing = false },
+    )
+}
+
+/** YouTube downloads: those still coming, and those saved in Grabber!/Video/YouTube and Grabber!/Audio. */
+@Composable
+private fun TubeDownloads(watch: Watch) {
+    val live by Downloads.live.collectAsState()
+    val finished by Downloads.finished.collectAsState()
+    val tube = setOf(Downloads.TUBE_KIND, Downloads.TUBE_AUDIO)
+    val media = setOf(Downloads.MEDIA_KIND, Downloads.MEDIA_AUDIO)
+    // Tube's own, and those yt-dlp saved from YouTube (MP3 and the other formats).
+    val coming = live.filter { it.job.kind in tube || (it.job.kind in media && "youtube.com" in it.job.uri) }
+    val saved = finished.filter { it.kind in tube || (it.kind in media && it.path.contains("/YouTube/") || it.kind == Downloads.MEDIA_AUDIO && it.poster?.contains("ytimg") == true) }.sortedByDescending { it.at }
+    var deleting by remember { mutableStateOf<Finished?>(null) }
+    if (coming.isEmpty() && saved.isEmpty()) {
+        EmptyNote("Videos you download show up here, and in Files under Grabber!/Video/YouTube.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 190.dp)) {
+        items(coming, key = { "live-" + it.job.uri }) { row ->
+            val f = row.files.firstOrNull()
+            val pct = if (f != null && f.size > 0) (f.done * 100 / f.size).toInt() else 0
+            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Thumb(row.job.poster, row.job.label, Modifier.width(132.dp))
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text(row.job.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(row.error ?: "${row.state.label}  ·  $pct%  ·  ${row.job.quality ?: ""}", Modifier.padding(top = 3.dp), style = Type.meta.copy(fontSize = 12.sp), maxLines = 1)
+                }
+                Tap({ Downloads.cancel(row.job.uri) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
+            }
+        }
+        items(saved, key = { "done-" + it.path }) { f ->
+            Tap({ watch.playFile(f.path, f.label, null, f.poster) }, Modifier.fillMaxWidth().padding(bottom = 12.dp), onLongClick = { deleting = f }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Thumb(f.poster, f.label, Modifier.width(132.dp))
+                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                        Text(f.label, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("${if (f.kind == Downloads.TUBE_AUDIO || f.kind == Downloads.MEDIA_AUDIO) "Audio" else "Video"}  ·  ${bytes(f.size)}", Modifier.padding(top = 3.dp), style = Type.meta.copy(fontSize = 12.sp))
+                    }
+                    Tap({ deleting = f }, shape = CircleShape) { Lc(L.drawable.lucide_ic_trash_2, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
+                }
+            }
+        }
+    }
+    deleting?.let { f ->
+        Sheet(
+            title = "Delete ${f.label}?",
+            options = listOf(Option(true, "Delete from this phone", bytes(f.size), icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep It", icon = L.drawable.lucide_ic_check)),
+            selected = null,
+            onPick = { if (it) Downloads.delete(f); deleting = null },
+            onDismiss = { deleting = null },
+        )
+    }
+}
+
+/** You: Watch Later, the channels subscribed to (to open or leave), and bringing subscriptions over. */
+@Composable
+private fun YouPage(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit) {
+    val later by Tube.later.collectAsState()
+    val subs by Tube.subscriptions.collectAsState()
+    val history by Tube.history.collectAsState()
+    var leaving by remember { mutableStateOf<TubeChannel?>(null) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 190.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Count(history.size, "Watched")
+                Count(later.size, "Watch Later")
+                Count(subs.size, "Subscriptions")
+            }
+        }
+        item { Text("Watch Later", Modifier.padding(bottom = 10.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) }
+        if (later.isEmpty()) item { EmptyNote("Save videos from their ⋯ menu to watch them later.", Modifier.padding(bottom = 18.dp)) }
+        items(later, key = { "later-" + it.id }) { SmallVideoRow(it, onOpen, onMenu) }
+        item {
+            Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Subscriptions", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
+            }
+        }
+        items(subs, key = { "sub-" + it.url }) { ch ->
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onChannel(ch.url, ch.name) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                ChannelAvatar(ch.avatar, ch.name, 40.dp)
+                Text(ch.name, Modifier.weight(1f).padding(horizontal = 12.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Tap({ leaving = ch }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(10.dp), tint = Ink.muted, size = 18.dp) }
+            }
+        }
+    }
+    leaving?.let { ch ->
+        Sheet(
+            title = "Unsubscribe from ${ch.name}?",
+            options = listOf(Option(true, "Unsubscribe", icon = L.drawable.lucide_ic_x, iconTint = Ink.danger), Option(false, "Stay Subscribed", icon = L.drawable.lucide_ic_check)),
+            selected = null,
+            onPick = { if (it) Tube.toggleSubscription(ch); leaving = null },
+            onDismiss = { leaving = null },
+        )
+    }
+}
+
+@Composable
+private fun Count(n: Int, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("$n", style = Type.title.copy(fontWeight = FontWeight.Bold, fontSize = 22.sp))
+        Text(label, style = Type.meta.copy(fontSize = 12.sp))
+    }
+}
+
+/**
+ * Subscriptions brought over: Google Takeout's subscriptions.csv (YouTube and YouTube Music → subscriptions) or a
+ * NewPipe export (.json), picked from the phone's files.
+ */
+@Composable
+private fun ImportButton(modifier: Modifier = Modifier, centred: Boolean = false) {
+    val context = LocalContext.current
+    var said by remember { mutableStateOf<String?>(null) }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val text = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } }.getOrNull().orEmpty()
+        val found = parseSubscriptions(text)
+        said = if (found.isEmpty()) "No channels in that file. Pick subscriptions.csv from Google Takeout, or a NewPipe export."
+        else Tube.importSubscriptions(found).let { n -> if (n == 0) "All ${found.size} channels were already here." else "Added $n channels." }
+    }
+    Column(modifier, horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
+        Button("Import Subscriptions", { pick.launch(arrayOf("text/*", "application/json", "application/octet-stream", "*/*")) }, icon = L.drawable.lucide_ic_upload, compact = true)
+        val align = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
+        said?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.meta, textAlign = align) }
+        Text("From Google Takeout (subscriptions.csv) or a NewPipe export.", Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), textAlign = align)
+    }
+}
+
+/* ---------------------------------------------------------------------- cards */
+
+/** A channel's round picture, or its first letter on a tinted disc. */
+@Composable
+private fun ChannelAvatar(url: String?, name: String, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size).clip(CircleShape).background(Ink.accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+        Text(name.take(1).uppercase(), style = Type.label.copy(color = Ink.accent, fontWeight = FontWeight.Bold))
+        if (url != null) Artwork(url, name, Modifier.fillMaxSize())
+    }
+}
+
+/** A thumbnail, 16:9 and rounded, with its length (or LIVE) in the corner. */
+@Composable
+private fun Thumb(url: String?, name: String, modifier: Modifier = Modifier, seconds: Long = 0, live: Boolean = false, corner: androidx.compose.ui.unit.Dp = 8.dp) {
+    Box(modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(corner)).background(Ink.surface)) {
+        Artwork(url, name, Modifier.fillMaxSize())
+        val tag = if (live) "LIVE" else clockText(seconds)
+        if (tag.isNotEmpty()) Text(
+            tag,
+            Modifier.align(Alignment.BottomEnd).padding(8.dp).background(if (live) Color(0xFFCC0000) else Color.Black.copy(alpha = 0.78f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+            style = Type.meta.copy(color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp),
+        )
+    }
+}
+
+/** The feed's card, as the screenshot: a full-width thumbnail, then the channel's picture, two lines of title and ⋯. */
+@Composable
+private fun VideoCard(v: TubeVideo, onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 22.dp)) {
+        Tap({ onOpen(v) }, Modifier.fillMaxWidth(), THUMB, onLongClick = { onMenu(v) }) { Thumb(v.thumb, v.title, Modifier.fillMaxWidth(), v.seconds, v.live, corner = 10.dp) }
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+            Box(Modifier.padding(start = 4.dp, end = 12.dp).clip(CircleShape).clickable { v.channelUrl?.let { onChannel(it, v.channel) } }) { ChannelAvatar(v.avatar, v.channel, 40.dp) }
+            Column(Modifier.weight(1f).clickable(remember { MutableInteractionSource() }, indication = null) { onOpen(v) }) {
+                Text(v.title, style = Type.title.copy(fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 22.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(tubeLine(v), Modifier.padding(top = 4.dp), style = Type.meta.copy(fontSize = 13.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Tap({ onMenu(v) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(6.dp), tint = Ink.text, size = 20.dp) }
+        }
+    }
+}
+
+/** A smaller row (History, Watch Later, Up Next): thumbnail on the left, words beside it. */
+@Composable
+private fun SmallVideoRow(v: TubeVideo, onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit) {
+    Tap({ onOpen(v) }, Modifier.fillMaxWidth().padding(bottom = 12.dp), RoundedCornerShape(8.dp), onLongClick = { onMenu(v) }) {
+        Row {
+            Thumb(v.thumb, v.title, Modifier.width(160.dp), v.seconds, v.live)
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(v.title, style = Type.label.copy(fontWeight = FontWeight.SemiBold, lineHeight = 19.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(tubeLine(v), Modifier.padding(top = 4.dp), style = Type.meta.copy(fontSize = 12.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Tap({ onMenu(v) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(4.dp), tint = Ink.muted, size = 18.dp) }
+        }
+    }
+}
+
+/** A channel or playlist among search results. */
+@Composable
+private fun LinkRow(link: TubeLink, onOpen: () -> Unit) {
+    Tap(onOpen, Modifier.fillMaxWidth().padding(bottom = 14.dp), RoundedCornerShape(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (link.channel) Box(Modifier.width(160.dp), contentAlignment = Alignment.Center) { ChannelAvatar(link.thumb, link.name, 76.dp) }
+            else Box(Modifier.width(160.dp)) {
+                Thumb(link.thumb, link.name, Modifier.fillMaxWidth())
+                Lc(L.drawable.lucide_ic_list_video, Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(4.dp)).padding(4.dp), tint = Color.White, size = 16.dp)
+            }
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(link.name, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(listOf(if (link.channel) "Channel" else "Playlist", link.line).filter { it.isNotBlank() }.joinToString(" • "), Modifier.padding(top = 4.dp), style = Type.meta.copy(fontSize = 12.sp), maxLines = 1)
+            }
+        }
+    }
+}
+
+/** A page's top: ← and its name. */
+@Composable
+private fun BackBar(title: String, onBack: () -> Unit, trailing: @Composable () -> Unit = {}) {
+    // The app's titled-page top: centred on an upright phone, as every other page with a back button.
+    BackTitle(title, onBack, Modifier.statusBarsPadding().padding(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 8.dp), trailing = null)
+}
+
+/**
+ * Pages of videos (and channels and playlists) that keep coming as the list nears its end: a search, a channel's
+ * tab, a playlist. [first] reads page one.
+ */
+@Composable
+private fun Paged(
+    key: Any,
+    first: suspend () -> TubePage,
+    empty: String,
+    onOpen: (TubeVideo) -> Unit,
+    onMenu: (TubeVideo) -> Unit,
+    onChannel: (String, String) -> Unit,
+    onPlaylist: (String, String) -> Unit,
+    small: Boolean = false,
+    header: LazyListScope.() -> Unit = {},
+) {
+    val videos = remember(key) { mutableStateListOf<TubeVideo>() }
+    val links = remember(key) { mutableStateListOf<TubeLink>() }
+    var next by remember(key) { mutableStateOf<(suspend () -> TubePage)?>(null) }
+    var loading by remember(key) { mutableStateOf(true) }
+    var error by remember(key) { mutableStateOf<String?>(null) }
+    var round by remember(key) { mutableIntStateOf(0) }
+    LaunchedEffect(key, round) {
+        loading = true
+        error = null
+        runCatching { first() }.onSuccess {
+            videos.clear(); links.clear()
+            videos += it.videos; links += it.links; next = it.next
+        }.onFailure { error = tubeError(it) }
+        loading = false
+    }
+    val state = rememberLazyListState()
+    val nearEnd by remember(key) { derivedStateOf { state.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= state.layoutInfo.totalItemsCount - 4 } ?: false } }
+    LaunchedEffect(nearEnd, next, loading) {
+        val more = next ?: return@LaunchedEffect
+        if (!nearEnd || loading) return@LaunchedEffect
+        loading = true
+        runCatching { more() }.onSuccess { page ->
+            val seen = videos.map { it.id }.toSet()
+            videos += page.videos.filter { it.id !in seen }
+            links += page.links
+            next = page.next
+        }.onFailure { next = null }
+        loading = false
+    }
+    LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 190.dp)) {
+        header()
+        items(links, key = { "link-" + it.url }) { l -> LinkRow(l) { if (l.channel) onChannel(l.url, l.name) else onPlaylist(l.url, l.name) } }
+        items(videos, key = { it.id }) { if (small) SmallVideoRow(it, onOpen, onMenu) else VideoCard(it, onOpen, onMenu, onChannel) }
+        when {
+            error != null -> item { Retry(error!!) { round++ } }
+            loading -> item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { Spinner(size = 34.dp) } }
+            videos.isEmpty() && links.isEmpty() -> item { EmptyNote(empty, Modifier.padding(vertical = 12.dp)) }
+        }
+    }
+}
+
+/** A channel: banner, picture, name, subscribers, Subscribe; its Videos and Playlists. */
+@Composable
+private fun ChannelPage(url: String, name: String, onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onPlaylist: (String, String) -> Unit, onBack: () -> Unit) {
+    var page by remember(url) { mutableStateOf<TubeChannelPage?>(null) }
+    var error by remember(url) { mutableStateOf<String?>(null) }
+    var round by remember(url) { mutableIntStateOf(0) }
+    var tab by rememberSaveable(url) { mutableIntStateOf(0) }
+    val subs by Tube.subscriptions.collectAsState()
+    LaunchedEffect(url, round) {
+        error = null
+        runCatching { Tube.channel(url) }.onSuccess { page = it }.onFailure { error = tubeError(it) }
+    }
+    Column(Modifier.fillMaxSize()) {
+        BackBar(page?.channel?.name ?: name, onBack)
+        val p = page
+        when {
+            p == null && error != null -> Box(Modifier.padding(horizontal = 16.dp)) { Retry(error!!) { round++ } }
+            p == null -> Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) { Spinner(size = 40.dp) }
+            else -> {
+                val handler = if (tab == 1) p.playlists else p.videos
+                val header: LazyListScope.() -> Unit = {
+                    item {
+                        Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                            p.banner?.let { Artwork(it, p.channel.name, Modifier.fillMaxWidth().aspectRatio(5f).clip(RoundedCornerShape(9.dp))) }
+                            Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                ChannelAvatar(p.channel.avatar, p.channel.name, 64.dp)
+                                Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                                    Text(p.channel.name, style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    if (p.subscribers >= 0) Text("${compactCount(p.subscribers)} subscribers", Modifier.padding(top = 2.dp), style = Type.meta)
+                                }
+                            }
+                            SubscribeButton(p.channel, subs.isNotEmpty() && Tube.subscribed(p.channel.url), Modifier.padding(top = 14.dp).fillMaxWidth())
+                            if (p.playlists != null) Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                                listOf("Videos", "Playlists").forEachIndexed { i, label ->
+                                    Row(Modifier.clip(RoundedCornerShape(5.dp)).clickable { tab = i }.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(label, style = Type.title.copy(fontWeight = if (tab == i) FontWeight.Bold else FontWeight.Medium, color = if (tab == i) Ink.text else Ink.muted))
+                                        if (tab == i) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.accent))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (handler == null) LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
+                    header()
+                    item { EmptyNote("This channel has nothing here.") }
+                } else Paged(
+                    url + tab, { Tube.channelTab(handler, p.channel) }, "This channel has nothing here.", onOpen, onMenu,
+                    onChannel = { _, _ -> }, onPlaylist = onPlaylist, small = true, header = header,
+                )
+            }
+        }
+    }
+}
+
+/** Subscribed, as a switch (the owner's choice over a Subscribe button). */
+@Composable
+private fun SubscribeButton(ch: TubeChannel, on: Boolean, modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.CenterEnd) { LabeledToggle("Subscribed", on, { Tube.toggleSubscription(ch) }) }
+}
+
+@Composable
+private fun PlaylistPage(url: String, name: String, onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit, onBack: () -> Unit) {
+    var title by remember(url) { mutableStateOf(name) }
+    Column(Modifier.fillMaxSize()) {
+        BackBar(title, onBack)
+        Paged(url, { Tube.playlist(url).let { (n, page) -> if (n.isNotBlank()) title = n; page } }, "This playlist is empty.", onOpen, onMenu, onChannel, onPlaylist = { _, _ -> }, small = true)
+    }
+}
+
+/* ---------------------------------------------------------------------- saving */
+
+/* ---------------------------------------------------------------------- the video page */
+
+/**
+ * A video's page, over everything (its own window, so full screen covers the tab bar): the player on top, then the
+ * title, numbers, actions, the channel with Subscribe, the description and Up Next. Full screen turns the phone
+ * sideways without reloading the video.
+ */
+@Composable
+private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo) -> Unit, onChannel: (String, String) -> Unit, onDownload: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, resumed: Boolean = false) {
+    var details by remember(start.id) { mutableStateOf<TubeDetails?>(null) }
+    var error by remember(start.id) { mutableStateOf<String?>(null) }
+    var round by remember(start.id) { mutableIntStateOf(0) }
+    var full by remember { mutableStateOf(false) }
+    var quality by remember(start.id) { mutableStateOf<TubeQuality?>(null) }
+    var choosing by remember { mutableStateOf(false) }
+    /** The player's own small menu: quality and speed, nothing else (no YouTube controls). */
+    var settingsOpen by remember { mutableStateOf(false) }
+    var speeding by remember { mutableStateOf(false) }
+    var speed by remember { mutableStateOf(1f) }
+    var more by remember { mutableStateOf(false) }
+    val subs by Tube.subscriptions.collectAsState()
+    val later by Tube.later.collectAsState()
+    val activity = LocalActivity.current
+    val context = LocalContext.current
+
+    // Up Next without an end (the owner's choice): near its foot, the videos related to the last one are added,
+    // and so on — as YouTube's own list keeps going.
+    val upNext = remember(start.id) { mutableStateListOf<TubeVideo>() }
+    var moreLoading by remember(start.id) { mutableStateOf(false) }
+    val watchList = rememberLazyListState()
+    val nearEnd by remember(start.id) { derivedStateOf { watchList.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= watchList.layoutInfo.totalItemsCount - 4 } ?: false } }
+    LaunchedEffect(nearEnd, upNext.size) {
+        if (!nearEnd || moreLoading || upNext.isEmpty()) return@LaunchedEffect
+        moreLoading = true
+        val seen = upNext.map { it.id }.toSet() + start.id
+        // From the last few, the first whose related videos bring something new.
+        for (v in upNext.takeLast(3).reversed()) {
+            val fresh = runCatching { Tube.details(v.id).related }.getOrDefault(emptyList()).filter { it.id !in seen }.distinctBy { it.id }
+            if (fresh.isNotEmpty()) { upNext += fresh; break }
+        }
+        moreLoading = false
+    }
+    LaunchedEffect(start.id, round) {
+        error = null
+        runCatching { Tube.details(start.id) }.onSuccess { d ->
+            upNext.clear(); upNext += d.related.filter { it.id != start.id }
+            details = d
+            // 720p or the nearest below: sharp on a phone, half 1080p's data. Live: its HLS.
+            quality = d.qualities.firstOrNull { it.hls } ?: d.qualities.filter { it.height in 1..720 }.maxByOrNull { it.height } ?: d.qualities.firstOrNull()
+            Tube.watched(d.video)
+        }.onFailure { error = tubeError(it) }
+    }
+
+    // The phone turned sideways is full screen too, with its controls (as YouTube does); turned back, it isn't.
+    val landscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val showFull = full || landscape
+    /** Full screen left while the phone is sideways: held upright until it's turned back, then free again. */
+    var exitLock by remember { mutableStateOf(false) }
+    LaunchedEffect(landscape) { if (!landscape) exitLock = false }
+    val leaveFull = { full = false; if (landscape) exitLock = true }
+    Dialog(onClose, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+        DisposableEffect(full, exitLock, showFull) {
+            activity?.requestedOrientation = when {
+                full -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                exitLock -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                // Free to turn: sideways goes full screen by itself.
+                else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+            window?.let { w ->
+                WindowCompat.setDecorFitsSystemWindows(w, false)
+                // The window re-fits the screen as it turns, so nothing of the page sits past its edges.
+                w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                val c = WindowInsetsControllerCompat(w, w.decorView)
+                c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (showFull) c.hide(WindowInsetsCompat.Type.systemBars()) else c.show(WindowInsetsCompat.Type.systemBars())
+                c.isAppearanceLightStatusBars = false
+            }
+            onDispose { }
+        }
+        DisposableEffect(Unit) { onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } }
+        BackHandler { if (showFull) leaveFull() else onClose() }
+
+        val d = details
+        Column(Modifier.fillMaxSize().background(if (showFull) Color.Black else Ink.bg).then(if (showFull) Modifier else Modifier.grain())) {
+            Box(
+                (if (showFull) Modifier.fillMaxSize() else Modifier.statusBarsPadding().fillMaxWidth().aspectRatio(16f / 9f)).background(Color.Black),
+                contentAlignment = Alignment.Center,
+            ) {
+                val q = quality
+                when {
+                    q != null && d != null -> TubePlayer(d.video, q, speed, autoplay = !resumed, full = showFull, onEnded = { d.related.firstOrNull()?.let(onOpen) })
+                    error != null -> Artwork(start.thumb, start.title, Modifier.fillMaxSize())
+                    else -> {
+                        Artwork(start.thumb, start.title, Modifier.fillMaxSize())
+                        Spinner(size = 40.dp)
+                    }
+                }
+                // Over the picture: back (or out of full screen), quality, full screen.
+                // Full screen: kept inside the screen's safe area (clear of the cutout and the hidden bars' edges).
+                Row(Modifier.align(Alignment.TopStart).fillMaxWidth().then(if (showFull) Modifier.safeDrawingPadding() else Modifier).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Tap({ if (showFull) leaveFull() else onClose() }, shape = CircleShape) {
+                        Lc(if (showFull) L.drawable.lucide_ic_arrow_left else L.drawable.lucide_ic_chevron_down, Modifier.padding(10.dp), tint = Color.White, size = 22.dp)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    // One quiet mark for the player's menu (quality, speed) instead of words on the picture.
+                    if (d != null) Tap({ settingsOpen = true }, shape = CircleShape) {
+                        Lc(L.drawable.lucide_ic_settings, Modifier.padding(10.dp), tint = Color.White, size = 20.dp)
+                    }
+                    Tap({ if (showFull) leaveFull() else full = true }, shape = CircleShape) {
+                        Lc(if (showFull) L.drawable.lucide_ic_minimize else L.drawable.lucide_ic_maximize, Modifier.padding(10.dp), tint = Color.White, size = 20.dp)
+                    }
+                }
+            }
+            if (!showFull) {
+                val v = d?.video ?: start
+                LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), state = watchList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 40.dp)) {
+                    item {
+                        Column(Modifier.fillMaxWidth().clickable(remember { MutableInteractionSource() }, indication = null) { more = !more }) {
+                            Text(v.title, style = Type.title.copy(fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 24.sp), maxLines = if (more) 6 else 2, overflow = TextOverflow.Ellipsis)
+                            Text(listOfNotNull(v.views.takeIf { it >= 0 }?.let { "${compactCount(it)} views" }, v.ago).joinToString(" • ") + if (d != null && d.description.isNotBlank()) "  ...more" else "", Modifier.padding(top = 6.dp), style = Type.meta.copy(fontSize = 13.sp))
+                        }
+                    }
+                    item {
+                        // Actions spread across the width.
+                        Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            val saved = later.any { it.id == v.id }
+                            TubeAction(L.drawable.lucide_ic_heart, d?.likes?.takeIf { it >= 0 }?.let { compactCount(it) } ?: "Likes") {}
+                            TubeAction(L.drawable.lucide_ic_clock, if (saved) "Saved" else "Later", on = saved) { Tube.toggleLater(v) }
+                            TubeAction(L.drawable.lucide_ic_download, "Download") { onDownload(v) }
+                            TubeAction(L.drawable.lucide_ic_share_2, "Share") {
+                                runCatching { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, v.url), v.title)) }
+                            }
+                        }
+                    }
+                    item {
+                        Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { v.channelUrl?.let { onChannel(it, v.channel) } }, verticalAlignment = Alignment.CenterVertically) {
+                                ChannelAvatar(v.avatar, v.channel, 40.dp)
+                                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                    Text(v.channel, style = Type.label.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    d?.subscribers?.takeIf { it >= 0 }?.let { Text("${compactCount(it)} subscribers", style = Type.meta.copy(fontSize = 12.sp)) }
+                                }
+                            }
+                            v.channelUrl?.let { url ->
+                                SubscribeButton(TubeChannel(url, v.channel, v.avatar), subs.isNotEmpty() && Tube.subscribed(url), Modifier.width(132.dp))
+                            }
+                        }
+                    }
+                    if (d != null && d.description.isNotBlank()) item {
+                        Text(
+                            androidx.core.text.HtmlCompat.fromHtml(d.description, androidx.core.text.HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim(),
+                            Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(9.dp)).background(Ink.text.copy(alpha = 0.06f))
+                                .clickable { more = !more }.padding(12.dp),
+                            style = Type.body.copy(fontSize = 14.sp), maxLines = if (more) 400 else 3, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    error?.let { e -> item { Retry(e) { round++ } } }
+                    if (d != null && upNext.isNotEmpty()) {
+                        item { Text("Up Next", Modifier.padding(top = 20.dp, bottom = 12.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) }
+                        items(upNext, key = { "rel-" + it.id }) { SmallVideoRow(it, onOpen, onMenu) }
+                        if (moreLoading) item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { Spinner(size = 28.dp) } }
+                    }
+                }
+            }
+        }
+    }
+
+    // The video page is a window of its own: its sheets open in windows above it ([Above]), not behind.
+    if (settingsOpen) Above(true, { settingsOpen = false }) { Sheet(
+        title = "Playback",
+        options = listOf(
+            Option("quality", "Quality", quality?.label ?: "Auto", icon = L.drawable.lucide_ic_sliders_horizontal),
+            Option("speed", "Speed", speedLabel(speed), icon = L.drawable.lucide_ic_gauge),
+        ),
+        selected = null,
+        onPick = {
+            settingsOpen = false
+            if (it == "quality") choosing = true else speeding = true
+        },
+        onDismiss = { settingsOpen = false },
+    ) }
+    if (speeding) Above(true, { speeding = false }) { Sheet(
+        title = "Speed",
+        options = SPEEDS.map { Option(it, speedLabel(it)) },
+        selected = speed,
+        onPick = { speed = it; speeding = false },
+        onDismiss = { speeding = false },
+    ) }
+    if (choosing) details?.let { d -> Above(true, { choosing = false }) {
+        Sheet(
+            title = "Quality",
+            options = d.qualities.map { Option(it, it.label, if (it.audio != null) null else if (it.hls) "Adapts to the connection" else "One file") },
+            selected = quality,
+            onPick = { quality = it; choosing = false },
+            onDismiss = { choosing = false },
+        )
+    } }
+}
+
+/** The player's speeds, as YouTube offers them. */
+private val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+
+/** "1×" rather than "1.0×"; "Normal" for 1. */
+private fun speedLabel(s: Float) = if (s == 1f) "Normal" else (if (s % 1f == 0f) "${s.toInt()}" else "$s") + "×"
+
+/** One of the video page's actions: an icon over a word. */
+@Composable
+private fun TubeAction(icon: Int, label: String, on: Boolean = false, onClick: () -> Unit) {
+    Tap(onClick, shape = RoundedCornerShape(9.dp)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Lc(icon, tint = if (on) Ink.accent else Ink.text, size = 22.dp)
+            Text(label, Modifier.padding(top = 4.dp), style = Type.meta.copy(fontSize = 12.sp, color = if (on) Ink.accent else Ink.text))
+        }
+    }
+}
+
+/**
+ * The video, in Media3 as the trailers play ([TrailerControls] over it): picture-only and sound joined, or HLS.
+ * Starts where it was left; a change of quality carries on at the same moment. [onEnded]: the next video.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun TubePlayer(v: TubeVideo, q: TubeQuality, speed: Float, autoplay: Boolean, full: Boolean, onEnded: () -> Unit) {
+    val ctx = LocalContext.current
+    // Tube's one player (background play): it lives in [TubeEngine], so leaving the app doesn't stop it.
+    val player = remember { TubeEngine.player(ctx) }
+    var loaded by remember(v.id) { mutableStateOf(false) }
+    var ratio by remember(v.id) { mutableStateOf(16f / 9f) }
+    var shown by remember(v.id) { mutableStateOf(false) }
+    val ended = androidx.compose.runtime.rememberUpdatedState(onEnded)
+    LaunchedEffect(q) {
+        // Back from the mini player: the same video is still playing in the one player; carried on, not reloaded.
+        if (!loaded && player.currentMediaItem?.mediaId == v.id && player.playbackState != androidx.media3.common.Player.STATE_IDLE) {
+            loaded = true
+            shown = true
+            return@LaunchedEffect
+        }
+        val at = if (loaded) player.currentPosition else Tube.spot(v.id) * 1000
+        // Its name, channel and picture: what the notification and the lock screen show.
+        val meta = androidx.media3.common.MediaMetadata.Builder().setTitle(v.title).setArtist(v.channel)
+            .apply { v.thumb?.let { setArtworkUri(android.net.Uri.parse(it)) } }.build()
+        fun source(url: String, hls: Boolean): androidx.media3.exoplayer.source.MediaSource {
+            val http = androidx.media3.datasource.DefaultHttpDataSource.Factory().setUserAgent(Trailers.userAgent(url)).setAllowCrossProtocolRedirects(true)
+            val item = androidx.media3.common.MediaItem.Builder().setUri(url).setMediaId(v.id).setMediaMetadata(meta).build()
+            return if (hls) androidx.media3.exoplayer.hls.HlsMediaSource.Factory(http).createMediaSource(item)
+            else androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(http).createMediaSource(item)
+        }
+        val video = source(q.video, q.hls)
+        player.setMediaSource(q.audio?.let { androidx.media3.exoplayer.source.MergingMediaSource(video, source(it, false)) } ?: video, at)
+        // The first time: playing at once, or — reopened at launch — waiting paused where it was left.
+        // A change of quality keeps it as it was.
+        val wasPlaying = player.playWhenReady
+        player.prepare()
+        player.playWhenReady = if (!loaded) autoplay else wasPlaying
+        loaded = true
+        TubeEngine.start(ctx)
+    }
+    LaunchedEffect(speed) { player.setPlaybackSpeed(speed) }
+    // Where it is, kept every few seconds for History's resume.
+    LaunchedEffect(v.id) {
+        while (true) {
+            delay(5000)
+            val length = player.duration.takeIf { it > 0 } ?: 0L
+            if (!v.live && player.currentPosition > 0) Tube.setSpot(v.id, player.currentPosition / 1000, length / 1000)
+        }
+    }
+    DisposableEffect(player) {
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
+                if (size.width > 0 && size.height > 0) ratio = size.width * size.pixelWidthHeightRatio / size.height
+            }
+
+            override fun onRenderedFirstFrame() {
+                shown = true
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_ENDED) {
+                    Tube.setSpot(v.id, 0, 0)
+                    ended.value()
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            val length = player.duration.takeIf { it > 0 } ?: 0L
+            if (!v.live && player.currentPosition > 0) Tube.setSpot(v.id, player.currentPosition / 1000, length / 1000)
+            player.removeListener(listener)
+            // Dropped into the mini player: it keeps playing (the strip takes the picture). Else playback ends.
+            if (TubeSession.keepPlaying) TubeSession.keepPlaying = false
+            else {
+                player.clearVideoSurface()
+                TubeEngine.stop(ctx)
+            }
+        }
+    }
+    Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        AndroidView(factory = { c -> android.view.TextureView(c).also { player.setVideoTextureView(it) } }, modifier = Modifier.aspectRatio(ratio))
+        // The seek bar and play/pause, inside the safe area in full screen so the bar stays on the screen.
+        if (shown) Box(Modifier.fillMaxSize().then(if (full) Modifier.safeDrawingPadding() else Modifier)) { TrailerControls(remember(player) { ExoPlayback(player) }) }
+        else Spinner(size = 40.dp)
+    }
+}
+
+
+/**
+ * A video's ⋯: a frosted sheet with the video on top (picture, title, channel) and what can be done with it as a
+ * list, each with its icon on the left: play, download, Watch Later, share, copy the link, open in YouTube, its
+ * channel, subscribe, and — when it's there — remove it from History.
+ */
+@Composable
+private fun VideoMenu(v: TubeVideo, onPlay: () -> Unit, onDownload: () -> Unit, onChannel: () -> Unit, say: (String) -> Unit, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val later by Tube.later.collectAsState()
+    val history by Tube.history.collectAsState()
+    val subs by Tube.subscriptions.collectAsState()
+    val saved = later.any { it.id == v.id }
+    val watched = history.any { it.id == v.id }
+    val subscribed = subs.isNotEmpty() && Tube.subscribed(v.channelUrl)
+    BottomSheet("", onDismiss) {
+        Column(Modifier.padding(bottom = 6.dp)) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Thumb(v.thumb, v.title, Modifier.width(120.dp), v.seconds, v.live, corner = 6.dp)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(v.title, style = Type.label.copy(fontWeight = FontWeight.SemiBold, lineHeight = 19.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(tubeLine(v), Modifier.padding(top = 3.dp), style = Type.meta.copy(fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(1.dp).background(Ink.text.copy(alpha = 0.07f)))
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(top = 4.dp)) {
+                MenuRow(L.drawable.lucide_ic_play, "Play") { onDismiss(); onPlay() }
+                MenuRow(L.drawable.lucide_ic_download, "Download", "In this app, or another app", tint = Ink.download) { onDismiss(); onDownload() }
+                MenuRow(L.drawable.lucide_ic_clock, if (saved) "Remove from Watch Later" else "Save to Watch Later", tint = if (saved) Ink.accent else Ink.text) { Tube.toggleLater(v); onDismiss() }
+                MenuRow(L.drawable.lucide_ic_share_2, "Share") {
+                    onDismiss()
+                    runCatching { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, v.url), v.title)) }
+                }
+                MenuRow(L.drawable.lucide_ic_copy, "Copy Link") {
+                    runCatching {
+                        (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                            .setPrimaryClip(android.content.ClipData.newPlainText("YouTube link", v.url))
+                    }
+                    say("Link copied")
+                    onDismiss()
+                }
+                MenuRow(L.drawable.lucide_ic_external_link, "Open in YouTube") {
+                    onDismiss()
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(v.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        .onFailure { say("No app here opens YouTube links") }
+                }
+                v.channelUrl?.let { url ->
+                    MenuRow(L.drawable.lucide_ic_user, "Go to ${v.channel.ifBlank { "Channel" }}") { onDismiss(); onChannel() }
+                    MenuRow(if (subscribed) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (subscribed) "Unsubscribe" else "Subscribe", tint = if (subscribed) Ink.accent else Ink.text) {
+                        Tube.toggleSubscription(TubeChannel(url, v.channel, v.avatar))
+                        say(if (subscribed) "Unsubscribed from ${v.channel}" else "Subscribed to ${v.channel}")
+                        onDismiss()
+                    }
+                }
+                if (watched) MenuRow(L.drawable.lucide_ic_trash_2, "Remove from History", tint = Ink.danger) { Tube.forget(v.id); onDismiss() }
+            }
+        }
+    }
+}
+
+/** One line of a menu: its icon on the left, the words, an optional hint under them. */
+@Composable
+private fun MenuRow(icon: Int, label: String, hint: String? = null, tint: Color = Ink.text, onClick: () -> Unit) {
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(0.dp)) { pressed ->
+        Row(
+            Modifier.fillMaxWidth().background(if (pressed) Ink.text.copy(alpha = 0.07f) else Color.Transparent).padding(horizontal = 22.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Lc(icon, tint = tint, size = 22.dp)
+            Column(Modifier.padding(start = 18.dp)) {
+                Text(label, style = Type.label.copy(fontWeight = FontWeight.Medium, color = if (tint == Ink.danger) Ink.danger else Ink.text))
+                hint?.let { Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp)) }
+            }
+        }
+    }
+}
+
+
+/**
+ * [content] (a sheet) in a window of its own when [over] — above the video page, which is a window itself — or as it
+ * is otherwise. The sheet keeps its own dimmed backdrop and its own dismissal.
+ */
+@Composable
+private fun Above(over: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    if (!over) return content()
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnClickOutside = true)) {
+        // A tap anywhere the sheet isn't closes it (the owner's rule for every modal), whatever the sheet itself does.
+        Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)) { content() }
+    }
+}

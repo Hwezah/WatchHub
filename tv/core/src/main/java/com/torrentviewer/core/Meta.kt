@@ -4,7 +4,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -104,6 +106,15 @@ val GENRES = listOf(
 
 fun kindOfGenre(genre: String) = if (genre == ANIME_GENRE) "tv" else "movie"
 
+/**
+ * A catalogue request in the Stremio protocol's one shape: `/catalog/{type}/{id}.json`, or with extras
+ * `/catalog/{type}/{id}/genre=Action&skip=40.json`. [extra] comes already encoded; [skip] past 0 asks for a later page.
+ */
+fun catalogUrl(base: String, type: String, id: String, extra: String? = null, skip: Int = 0): String {
+    val extras = listOfNotNull(extra?.takeIf { it.isNotEmpty() }, if (skip > 0) "skip=$skip" else null).joinToString("&")
+    return "$base/catalog/$type/${enc(id)}${if (extras.isEmpty()) "" else "/$extras"}.json"
+}
+
 object Meta {
     private const val BASE = "https://v3-cinemeta.strem.io/meta"
     /** Popularity shelves, asked for directly to save a redirect per rail. */
@@ -158,20 +169,99 @@ object Meta {
     @Suppress("UNCHECKED_CAST")
     fun peekCatalog(kind: String, genre: String?): List<Title>? = memory["shelf:$kind:${genre.orEmpty()}"] as List<Title>?
 
+    /** A title's full entry when it's already in memory ([title]): a screen starts on the picture it will end on. */
+    fun peekTitle(imdb: String, kind: String): Title? = memory["title:$kind:$imdb"] as Title?
+
     /** A [genre] starting [ADDON_SHELF] is one of the viewer's addons' catalogues, by [Addons.shelves]' key. */
     suspend fun catalog(kind: String, genre: String? = null): List<Title> = runCatching {
         remember("shelf:$kind:${genre.orEmpty()}", ::titlesFrom, ::titlesJson) {
             if (genre?.startsWith(ADDON_SHELF) == true) {
                 val (addon, list) = Addons.shelf(genre) ?: error("addon gone")
-                val metas = JSONObject(Net.get("${addon.url}/catalog/${list.type}/${enc(list.id)}.json", quiet = true)).optJSONArray("metas") ?: JSONArray()
+                // An addon that builds its lists on request (AIOMetadata, Xperience) can take a while on the first ask:
+                // given 40 seconds, and a second try, rather than a row silently missing.
+                val url = catalogUrl(addon.url, list.type, list.id, addonExtra(genre, list))
+                val body = runCatching { Net.get(url, timeoutMs = 40_000, quiet = true) }.getOrElse { Net.get(url, timeoutMs = 40_000, quiet = true) }
+                val metas = JSONObject(body).optJSONArray("metas") ?: JSONArray()
+                fetched["shelf:$kind:$genre"] = metas.length()
+                pageSize["shelf:$kind:$genre"] = metas.length()
                 return@remember toTitles(metas, kindOfType(list.type), anyId = true, type = list.type)
             }
             if (genre?.startsWith(TOP_SHELF) == true) return@remember topRated(kind, genre.removePrefix(TOP_SHELF).ifEmpty { null })
             val type = if (kind == "tv") "series" else "movie"
-            val url = if (genre == ANIME_GENRE) ANIME else "$CATALOG/$type/top${genre?.let { "/genre=${enc(it)}" }.orEmpty()}.json"
-            toTitles(JSONObject(Net.get(url)).optJSONArray("metas") ?: JSONArray(), kind)
+            val url = if (genre == ANIME_GENRE) ANIME else catalogUrl(CATALOG, type, "top", genre?.let { "genre=${enc(it)}" })
+            val metas = JSONObject(Net.get(url)).optJSONArray("metas") ?: JSONArray()
+            fetched["shelf:$kind:${genre.orEmpty()}"] = metas.length()
+            pageSize["shelf:$kind:${genre.orEmpty()}"] = metas.length()
+            toTitles(metas, kind)
         }
     }.getOrDefault(emptyList())
+
+    /** A Genres tile's list: the genre chosen; else the catalogue's own preset, if it needs one. */
+    private fun addonExtra(key: String, list: AddonCatalog) = key.substringAfter(GENRE_SEP, "").takeIf { it.isNotEmpty() }?.let { "genre=${enc(it)}" } ?: list.preset
+
+    /** How many entries each list's pages have brought so far: where the next page starts ("skip"), duplicates and all. */
+    private val fetched = ConcurrentHashMap<String, Int>()
+    /** Lists whose last page came back with nothing new: asked no more this run. */
+    private val ended = ConcurrentHashMap.newKeySet<String>()
+    /** Each list's page size: its first answer's length. */
+    private val pageSize = ConcurrentHashMap<String, Int>()
+    /** One page at a time per list, so a row and its "See all" don't both fetch the same one. */
+    private val paging = ConcurrentHashMap<String, Mutex>()
+
+    /**
+     * Whether a list goes on past its first page: an addon's that says it takes "skip", and Cinemeta's popular lists.
+     * Not the IMDb charts (already a ranking of many pages) or the anime list.
+     */
+    fun pages(kind: String, genre: String?): Boolean = when {
+        "shelf:$kind:${genre.orEmpty()}" in ended -> false
+        genre?.startsWith(ADDON_SHELF) == true -> Addons.shelf(genre)?.second?.pages == true
+        else -> genre?.startsWith(TOP_SHELF) != true && genre != ANIME_GENRE
+    }
+
+    /**
+     * The list with its next page added — newest first lists going further back in time — or null when there is
+     * no more (or the addon didn't answer: asked again on the next scroll). Kept in memory, so the row on Home and
+     * its "See all" grow together; the copy on disk stays the first page. [batch] pages are asked at once, a page's
+     * length apart, for a whole list wanted quickly (to put it in order).
+     */
+    suspend fun more(kind: String, genre: String?, batch: Int = 1): List<Title>? {
+        val key = "shelf:$kind:${genre.orEmpty()}"
+        if (!pages(kind, genre)) return null
+        return paging.getOrPut(key) { Mutex() }.withLock {
+            @Suppress("UNCHECKED_CAST")
+            val have = memory[key] as List<Title>? ?: return@withLock null
+            val skip = fetched[key] ?: have.size
+            // The first page's length is the addon's page size: later pages start at its multiples.
+            val size = pageSize.getOrPut(key) { have.size }
+            val skips = if (size <= 0) listOf(skip) else (0 until batch.coerceAtLeast(1)).map { skip + it * size }
+            val answers = coroutineScope { skips.map { at -> async { runCatching { page(kind, genre, at) }.getOrNull() } }.awaitAll() }
+            // Up to the first page that didn't come: one after it would leave a hole.
+            val got = answers.takeWhile { it != null }.filterNotNull()
+            if (got.isEmpty()) return@withLock null
+            val known = have.mapTo(HashSet()) { it.imdb }
+            val fresh = got.flatMap { it.second }.filter { known.add(it.imdb) }
+            fetched[key] = skip + got.sumOf { it.first }
+            // Nothing new, or an empty page: the list's end.
+            if (fresh.isEmpty() || got.any { it.first == 0 }) ended += key
+            if (fresh.isEmpty()) return@withLock null
+            (have + fresh).also { memory[key] = it }
+        }
+    }
+
+    /** One page of a list from [skip]: how many entries it held, and its titles. Null when the addon is gone. */
+    private suspend fun page(kind: String, genre: String?, skip: Int): Pair<Int, List<Title>>? = withContext(Dispatchers.Default) {
+        if (genre?.startsWith(ADDON_SHELF) == true) {
+            val (addon, list) = Addons.shelf(genre) ?: return@withContext null
+            val metas = JSONObject(Net.get(catalogUrl(addon.url, list.type, list.id, addonExtra(genre, list), skip), timeoutMs = 40_000, quiet = true))
+                .optJSONArray("metas") ?: JSONArray()
+            metas.length() to toTitles(metas, kindOfType(list.type), anyId = true, type = list.type)
+        } else {
+            val type = if (kind == "tv") "series" else "movie"
+            val metas = JSONObject(Net.get(catalogUrl(CATALOG, type, "top", genre?.let { "genre=${enc(it)}" }, skip), quiet = true))
+                .optJSONArray("metas") ?: JSONArray()
+            metas.length() to toTitles(metas, kind)
+        }
+    }
 
     /**
      * IMDb's best of a genre. Cinemeta has no list by rating (its imdbRating catalogue is new releases), so
@@ -265,7 +355,7 @@ object Meta {
             async {
                 runCatching {
                     val metas = JSONObject(Net.get("${a.url}/catalog/${c.type}/${enc(c.id)}/search=${enc(query)}.json", quiet = true)).optJSONArray("metas")
-                    toTitles(metas ?: JSONArray(), kindOfType(c.type), anyId = true, type = c.type)
+                    addonSearchTitles(metas ?: JSONArray(), c.type)
                 }.getOrDefault(emptyList())
             }
         }.awaitAll().flatten()
@@ -322,6 +412,32 @@ object Meta {
         }
     }.getOrDefault(emptyList())
 
+    /**
+     * A search as typed, forgiving mistakes: every variant of [query] ([searchVariants]) asked of Cinemeta (films
+     * and series) and the addons' catalogues ([withAddons]) at once; when nothing close came back — a misspelt
+     * word, mostly — a second round asks with parts of it ([partialQueries]). All of it ranked by [fuzzyScore],
+     * the far-off dropped. [onPartial] hears the first round's ranking while the second is still out.
+     */
+    suspend fun searchEverywhere(query: String, withAddons: Boolean = true, onPartial: (List<Title>) -> Unit = {}): List<Title> = coroutineScope {
+        val found = java.util.concurrent.ConcurrentHashMap<String, Title>()
+        suspend fun ask(queries: List<String>, addons: Boolean) {
+            queries.flatMap { q ->
+                listOf(async { search(q, "movie") }, async { search(q, "tv") }) + if (addons) listOf(async { searchAddons(q) }) else emptyList()
+            }.awaitAll().flatten().forEach { found.putIfAbsent(it.imdb, it) }
+        }
+        fun ranked() = tidySearch(found.values.map { it to fuzzyScore(it.title, query, it.year?.take(4)) }.filter { it.second >= FUZZY_SHOW })
+        val variants = searchVariants(query)
+        // The addons are asked as typed only: there are many of them, and they're slower.
+        ask(variants, addons = false)
+        if (withAddons) ask(variants.take(1), addons = true)
+        val first = ranked()
+        val best = first.firstOrNull()?.let { fuzzyScore(it.title, query, it.year?.take(4)) } ?: 0.0
+        if (best >= FUZZY_SURE) return@coroutineScope first
+        onPartial(first)
+        ask(partialQueries(query), addons = false)
+        ranked()
+    }
+
     /** What a torrent is, from its release name alone. Null rather than a guess. */
     suspend fun resolve(releaseName: String): Title? = coroutineScope {
         val query = searchableName(releaseName)
@@ -340,15 +456,64 @@ object Meta {
     }
 }
 
+/**
+ * An addon's search answer as titles, each a film or a series by its own "type": a search list for series can answer
+ * with films (Xperience's does), and one labelled by the list showed Hobbs & Shaw as a series. [listType] stands in
+ * for an entry that names none.
+ */
+fun addonSearchTitles(metas: JSONArray, listType: String): List<Title> =
+    metas.objects().groupBy { it.str("type") ?: listType }.flatMap { (type, group) ->
+        toTitles(JSONArray(group), kindOfType(type), anyId = true, type = type)
+    }
+
+/**
+ * Search results made fit to show, from (title, how well its name fits) pairs. The same film found by several sources
+ * (Cinemeta's tt id, an addon's tmdb: one) shows once, the IMDb one kept. Entries with neither a poster nor a year
+ * (IMDb's "Untitled … sequel" placeholders) are left out. Real releases lead: a poster, a year and a rating each
+ * count, so the film itself comes before a fan upload or compilation that merely shares its name.
+ */
+fun tidySearch(scored: List<Pair<Title, Double>>): List<Title> {
+    fun key(t: Title) = t.title.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim() + "|" + t.year?.take(4).orEmpty() + "|" + t.kind
+    // A rating is the strongest sign of a real release: fan uploads and compilations have none, and the film's longer
+    // official name ("Fast & Furious Presents: Hobbs & Shaw") fits the words typed less closely than theirs.
+    fun weight(t: Title, fit: Double) = fit + (if (t.poster != null) 0.08 else -0.15) + (if (t.year != null) 0.0 else -0.06) +
+        (if (t.rating?.toDoubleOrNull()?.let { it > 0 } == true) 0.2 else 0.0)
+    // An "Untitled …" entry with no year is a sequel IMDb only announced, whatever picture it claims.
+    return scored.filter { (t, _) -> (t.poster != null || t.year != null) && !(t.year == null && t.title.startsWith("Untitled", true)) }
+        .map { (t, fit) -> t to weight(t, fit) }
+        .groupBy { key(it.first) }.values
+        .map { same -> same.sortedWith(compareByDescending<Pair<Title, Double>> { it.first.imdb.startsWith("tt") }.thenByDescending { it.second }).first() }
+        .sortedByDescending { it.second }.map { it.first }
+}
+
 enum class Sort(val label: String) { POPULAR("Popular"), RATING("Top rated"), YEAR("Newest"), TITLE("A–Z") }
 
-/** A title missing the field goes last, not as zero — unrated is unknown, not bad — in the catalogue's own order. */
+/**
+ * Cartoons and anime left out: a title any of whose genres is Animation or Anime. A genre's list is full of them
+ * (an animated film is often "Action" and "Science Fiction" too), and the viewer can choose not to see them.
+ */
+fun withoutAnimation(titles: List<Title>): List<Title> =
+    titles.filter { t -> t.genres.none { it.equals("Animation", true) || it.equals("Anime", true) } }
+
+/**
+ * Only what came out in the last [years] years, this one ([thisYear]) included: an addon's list runs back to 1902,
+ * and the viewer wants what's recent. A title with no year is left out too — there's no telling.
+ */
+fun fromLastYears(titles: List<Title>, years: Int, thisYear: Int): List<Title> =
+    titles.filter { t -> t.year?.take(4)?.toIntOrNull()?.let { it > thisYear - years } == true }
+
+/**
+ * A title missing the field goes last, not as zero — unrated is unknown, not bad — in the catalogue's own order.
+ * Newest is year by year, each year's best rated first, so one year is done before the one before it starts.
+ */
 fun sortTitles(titles: List<Title>, sort: Sort): List<Title> {
-    fun key(t: Title) = (if (sort == Sort.RATING) t.rating else t.year?.take(4))?.toDoubleOrNull()
+    fun year(t: Title) = t.year?.take(4)?.toDoubleOrNull()
+    fun rating(t: Title) = t.rating?.toDoubleOrNull()
     return when (sort) {
         Sort.POPULAR -> titles
         Sort.TITLE -> titles.sortedBy { it.title.lowercase() }
-        else -> titles.sortedWith(compareBy(nullsLast(reverseOrder())) { t: Title -> key(t) })
+        Sort.RATING -> titles.sortedWith(compareBy(nullsLast(reverseOrder())) { t: Title -> rating(t) })
+        Sort.YEAR -> titles.sortedWith(compareBy<Title, Double?>(nullsLast(reverseOrder())) { year(it) }.thenBy(nullsLast(reverseOrder())) { rating(it) })
     }
 }
 
@@ -398,7 +563,8 @@ fun toTitles(metas: JSONArray, kind: String, withEpisodes: Boolean = false, anyI
     val seen = HashSet<String>()
     return metas.objects().mapNotNull { m ->
         val id = m.str("imdb_id") ?: m.str("id") ?: return@mapNotNull null
-        if (!anyId && !Regex("^tt\\d+$").matches(id) || m.str("poster") == null && !withEpisodes || !seen.add(id)) return@mapNotNull null
+        // An addon's own lists (anyId) keep a title with no poster: it shows by its name, as Stremio's and Nuvio's do.
+        if (!anyId && !Regex("^tt\\d+$").matches(id) || m.str("poster") == null && !withEpisodes && !anyId || !seen.add(id)) return@mapNotNull null
         val stremioType = m.str("type") ?: type ?: if (kind == "movie") "movie" else "series"
         val name = m.optString("name")
         Title(
@@ -409,7 +575,7 @@ fun toTitles(metas: JSONArray, kind: String, withEpisodes: Boolean = false, anyI
             // A series' releaseInfo is a range ("2020–2023"); the leading year matters.
             year = m.str("year") ?: m.str("releaseInfo") ?: m.str("released")?.take(4),
             rating = m.str("imdbRating"),
-            genres = (m.optJSONArray("genre") ?: m.optJSONArray("genres"))?.let { g -> (0 until minOf(3, g.length())).map { g.optString(it) } }.orEmpty(),
+            genres = (m.optJSONArray("genre") ?: m.optJSONArray("genres"))?.let { g -> (0 until minOf(6, g.length())).map { g.optString(it) } }.orEmpty(),
             poster = m.str("poster"),
             plot = m.str("description"),
             cast = m.strings("cast"),

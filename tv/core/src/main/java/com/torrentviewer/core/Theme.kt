@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.ui.draw.drawWithContent
@@ -88,12 +89,13 @@ object Ink {
 
     private val DARK = Palette(
         Color(0xFF0A0A0A), Color(0xFF181818), Color(0xFF262626), Color(0xFF333333),
-        Color(0xFFFFFFFF), Color(0xFFB3B3B3), Color(0xFF7A7A7A), Color(0xFF46D369), Color(0xFFFFB340), Color(0xFFFF5A4E),
+        // Errors in the same deep red as the buttons (the owner's choice).
+        Color(0xFFFFFFFF), Color(0xFFB3B3B3), Color(0xFF7A7A7A), Color(0xFF46D369), Color(0xFFFFB340), Color(0xFF781317),
     )
     private val LIGHT = Palette(
-        // A warm paper page; cards and sheets white on it, the greys warmed to match.
-        Color(0xFFF6F2EE), Color(0xFFFFFFFF), Color(0xFFEAE4DE), Color(0xFFDDD5CE),
-        Color(0xFF141414), Color(0xFF575757), Color(0xFF8A8A8A), Color(0xFF1E8E3E), Color(0xFFB26A00), Color(0xFFD32F2F),
+        // A warm paper page, as the Grabber app's light theme (the owner's choice: less white); cards and sheets white on it.
+        Color(0xFFEAE5DF), Color(0xFFFFFFFF), Color(0xFFE0D9D2), Color(0xFFDDD5CE),
+        Color(0xFF141414), Color(0xFF575757), Color(0xFF8A8A8A), Color(0xFF1E8E3E), Color(0xFFB26A00), Color(0xFF781317),
     )
     private var p by mutableStateOf(DARK)
 
@@ -114,9 +116,49 @@ object Ink {
     val danger get() = p.danger
     /** Netflix's red, lit for a TV across the room; an app may set its own before it composes (the phone's is deeper). */
     var accent by mutableStateOf(Color(0xFFE50914))
+    /** Words and icons on [accent]: white, or near-black on a light shade (White, Sand). */
+    val onAccent get() = if (readsDark(accent.toArgb().toLong() and 0xFFFFFFFFL)) Color(0xFF141414) else Color.White
     val imdb = Color(0xFFF5C518)
+    /** The phone's spinners are the downloads' green (an app may switch it on before it composes); the TV's stay red. */
+    var greenSpinner by mutableStateOf(false)
+    /** Every download button's colour: a dark green, deep enough to read on either page. */
+    val download get() = if (isDark) Color(0xFF1E9E52) else Color(0xFF13703A)
     val focus = Color.White
 }
+
+/**
+ * The shades the phone's main buttons (Play, Watch…) and highlights may take, chosen in Settings → Appearance, by
+ * name: mostly muted, deep enough for white words; the light ones (Sand, White) take dark words ([Ink.onAccent]).
+ * The first is the default red.
+ */
+val ACCENT_SHADES: List<Pair<String, Long>> = listOf(
+    // The update card's deep red (the owner's choice): the old red darkened by a third.
+    "Red" to 0xFF781317,
+    "Deep Orange" to 0xFFD84315,
+    "Amber" to 0xFFC77700,
+    "Teal" to 0xFF00897B,
+    "Rust" to 0xFF9A4A2E,
+    "Dusty Rose" to 0xFF9A6B72,
+    "Olive" to 0xFF6B6E3A,
+    "Sage" to 0xFF6E8B74,
+    "Slate" to 0xFF4A5D6E,
+    "Grey" to 0xFF5F6368,
+    "Sand" to 0xFFC8B89A,
+    "White" to 0xFFECECEC,
+)
+
+/**
+ * Whether words on [argb] should be dark rather than white: a light shade (White, Sand) would swallow white words.
+ * By the colour's relative luminance, as WCAG counts it.
+ */
+fun readsDark(argb: Long): Boolean {
+    fun lin(c: Long): Double = (c / 255.0).let { if (it <= 0.03928) it / 12.92 else Math.pow((it + 0.055) / 1.055, 2.4) }
+    val l = 0.2126 * lin(argb shr 16 and 0xFF) + 0.7152 * lin(argb shr 8 and 0xFF) + 0.0722 * lin(argb and 0xFF)
+    return l > 0.4
+}
+
+/** [ACCENT_SHADES]' colour for [name], the red for anything unknown (a setting from a later build). */
+fun accentShade(name: String): Long = ACCENT_SHADES.firstOrNull { it.first == name }?.second ?: ACCENT_SHADES.first().second
 
 @OptIn(ExperimentalTextApi::class)
 private fun flex(weight: Int) = Font(
@@ -192,7 +234,7 @@ fun Artwork(url: String?, name: String, modifier: Modifier = Modifier, scale: Co
 /** The IMDb rating on a poster: on art, so white on a dark plate in either theme. */
 @Composable
 fun ImdbMark(rating: String, modifier: Modifier = Modifier) {
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(5.dp)
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
     // Wrapped: some parents hand their children their own size as a minimum, and the plate would cover the poster.
     Row(modifier.wrapContentSize(Alignment.BottomStart).background(Color.Black.copy(alpha = 0.72f), shape).padding(end = 5.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -209,7 +251,7 @@ fun ImdbMark(rating: String, modifier: Modifier = Modifier) {
 fun CertificateBadge(certificate: String, modifier: Modifier = Modifier) {
     Text(
         certificate,
-        modifier.border(1.dp, Ink.muted, androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+        modifier.border(1.dp, Ink.muted, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
         style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold, fontSize = 12.sp),
     )
 }
@@ -219,7 +261,8 @@ fun CertificateBadge(certificate: String, modifier: Modifier = Modifier) {
 fun WatchedBadge(at: Long?, modifier: Modifier = Modifier) {
     val date = at?.let { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(it)) }
     Row(
-        modifier.clip(CircleShape).background(Ink.good.copy(alpha = 0.14f)).padding(start = 5.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+        // Squared off a notch, as the phone's pills are (the owner's choice), not a full half-circle at each end.
+        modifier.clip(RoundedCornerShape(10.dp)).background(Ink.good.copy(alpha = 0.14f)).padding(start = 5.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The page's colour on the green: white was lost on the bright green of the dark theme.
@@ -233,7 +276,7 @@ fun WatchedBadge(at: Long?, modifier: Modifier = Modifier) {
 
 /** The film's title logo when Cinemeta has one — the premium look — else the name set large. */
 @Composable
-fun TitleMark(title: Title, modifier: Modifier = Modifier, maxHeight: Dp = 110.dp, style: TextStyle = Type.hero) {
+fun TitleMark(title: Title, modifier: Modifier = Modifier, maxHeight: Dp = 110.dp, style: TextStyle = Type.hero, centred: Boolean = false) {
     var failed by remember(title.logo) { mutableStateOf(title.logo == null) }
     if (!failed) {
         val context = LocalContext.current
@@ -241,12 +284,16 @@ fun TitleMark(title: Title, modifier: Modifier = Modifier, maxHeight: Dp = 110.d
             model = remember(title.logo) { ImageRequest.Builder(context).data(title.logo).crossfade(250).build() },
             contentDescription = title.title,
             contentScale = ContentScale.Fit,
-            alignment = Alignment.CenterStart,
+            // The TV's hero lines it up on the left; the phone's centres it under the art.
+            alignment = if (centred) Alignment.Center else Alignment.CenterStart,
             onError = { failed = true },
             modifier = modifier.height(maxHeight).fillMaxWidth(),
         )
     } else {
-        Text(title.title, modifier, style = style, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            title.title, modifier, style = if (centred) style.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center) else style,
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -255,7 +302,7 @@ fun ImdbBadge(rating: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             "IMDb",
-            Modifier.clip(RoundedCornerShape(3.dp)).background(Ink.imdb).padding(horizontal = 5.dp, vertical = 1.dp),
+            Modifier.clip(RoundedCornerShape(2.dp)).background(Ink.imdb).padding(horizontal = 5.dp, vertical = 1.dp),
             style = Type.overline.copy(color = Color.Black, fontWeight = FontWeight.Black, letterSpacing = 0.sp, fontSize = 11.sp),
         )
         Spacer(Modifier.width(6.dp))
@@ -269,18 +316,32 @@ fun ImdbBadge(rating: String) {
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun Facts(title: Title, modifier: Modifier = Modifier) {
-    androidx.compose.foundation.layout.FlowRow(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        title.rating?.let {
-            Row(Modifier.align(Alignment.CenterVertically).padding(end = 14.dp)) { ImdbBadge(it) }
+fun Facts(title: Title, modifier: Modifier = Modifier, centred: Boolean = false, release: String? = null) {
+    // [release]: whether a film is out at home or still in cinemas, on a line of its own under the facts.
+    Column(modifier, horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
+        // [centred]: each line in the middle when it wraps (the phone's centred headers), rather than from the left.
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = if (centred) Arrangement.Center else Arrangement.Start, verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            title.rating?.let {
+                Row(Modifier.align(Alignment.CenterVertically).padding(end = 14.dp)) { ImdbBadge(it) }
+            }
+            title.facts().forEachIndexed { i, fact ->
+                Text(
+                    (if (i > 0) "  •  " else "") + fact,
+                    Modifier.align(Alignment.CenterVertically),
+                    style = Type.meta.copy(color = Ink.text.copy(alpha = 0.85f)),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
         }
-        title.facts().forEachIndexed { i, fact ->
+        release?.let {
             Text(
-                (if (i > 0) "  •  " else "") + fact,
-                Modifier.align(Alignment.CenterVertically),
+                it,
+                Modifier.padding(top = 6.dp),
                 style = Type.meta.copy(color = Ink.text.copy(alpha = 0.85f)),
-                maxLines = 1,
-                softWrap = false,
+                textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
             )
         }
     }
@@ -288,9 +349,10 @@ fun Facts(title: Title, modifier: Modifier = Modifier) {
 
 /** A thin bar for how far through something is. */
 @Composable
-fun ProgressLine(progress: Float, modifier: Modifier = Modifier, height: Dp = 3.dp) {
-    Box(modifier.fillMaxWidth().height(height).background(Color.White.copy(alpha = 0.25f))) {
-        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(height).background(Ink.accent))
+fun ProgressLine(progress: Float, modifier: Modifier = Modifier, height: Dp = 3.dp, color: Color = Ink.accent, track: Color = Color.White.copy(alpha = 0.25f)) {
+    Box(modifier.fillMaxWidth().height(height).background(track)) {
+        // NaN (nothing known yet: 0 of 0 bytes) gets past coerceIn and crashes the layout: an empty line instead.
+        Box(Modifier.fillMaxWidth(if (progress.isNaN()) 0f else progress.coerceIn(0f, 1f)).height(height).background(color))
     }
 }
 
@@ -354,7 +416,7 @@ private val grainBrush: androidx.compose.ui.graphics.ShaderBrush by lazy {
 }
 
 @Composable
-fun Spinner(modifier: Modifier = Modifier, size: Dp = 56.dp, color: Color = Ink.accent) {
+fun Spinner(modifier: Modifier = Modifier, size: Dp = 56.dp, color: Color = if (Ink.greenSpinner) Ink.download else Ink.accent) {
     androidx.compose.material3.CircularProgressIndicator(modifier.size(size), color = color, strokeWidth = 4.dp, trackColor = Color.White.copy(alpha = 0.12f))
 }
 

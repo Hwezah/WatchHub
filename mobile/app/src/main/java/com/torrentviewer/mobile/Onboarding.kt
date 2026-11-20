@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.torrentviewer.core.Artwork
 import com.torrentviewer.core.Ink
+import com.torrentviewer.core.grain
 import com.torrentviewer.core.Meta
 import com.torrentviewer.core.Title
 import com.torrentviewer.core.Type
@@ -81,14 +82,11 @@ fun LegalText(sections: List<Pair<String, String>>) {
 fun Agreement(changed: Boolean, onAgree: () -> Unit) {
     var reading by remember { mutableStateOf<Pair<String, List<Pair<String, String>>>?>(null) }
     val legal = com.torrentviewer.core.Legal
-    Column(Modifier.fillMaxSize().background(Ink.bg).statusBarsPadding().navigationBarsPadding().padding(horizontal = EDGE + 8.dp, vertical = 24.dp)) {
+    Column(Modifier.fillMaxSize().background(Ink.bg).grain().statusBarsPadding().navigationBarsPadding().padding(horizontal = EDGE + 8.dp, vertical = 24.dp)) {
         val open = reading
         if (open != null) {
             BackHandler { reading = null }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RoundIcon(L.drawable.lucide_ic_arrow_left, { reading = null })
-                Text(open.first, Modifier.padding(start = 12.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
-            }
+            BackTitle(open.first, { reading = null })
             Column(Modifier.padding(top = 16.dp).weight(1f).verticalScroll(rememberScrollState())) { LegalText(open.second) }
         } else {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
@@ -172,9 +170,9 @@ fun Onboarding(onDone: () -> Unit) {
         )
 
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = EDGE, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("WATCHLY", Modifier.weight(1f), style = Type.title.copy(color = Color(0xFFE50914), fontWeight = FontWeight.Black, letterSpacing = 2.sp))
+            Text("WatchHub", Modifier.weight(1f), style = Type.title.copy(color = Color(0xFFE50914), fontWeight = FontWeight.Black, letterSpacing = 2.sp))
             // Skip past the genres keeps the home screen as it was; past sign-in, into the app.
-            if (step > WELCOME) Tap({ if (step == GENRES_STEP) step = SIGN_IN else { job?.cancel(); onDone() } }, shape = RoundedCornerShape(8.dp)) {
+            if (step > WELCOME) Tap({ if (step == GENRES_STEP) step = SIGN_IN else { job?.cancel(); onDone() } }, shape = RoundedCornerShape(5.dp)) {
                 Text("Skip", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = Type.label.copy(color = Color.White.copy(alpha = 0.85f)))
             }
         }
@@ -189,7 +187,7 @@ fun Onboarding(onDone: () -> Unit) {
                     if (page == WELCOME) {
                         Text("Your media player", style = Type.hero.copy(color = Color.White, fontSize = 34.sp, lineHeight = 38.sp))
                         Text(
-                            "Browse trending films, series and anime, and play them from the addons and servers you choose. Watchly comes with none.",
+                            "Browse trending films, series and anime, and play them from the addons and servers you choose. WatchHub comes with none.",
                             Modifier.padding(top = 10.dp), style = Type.body.copy(color = Color.White.copy(alpha = 0.78f), fontSize = 16.sp, lineHeight = 23.sp),
                         )
                         Button("Get started", { step = GENRES_STEP }, Modifier.padding(top = 26.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_arrow_right, primary = true)
@@ -220,7 +218,7 @@ fun Onboarding(onDone: () -> Unit) {
                     } else {
                         Text("Sign in to Stremio", style = Type.hero.copy(color = Color.White, fontSize = 34.sp, lineHeight = 38.sp))
                         Text(
-                            "Your library, Continue Watching and addons come with you, and stay in step both ways. You sign in on Stremio's own page — your password never comes to Watchly.",
+                            "Your library, Continue Watching and addons come with you, and stay in step both ways. You sign in on Stremio's own page — your password never comes to WatchHub.",
                             Modifier.padding(top = 10.dp), style = Type.body.copy(color = Color.White.copy(alpha = 0.78f), fontSize = 16.sp, lineHeight = 23.sp),
                         )
                         code?.let { c ->
@@ -265,7 +263,7 @@ private fun PosterWall(posters: List<Title>) {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 (row + row).forEach { title ->
-                    Artwork(title.poster, title.title, Modifier.width(card).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)))
+                    Artwork(title.poster, title.title, Modifier.width(card).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
                 }
             }
         }

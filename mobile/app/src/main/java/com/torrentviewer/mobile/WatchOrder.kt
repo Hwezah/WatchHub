@@ -76,8 +76,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
-private val CARD_SHAPE = RoundedCornerShape(14.dp)
-private val POSTER_SHAPE = RoundedCornerShape(6.dp)
+private val CARD_SHAPE = RoundedCornerShape(9.dp)
+private val POSTER_SHAPE = RoundedCornerShape(4.dp)
 
 /** Everything seen so far, here or on a connected account. */
 @Composable
@@ -146,7 +146,7 @@ fun WatchOrderRow(genres: List<String>, onOpen: (WatchOrder) -> Unit) {
 /** A film's place in its order, as a poster: its number on it, a tick once seen, a ring on the one open now. */
 @Composable
 private fun OrderPoster(number: Int, imdb: String, here: Boolean, watched: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(6.dp)
     Tap(onClick, Modifier.width(100.dp), shape) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape).background(Ink.surface)
@@ -201,7 +201,7 @@ fun FranchiseRail(order: WatchOrder, imdb: String, onAll: () -> Unit, onOpen: (T
 /** Every franchise, with a box to find one. */
 @Composable
 fun WatchOrdersScreen(onOpen: (WatchOrder) -> Unit, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    BackHandler(LocalShown.current, onBack)
     val seen = seenFilms()
     var query by rememberSaveable { mutableStateOf("") }
     val orders by WatchOrders.tagged.collectAsState()
@@ -209,22 +209,16 @@ fun WatchOrdersScreen(onOpen: (WatchOrder) -> Unit, onBack: () -> Unit) {
     val ranked = remember(orders, settings.genres) { rankOrders(orders, settings.genres) }
     val shown = ranked.filter { it.matches(query) }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.statusBarsPadding().padding(horizontal = EDGE).padding(top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            RoundIcon(L.drawable.lucide_ic_arrow_left, onBack)
-            Column(Modifier.padding(start = 12.dp)) {
-                Text("Watch orders", style = Type.title.copy(fontWeight = FontWeight.Bold))
-                Text("${WatchOrders.all.size} franchises, in the right order", style = Type.meta.copy(color = Ink.faint))
-            }
-        }
+        BackTitle("Watch Orders", onBack, Modifier.statusBarsPadding().padding(horizontal = EDGE + 6.dp).padding(top = 18.dp, bottom = 12.dp), subtitle = "${WatchOrders.all.size} franchises, in the right order")
         Field(query, { query = it }, "Find a watch order", Modifier.fillMaxWidth().padding(horizontal = EDGE).padding(bottom = 12.dp), leading = L.drawable.lucide_ic_search)
         LazyVerticalGrid(
             GridCells.Adaptive(320.dp),
-            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 32.dp),
+            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("No watch order by that name", style = Type.meta.copy(color = Ink.faint))
+                EmptyNote("No watch order by that name")
             }
             items(shown, key = { it.id }) { order -> OrderCard(order, seen, { onOpen(order) }) }
         }
@@ -234,7 +228,7 @@ fun WatchOrdersScreen(onOpen: (WatchOrder) -> Unit, onBack: () -> Unit) {
 /** One franchise: art for the film up next, how far along, and the films down a timeline. */
 @Composable
 fun WatchOrderScreen(order: WatchOrder, onOpen: (Title) -> Unit, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    BackHandler(LocalShown.current, onBack)
     val seen = seenFilms()
     var byStory by rememberSaveable { mutableStateOf(false) }
     val ids = if (byStory && order.story.isNotEmpty()) order.story else order.films
@@ -250,7 +244,7 @@ fun WatchOrderScreen(order: WatchOrder, onOpen: (Title) -> Unit, onBack: () -> U
 
     StatusIconsOverArt(true)
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = NAV_CLEARANCE)) {
             item(key = "head") {
                 Column {
                     Artwork(
@@ -258,12 +252,15 @@ fun WatchOrderScreen(order: WatchOrder, onOpen: (Title) -> Unit, onBack: () -> U
                         // Square, as a film's page has it; held sideways that would fill the screen.
                         Modifier.fillMaxWidth().aspectRatio(if (isWide()) 2.2f else 1f).bottomScrim(0.6f), fill = false,
                     )
-                    Column(Modifier.padding(horizontal = EDGE).offset(y = (-26).dp)) {
-                        Text(order.name, style = Type.display, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    // Upright phone: the name and its count in the middle (the owner's choice).
+                    val centred = isPortraitPhone()
+                    val align = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
+                    Column(Modifier.fillMaxWidth().padding(horizontal = EDGE).offset(y = (-26).dp), horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start) {
+                        Text(order.name, style = Type.display, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = align)
                         Text(
                             listOfNotNull("${ids.size} films", totalRuntime(loaded.values.toList()), "more coming".takeIf { order.more }).joinToString("  ·  "),
                             Modifier.padding(top = 4.dp),
-                            style = Type.meta.copy(color = Ink.muted),
+                            style = Type.meta.copy(color = Ink.muted), textAlign = align,
                         )
                         if (done > 0) {
                             ProgressLine(done.toFloat() / ids.size, Modifier.padding(top = 12.dp).fillMaxWidth())
@@ -306,7 +303,7 @@ fun WatchOrderScreen(order: WatchOrder, onOpen: (Title) -> Unit, onBack: () -> U
 fun ArtTag(text: String, colour: Color, modifier: Modifier = Modifier, words: Color = Color.White) {
     Text(
         text,
-        modifier.background(colour, RoundedCornerShape(5.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
+        modifier.background(colour, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
         style = Type.overline.copy(color = words, letterSpacing = 0.6.sp),
     )
 }
@@ -317,7 +314,7 @@ fun ArtTag(text: String, colour: Color, modifier: Modifier = Modifier, words: Co
  */
 @Composable
 private fun FilmCard(number: Int, title: Title, watched: Boolean, next: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(10.dp)
     Tap(onClick, Modifier.fillMaxWidth().padding(start = EDGE, end = EDGE, bottom = 14.dp), shape) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(Color.Black)

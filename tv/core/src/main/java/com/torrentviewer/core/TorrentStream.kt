@@ -206,7 +206,15 @@ data class Progress(
 )
 
 /** [lanUrl]: the stream addressed for a Cast receiver, when the engine serves the network. */
-data class Ready(val url: String, val name: String, val subtitleFiles: List<String>, val lanUrl: String? = null, val headers: Map<String, String> = emptyMap())
+data class Ready(
+    val url: String,
+    val name: String,
+    val subtitleFiles: List<String>,
+    val lanUrl: String? = null,
+    val headers: Map<String, String> = emptyMap(),
+    /** The stream's MIME type when the link can't say (HLS / DASH without the extension); null to guess. */
+    val mime: String? = null,
+)
 
 class PlayOptions(
     /** MB of the head buffered before the player gets the URL; the server blocks past it anyway. */

@@ -26,18 +26,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private const val NAME = "WATCHLY"
-private val RED = Color(0xFFE50914)
+private const val NAME = "WATCHHUB"
 
 // Everything in ms from the start, on one clock.
 private const val RISE_MS = 700f
 private const val RISE_STAGGER_MS = 55f
-private const val EXIT_AT_MS = 1050f
+private const val EXIT_AT_MS = 1105f
 private const val EXIT_MS = 360f
 private const val EXIT_STAGGER_MS = 25f
-private const val FADE_AT_MS = 1250f
+private const val FADE_AT_MS = 1305f
 private const val FADE_MS = 300f
-private const val TOTAL_MS = 1560
+private const val TOTAL_MS = 1615
 
 /** Fast off the mark and a long settle, then the opposite to leave: the motion is all there is to look at. */
 private val RISE = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
@@ -78,7 +77,7 @@ fun Splash(skip: Boolean) {
                         val exit = EXIT.transform(((clock.value - EXIT_AT_MS - i * EXIT_STAGGER_MS) / EXIT_MS).coerceIn(0f, 1f))
                         translationY = size.height * (1f - rise - exit)
                     },
-                    style = Type.title.copy(color = RED, fontWeight = FontWeight.Black, fontSize = 44.sp, lineHeight = 50.sp),
+                    style = Type.title.copy(color = Ink.accent, fontWeight = FontWeight.Black, fontSize = 44.sp, lineHeight = 50.sp),
                 )
             }
         }

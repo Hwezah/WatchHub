@@ -1,5 +1,7 @@
 package com.torrentviewer.core
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -9,7 +11,36 @@ import org.json.JSONObject
 data class AddonResource(val name: String, val types: List<String>, val idPrefixes: List<String>?)
 
 /** A list an addon offers. [required] needs an extra (a genre, a search) before it lists anything; [search] takes a query. */
-data class AddonCatalog(val type: String, val id: String, val name: String, val required: Boolean, val search: Boolean)
+data class AddonCatalog(
+    val type: String, val id: String, val name: String, val required: Boolean, val search: Boolean,
+    /**
+     * For a catalogue that needs a choice made (a genre) and lists the choices: the first of them, as the extra
+     * path the request takes ("genre=Action") — the row then shows, as Stremio and Nuvio show it. Null otherwise.
+     */
+    val preset: String? = null,
+    /** [preset]'s choice, for the row's title ("Action"). */
+    val presetLabel: String? = null,
+    /** The genres it can be filtered by (its "genre" extra's options, "None" left out), for Home's Genres row. */
+    val genres: List<String> = emptyList(),
+    /** The addon's own say on a Home row: false (Xperience's "showInHome") keeps it to browsing and search. */
+    val showInHome: Boolean = true,
+    /** Whether it pages ("skip" among its extras): a row then keeps going past its first answer, as Stremio's and Nuvio's do. */
+    val pages: Boolean = false,
+)
+
+/**
+ * The genre among [options] that is [name]: the same name, else the one sharing most words with it ("Science Fiction"
+ * is "Sci-Fi & Fantasy", "Action" is "Action & Adventure"); null when none shares any.
+ */
+fun matchGenre(name: String, options: List<String>): String? {
+    options.firstOrNull { it.equals(name, true) }?.let { return it }
+    fun words(s: String) = s.lowercase().replace("sci-fi", "science fiction").split(Regex("[^a-z]+")).filter { it.length > 2 && it != "and" }.toSet()
+    val want = words(name)
+    return options.map { it to (words(it) intersect want).size }.filter { it.second > 0 }.maxByOrNull { it.second }?.first
+}
+
+/** What a Genres-row key adds to a catalogue's key: the genre after it. */
+const val GENRE_SEP = "~g~"
 
 /** Watchly's own kind for a Stremio type: "movie" plays the id itself — films, and live "tv" channels — the rest hold videos. */
 fun kindOfType(type: String) = if (type == "movie" || type == "tv") "movie" else "tv"
@@ -108,9 +139,19 @@ fun toAddon(url: String, m: JSONObject, on: Boolean = true): Addon? {
         val id = c.str("id") ?: return@mapNotNull null
         // Two shapes: `extra` objects, and the older `extraRequired` / `extraSupported` name lists.
         val extra = c.optJSONArray("extra")?.objects().orEmpty()
-        val required = extra.any { it.optBoolean("isRequired") } || c.strings("extraRequired").isNotEmpty()
+        val needs = extra.filter { it.optBoolean("isRequired") }
+        // A choice that must be made, with the choices listed (and not a search): made with the first, so the row shows.
+        val presettable = needs.isNotEmpty() && c.strings("extraRequired").isEmpty() &&
+            needs.all { it.optString("name") != "search" && it.strings("options").isNotEmpty() }
+        val preset = if (presettable) needs.joinToString("&") { "${it.optString("name")}=${enc(it.strings("options").first())}" } else null
+        val required = (needs.isNotEmpty() && !presettable) || c.strings("extraRequired").isNotEmpty()
         val search = extra.any { it.optString("name") == "search" } || "search" in c.strings("extraSupported")
-        AddonCatalog(type, id, c.str("name") ?: id, required, search)
+        val genres = extra.firstOrNull { it.optString("name") == "genre" }?.strings("options").orEmpty().filter { !it.equals("None", true) }
+        AddonCatalog(
+            type, id, c.str("name") ?: id, required, search, preset, if (presettable) needs.first().strings("options").first() else null, genres,
+            showInHome = c.optBoolean("showInHome", true),
+            pages = extra.any { it.optString("name") == "skip" } || "skip" in c.strings("extraSupported"),
+        )
     }
     return if (resources.isEmpty() && catalogs.isEmpty()) null else Addon(url, name, resources, on, m.toString(), catalogs)
 }
@@ -164,6 +205,22 @@ object Addons {
         val now = _list.value
         save(if (now.any { it.url == base }) now.map { if (it.url == base) addon.copy(on = it.on) else it } else now + addon)
         return addon
+    }
+
+    /**
+     * Every addon's manifest read again, as Stremio and Nuvio do on launch: a catalogue addon set up on its own site
+     * (Xperience, AIOMetadata) changes its lists behind the same link, and the copy kept when it was added never
+     * learned of rows added since. Only a real change is kept (and so sent on to a Stremio account); one that doesn't
+     * answer keeps what it had.
+     */
+    suspend fun refresh() = kotlinx.coroutines.coroutineScope {
+        val read = _list.value.map { a ->
+            async { runCatching { toAddon(a.url, JSONObject(Net.get("${a.url}/manifest.json", 20_000, quiet = true)), a.on) }.getOrNull()?.let { a.url to it } }
+        }.awaitAll().filterNotNull().toMap()
+        val now = _list.value
+        // The manifest's text aside: some addons stamp it afresh on every answer.
+        val next = now.map { a -> read[a.url]?.takeIf { it.copy(manifest = "", on = a.on) != a.copy(manifest = "") }?.copy(on = a.on) ?: a }
+        if (next.indices.any { next[it] !== now[it] }) save(next)
     }
 
     /** The list as links only, for another device to fetch afresh: [importLinks] reads it. */
@@ -230,12 +287,46 @@ object Addons {
 
     /** Every list that shows without a genre or search picked first, as (row title, kind, shelf key). */
     fun shelves(): List<Triple<String, String, String>> = _list.value.filter { it.on }.flatMap { a ->
-        a.catalogs.filter { !it.required }.map { c -> Triple("${c.name} · ${typeLabel(c.type)}", kindOfType(c.type), a.shelfKey(c)) }
+        a.catalogs.filter { !it.required && it.showInHome }.map { c ->
+            Triple(listOfNotNull(c.name, c.presetLabel, typeLabel(c.type)).joinToString(" · "), kindOfType(c.type), a.shelfKey(c))
+        }
     }
 
-    /** The addon and catalogue behind a home row's key. */
-    fun shelf(key: String): Pair<Addon, AddonCatalog>? =
-        _list.value.firstNotNullOfOrNull { a -> a.catalogs.find { a.shelfKey(it) == key }?.let { a to it } }
+    /** The addon and catalogue behind a home row's key (a Genres tile's key: the catalogue's, before its genre). */
+    fun shelf(key: String): Pair<Addon, AddonCatalog>? {
+        val base = key.substringBefore(GENRE_SEP)
+        return _list.value.firstNotNullOfOrNull { a -> a.catalogs.find { a.shelfKey(it) == base }?.let { a to it } }
+    }
+
+    /**
+     * Home's Genres row, as Nuvio draws it from a catalogue addon: the first enabled catalogue that can be filtered by
+     * genre (a film list before a series one), and its genres, each with the key of that genre's list.
+     */
+    fun genres(): Pair<String, List<Pair<String, String>>>? {
+        // An addon's browse-by-genre list first (one that needs a genre, kept off Home — Xperience's "Movies"), a film
+        // one before a series one; else any list that can be narrowed by genre.
+        val (a, c) = _list.value.filter { it.on }.flatMap { a -> a.catalogs.filter { it.genres.size >= 2 && !it.search }.map { a to it } }
+            .sortedWith(compareBy<Pair<Addon, AddonCatalog>> { (_, c) -> if (c.required || !c.showInHome) 0 else 1 }.thenBy { (_, c) -> if (c.type == "movie") 0 else 1 })
+            .firstOrNull() ?: return null
+        return kindOfType(c.type) to c.genres.map { g -> g to a.shelfKey(c) + GENRE_SEP + g }
+    }
+
+    /**
+     * A Genres tile's list for films and for series ("movie"/"tv" to its key): each kind's browse-by-genre list, the
+     * genre found by name there ([matchGenre] — a series list says "Sci-Fi & Fantasy" where films say "Science
+     * Fiction"). A kind whose list has no such genre is left out. Null for a key that isn't a Genres tile's.
+     */
+    fun genreKinds(key: String): Map<String, String>? {
+        if (GENRE_SEP !in key) return null
+        val genre = key.substringAfter(GENRE_SEP)
+        val browse = _list.value.filter { it.on }.flatMap { a -> a.catalogs.filter { it.genres.size >= 2 && !it.search }.map { a to it } }
+            .sortedBy { (_, c) -> if (c.required || !c.showInHome) 0 else 1 }
+        return listOf("movie", "series").mapNotNull { type ->
+            browse.filter { it.second.type == type }
+                .firstNotNullOfOrNull { (a, c) -> matchGenre(genre, c.genres)?.let { a.shelfKey(c) + GENRE_SEP + it } }
+                ?.let { kindOfType(type) to it }
+        }.toMap()
+    }
 
     /** Catalogues that take a search query. */
     fun searchable(): List<Pair<Addon, AddonCatalog>> = _list.value.filter { it.on }.flatMap { a -> a.catalogs.filter { it.search }.map { a to it } }
