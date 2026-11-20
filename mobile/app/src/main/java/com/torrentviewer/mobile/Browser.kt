@@ -369,6 +369,9 @@ object Browser {
                 private var strikes = 0
 
                 override fun onRenderProcessUnresponsive(view: WebView, renderer: androidx.webkit.WebViewRenderProcess?) {
+                    // Never while a video is full screen: decoding keeps the engine busy, and ending it left the video's
+                    // last picture standing over the app.
+                    if (fullScreen) return
                     if (++strikes < 3) return
                     strikes = 0
                     if (f(androidx.webkit.WebViewFeature.WEB_VIEW_RENDERER_TERMINATE)) runCatching { renderer?.terminate() }
@@ -379,6 +382,16 @@ object Browser {
                 }
             })
         }
+    }
+
+    /** The activity under [context], through whatever wraps it (a theme, Compose's own): null when there's none. */
+    private fun activityOf(context: Context): android.app.Activity? {
+        var c: Context? = context
+        while (c is android.content.ContextWrapper) {
+            if (c is android.app.Activity) return c
+            c = c.baseContext
+        }
+        return null
     }
 
     /** Whether [t]'s page was opened by the viewer in the last few seconds: its own redirects then go through. */
@@ -724,6 +737,8 @@ object Browser {
 
             // The page's renderer crashed or was killed for memory: rebuild this tab instead of closing the app.
             override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                // A video full screen goes with its page: not left frozen over the app.
+                if (fullScreen) runCatching { exitFull?.invoke() }
                 dead += view
                 runCatching { (view.parent as? ViewGroup)?.removeView(view) }
                 runCatching { view.destroy() }
@@ -801,18 +816,30 @@ object Browser {
                 catchPopup(view, t, isUserGesture, resultMsg)
             override fun onReceivedTitle(view: WebView, title: String?) { t.title = title.orEmpty() }
 
-            // Full screen for a page's video player: its view laid over the whole window, back out with Back.
+            // Full screen for a page's video player (an iframe's too): its view on a black backdrop over the whole window,
+            // the phone's bars hidden and the screen kept on; back out with Back.
             private var full: android.view.View? = null
             private var fullDone: CustomViewCallback? = null
 
             override fun onShowCustomView(view: android.view.View, callback: CustomViewCallback) {
-                val activity = w.context as? android.app.Activity ?: return callback.onCustomViewHidden()
-                if (full != null) { callback.onCustomViewHidden(); return }
-                full = view
+                // The activity behind whatever wraps it: a page made with a wrapped context was refused full screen
+                // outright, and its player was left waiting — the freeze the owner saw.
+                val activity = activityOf(w.context) ?: return callback.onCustomViewHidden()
+                // A second request (the page asking again, or one left over) takes the first's place, never refused.
+                if (full != null) onHideCustomView()
+                val box = android.widget.FrameLayout(activity).apply {
+                    setBackgroundColor(android.graphics.Color.BLACK)
+                    addView(view, android.widget.FrameLayout.LayoutParams(-1, -1, android.view.Gravity.CENTER))
+                }
+                full = box
                 fullDone = callback
                 runCatching {
-                    (activity.window.decorView as ViewGroup).addView(view, ViewGroup.LayoutParams(-1, -1))
-                    view.setBackgroundColor(android.graphics.Color.BLACK)
+                    (activity.window.decorView as ViewGroup).addView(box, ViewGroup.LayoutParams(-1, -1))
+                    androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+                        hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                        systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    }
+                    activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
                 }
                 fullScreen = true
@@ -820,12 +847,21 @@ object Browser {
             }
 
             override fun onHideCustomView() {
-                val activity = w.context as? android.app.Activity
-                full?.let { v -> runCatching { (activity?.window?.decorView as? ViewGroup)?.removeView(v) } }
+                val activity = activityOf(w.context)
+                full?.let { v ->
+                    runCatching { (v.parent as? ViewGroup)?.removeView(v) }
+                    runCatching { (v as? ViewGroup)?.removeAllViews() }
+                }
                 full = null
                 runCatching { fullDone?.onCustomViewHidden() }
                 fullDone = null
-                activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                activity?.let { a ->
+                    runCatching {
+                        androidx.core.view.WindowCompat.getInsetsController(a.window, a.window.decorView).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                        a.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                    a.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
                 fullScreen = false
                 exitFull = null
             }
