@@ -629,15 +629,16 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         // The season pills a notch closer under it (the owner's choice).
                         Row(Modifier.fillMaxWidth().padding(start = EDGE, end = EDGE - 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             // The same accent asterisk as Sources' heading, close to its word.
-                            Lc(L.drawable.lucide_ic_asterisk, Modifier.padding(end = 2.dp), tint = Ink.accent, size = 22.dp)
-                            Text("Episodes", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
+                            // A notch bigger asterisk, and the words a notch under full white (the owner's choice).
+                            Lc(L.drawable.lucide_ic_asterisk, Modifier.padding(end = 2.dp), tint = Ink.accent, size = 25.dp)
+                            Text("Episodes", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold, color = Ink.text.copy(alpha = 0.85f)))
                             season?.let { s ->
                                 // The whole season, episode by episode, with filters over what was found.
                                 Tap({ askSeason = s }, shape = RoundedCornerShape(4.dp)) {
                                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        // As big as the "Episodes" heading beside it; the stacked layers say "all of them" (a whole season).
-                                        Lc(L.drawable.lucide_ic_layers, tint = Ink.download, size = 24.dp)
-                                        Text("  Download Season $s", style = Type.title.copy(fontWeight = FontWeight.Bold))
+                                        // The stacked layers say "all of them" (a whole season), a notch smaller than the words (the owner's choice).
+                                        Lc(L.drawable.lucide_ic_layers, tint = Ink.download, size = 20.dp)
+                                        Text("  Download Season $s", style = Type.title.copy(fontWeight = FontWeight.Bold, color = Ink.text.copy(alpha = 0.85f)))
                                     }
                                 }
                             }
