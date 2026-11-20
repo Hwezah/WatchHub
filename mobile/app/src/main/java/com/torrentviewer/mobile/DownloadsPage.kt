@@ -311,8 +311,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     Column(
         Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).background(CARD_FACE)
             .drawWithCache {
-                // One stripe of each shade, 7 dp wide, repeated left to right across the card.
-                val step = 14.dp.toPx()
+                // One stripe of each shade, 14 dp wide (the owner's choice: not too thin), repeated left to right across the card.
+                val step = 28.dp.toPx()
                 val stripes = androidx.compose.ui.graphics.Brush.linearGradient(
                     0f to face, 0.5f to face, 0.5f to fill, 1f to fill,
                     start = androidx.compose.ui.geometry.Offset.Zero, end = androidx.compose.ui.geometry.Offset(step, 0f),
