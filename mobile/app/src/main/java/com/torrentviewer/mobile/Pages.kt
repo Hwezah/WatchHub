@@ -239,14 +239,17 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                     SpreadRow {
                         Sort.entries.filter { it != Sort.TITLE }.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
                     }
-                    // The rest of the list still coming in, each title to its year.
-                    if (topping) Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // The rest of the list still coming in, each title to its year: centred on an upright phone (the owner's rule).
+                    if (topping) Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = if (isPortraitPhone()) Arrangement.Center else Arrangement.Start,
+                    ) {
                         Spinner(size = 14.dp)
                         Text("Adding the rest of the list · ${titles?.size ?: 0} titles", Modifier.padding(start = 8.dp), style = Type.meta)
                     }
                 }
             }
-            if (titles == null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.padding(top = 40.dp), contentAlignment = Alignment.Center) { Spinner(size = 36.dp) } }
+            if (titles == null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) { Spinner(size = 36.dp) } }
             else if (filling) item(span = { GridItemSpan(maxLineSpan) }) {
                 // The order shows once the list is all in, rather than titles jumping about as each page lands.
                 Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
