@@ -234,7 +234,7 @@ fun Artwork(url: String?, name: String, modifier: Modifier = Modifier, scale: Co
 /** The IMDb rating on a poster: on art, so white on a dark plate in either theme. */
 @Composable
 fun ImdbMark(rating: String, modifier: Modifier = Modifier) {
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(5.dp)
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
     // Wrapped: some parents hand their children their own size as a minimum, and the plate would cover the poster.
     Row(modifier.wrapContentSize(Alignment.BottomStart).background(Color.Black.copy(alpha = 0.72f), shape).padding(end = 5.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -251,7 +251,7 @@ fun ImdbMark(rating: String, modifier: Modifier = Modifier) {
 fun CertificateBadge(certificate: String, modifier: Modifier = Modifier) {
     Text(
         certificate,
-        modifier.border(1.dp, Ink.muted, androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+        modifier.border(1.dp, Ink.muted, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
         style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold, fontSize = 12.sp),
     )
 }
@@ -261,7 +261,8 @@ fun CertificateBadge(certificate: String, modifier: Modifier = Modifier) {
 fun WatchedBadge(at: Long?, modifier: Modifier = Modifier) {
     val date = at?.let { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(it)) }
     Row(
-        modifier.clip(CircleShape).background(Ink.good.copy(alpha = 0.14f)).padding(start = 5.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+        // Squared off a notch, as the phone's pills are (the owner's choice), not a full half-circle at each end.
+        modifier.clip(RoundedCornerShape(10.dp)).background(Ink.good.copy(alpha = 0.14f)).padding(start = 5.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The page's colour on the green: white was lost on the bright green of the dark theme.
@@ -301,7 +302,7 @@ fun ImdbBadge(rating: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             "IMDb",
-            Modifier.clip(RoundedCornerShape(3.dp)).background(Ink.imdb).padding(horizontal = 5.dp, vertical = 1.dp),
+            Modifier.clip(RoundedCornerShape(2.dp)).background(Ink.imdb).padding(horizontal = 5.dp, vertical = 1.dp),
             style = Type.overline.copy(color = Color.Black, fontWeight = FontWeight.Black, letterSpacing = 0.sp, fontSize = 11.sp),
         )
         Spacer(Modifier.width(6.dp))

@@ -126,7 +126,7 @@ object Avatars {
 /** An avatar on its tile: the page's raised colour, washed with [colour]. */
 @Composable
 fun AvatarTile(art: AvatarArt, colour: Color, size: Dp, modifier: Modifier = Modifier) {
-    Canvas(modifier.size(size).clip(RoundedCornerShape(size * 0.22f)).background(Ink.surface2).background(colour.copy(alpha = 0.28f))) {
+    Canvas(modifier.size(size).clip(RoundedCornerShape(size * 0.16f)).background(Ink.surface2).background(colour.copy(alpha = 0.28f))) {
         val k = this.size.width / 100f
         scale(k, k, pivot = Offset.Zero) {
             for (l in art.layers) translate(l.dx, l.dy) {
@@ -143,7 +143,7 @@ fun AvatarImage(icon: String, colour: Color, size: Dp, modifier: Modifier = Modi
     val emoji = icon.startsWith(EMOJI)
     AsyncImage(
         if (emoji) "file:///android_asset/$icon.png" else File(icon), null,
-        modifier.size(size).clip(RoundedCornerShape(size * 0.22f)).background(Ink.surface2).background(colour.copy(alpha = 0.28f)).padding(if (emoji) size * 0.12f else 0.dp),
+        modifier.size(size).clip(RoundedCornerShape(size * 0.16f)).background(Ink.surface2).background(colour.copy(alpha = 0.28f)).padding(if (emoji) size * 0.12f else 0.dp),
         contentScale = if (emoji) ContentScale.Fit else ContentScale.Crop,
     )
 }
