@@ -302,19 +302,20 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     // in a shade between the card's and the page's — under the grain, so it reads as part of the card. Eased, not jumping.
     val done by androidx.compose.animation.core.animateFloatAsState(if (row.ratio.isNaN()) 0f else row.ratio.coerceIn(0f, 1f), label = "filled")
     val fill = androidx.compose.ui.graphics.lerp(CARD_FACE, Ink.bg, 0.5f)
-    // A broken link, or one being fetched afresh (not one queued behind the others): the whole card in 45° stripes of
-    // the card's shade and the fill's (the owner's choice), so what isn't downloading reads apart at a glance.
+    // A broken link, or one being fetched afresh (not one queued behind the others): the whole card in upright stripes
+    // of the card's shade and the fill's (the owner's choice: vertical, not diagonal), so what isn't downloading reads
+    // apart at a glance.
     val striped = row.job.link && (row.state == DlState.FAILED || row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") != true)
     val face = CARD_FACE
     // Grabber's look (the owner's choice): a well-rounded card, a film badge where the poster was.
     Column(
         Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).background(CARD_FACE)
             .drawWithCache {
-                // One stripe of each shade every 10 dp along the diagonal, repeated across the card.
-                val step = 10.dp.toPx()
+                // One stripe of each shade, 7 dp wide, repeated left to right across the card.
+                val step = 14.dp.toPx()
                 val stripes = androidx.compose.ui.graphics.Brush.linearGradient(
                     0f to face, 0.5f to face, 0.5f to fill, 1f to fill,
-                    start = androidx.compose.ui.geometry.Offset.Zero, end = androidx.compose.ui.geometry.Offset(step, step),
+                    start = androidx.compose.ui.geometry.Offset.Zero, end = androidx.compose.ui.geometry.Offset(step, 0f),
                     tileMode = androidx.compose.ui.graphics.TileMode.Repeated,
                 )
                 onDrawBehind {
