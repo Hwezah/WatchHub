@@ -76,7 +76,6 @@ import com.torrentviewer.core.grain
 import com.torrentviewer.core.Lc
 import com.torrentviewer.core.Meta
 import com.torrentviewer.core.NewEpisodes
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.OnHits
 import com.torrentviewer.core.SavedStore
 import com.torrentviewer.core.Scope
@@ -813,7 +812,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     Spinner(size = 24.dp)
                     Text("   Asking your addons and plugins…", style = Type.body)
                 }
-                packs.isEmpty() -> Note(
+                packs.isEmpty() -> EmptyNote(
                     if (lang.isEmpty()) "No season $s pack found yet — download the episodes one by one."
                     else "No season $s pack in ${langName(lang)} — change the language and try again, or download the episodes one by one.",
 Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
@@ -920,15 +919,15 @@ private fun LazyListScope.sources(
                         Text("   Asking your addons and plugins…", style = Type.body)
                     }
                 }
-                busy -> Box(Modifier.fillMaxWidth(), contentAlignment = centre) { Note("${shown.size} so far · finding more…", Modifier.padding(bottom = 8.dp)) }
-                hits?.isEmpty() == true -> Note(
+                busy -> Box(Modifier.fillMaxWidth(), contentAlignment = centre) { EmptyNote("${shown.size} so far · finding more…", Modifier.padding(bottom = 8.dp)) }
+                hits?.isEmpty() == true -> EmptyNote(
                     when {
                         !Addons.hasStreams && com.torrentviewer.mobile.cs.CsPlugins.providers().isEmpty() -> Addons.NONE_YET
                         language != null -> "Nothing found in $language. Change the language and try again."
                         else -> "Nothing found. Try another episode, or add another addon in the Addons tab."
                     },
                 )
-                hits == null && episode == null && title.isSeries -> Note("Choose an episode to see what is available.")
+                hits == null && episode == null && title.isSeries -> EmptyNote("Choose an episode to see what is available.")
             }
             // What was left out, and a tap to bring it back.
             if (hiddenFew > 0 && onShowFew != null) Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart) {

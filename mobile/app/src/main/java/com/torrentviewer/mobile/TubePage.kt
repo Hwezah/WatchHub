@@ -66,7 +66,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.torrentviewer.core.Artwork
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.Spinner
 import com.torrentviewer.core.TubeChannel
 import com.torrentviewer.core.TubeVideo

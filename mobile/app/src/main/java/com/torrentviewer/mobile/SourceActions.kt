@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.sp
 import com.torrentviewer.core.Hit
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.Sub
 import com.torrentviewer.core.Type
 import com.torrentviewer.mobile.cs.CsStreams
@@ -181,7 +180,7 @@ fun SourceActions(
                     }
                 }
             }
-            if (!link && !hit.external) Note("A torrent: it streams through the app's engine.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            if (!link && !hit.external) EmptyNote("A torrent: it streams through the app's engine.", Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         }
     }
 }

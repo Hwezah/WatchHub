@@ -814,6 +814,35 @@ object Downloads {
     /** Where a link's segments and progress are kept until it is done. */
     private fun linkWork(uri: String) = File(pieceDir(), "links/${Integer.toHexString(uri.hashCode())}")
 
+    /** Slices of a torrent's part map: enough to read as stripes on a phone-wide card. */
+    private const val TORRENT_SLICES = 24
+
+    /** At most this many slices for a link's parts: each part is a slice up to here. */
+    private const val MOST_SLICES = 48
+
+    /**
+     * How full each part of [job]'s file is (0–1), for its card's stripes ([com.torrentviewer.core.partMap]): a link
+     * fetched over several connections by its parts as parts.json keeps them — one slice a part, as 1DM shows its
+     * threads — and a torrent by the pieces it has. Null when nothing says (one connection, a playlist, YouTube's
+     * two halves, a torrent not loaded): the card then fills its stripes in order. Reads a file: off the main thread.
+     */
+    fun partsDone(job: DownloadJob): List<Float>? = runCatching {
+        if (job.link) {
+            val state = File(linkWork(job.uri), "parts.json").takeIf { it.isFile } ?: return@runCatching null
+            val o = org.json.JSONObject(state.readText())
+            val total = o.getLong("total")
+            val starts = o.getJSONArray("starts")
+            val done = o.getJSONArray("done")
+            val has = (0 until starts.length()).mapNotNull { i -> done.getLong(i).takeIf { it > 0 }?.let { d -> starts.getLong(i) until starts.getLong(i) + d } }
+            com.torrentviewer.core.partMap(total, has, starts.length().coerceIn(1, MOST_SLICES))
+        } else {
+            val h = synchronized(lock) { handles[job.uri] }?.takeIf { it.isValid } ?: return@runCatching null
+            val bits = h.status(TorrentHandle.QUERY_PIECES).pieces()
+            val n = bits.size().takeIf { it > 0 } ?: return@runCatching null
+            com.torrentviewer.core.partMap(n.toLong(), com.torrentviewer.core.runsOf(n) { bits.getBit(it) }, TORRENT_SLICES)
+        }
+    }.getOrNull()
+
     /**
      * A direct link — a single file, or an HLS playlist joined into one — saved to Movies/Watchly like
      * a torrent's file, with the same Wi-Fi rule, pause, resume and notification.

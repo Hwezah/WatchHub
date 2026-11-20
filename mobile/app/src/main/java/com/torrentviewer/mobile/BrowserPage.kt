@@ -47,7 +47,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.Type
 import com.torrentviewer.core.grain
 import com.composables.icons.lucide.R as L

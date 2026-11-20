@@ -84,7 +84,6 @@ import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Item
 import com.torrentviewer.core.Lc
 import com.torrentviewer.core.Meta
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.Profile
 import com.torrentviewer.core.Profiles
 import com.torrentviewer.core.SavedStore
@@ -256,7 +255,7 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                 }
             }
             else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Note(if (kinds != null && genreKey == null) "No ${if (tab == "tv") "shows" else "films"} in this genre." else "Nothing on this shelf right now.")
+                EmptyNote(if (kinds != null && genreKey == null) "No ${if (tab == "tv") "shows" else "films"} in this genre." else "Nothing on this shelf right now.")
             }
             if (!filling) items(shown, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
             // Read to its end: how many it held, so a short year is the list's, not the app's.
@@ -700,7 +699,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
             }
         }
         if (shelf == Shelfs.HISTORY) {
-            if (items.isEmpty() && fromStremio.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Note("Nothing here yet. Anything you play turns up in this list.", Modifier.padding(top = 16.dp)) }
+            if (items.isEmpty() && fromStremio.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { EmptyNote("Nothing here yet. Anything you play turns up in this list.", Modifier.padding(top = 16.dp)) }
             items(items, key = { it.titleKey }) { item ->
                 HistoryRow(item, sources[item.titleKey] ?: 1, onPlay = {
                     // Played from more than one release: ask which, as Continue watching does.
@@ -714,7 +713,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
             items(fromStremio, key = { "stremio:${it.imdb}" }) { s -> StremioRow(s) { onOpen(Title(s.imdb, s.kind, s.title, year = s.year)) } }
         } else {
             if (listed.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Note(if (shelf == Shelfs.LATER) "Titles you add to My Listing wait here." else "Titles you like collect here.", Modifier.padding(top = 16.dp))
+                EmptyNote(if (shelf == Shelfs.LATER) "Titles you add to My Listing wait here." else "Titles you like collect here.", Modifier.padding(top = 16.dp))
             }
             items(listed, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
         }
@@ -950,7 +949,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             val context = LocalContext.current
             var report by remember { mutableStateOf(CrashGuard.report(context)) }
             val text = report
-            if (text == null) Text("Nothing has gone wrong since this was last cleared.", Modifier.padding(bottom = 18.dp), style = Type.body.copy(color = Ink.muted))
+            if (text == null) EmptyNote("Nothing has gone wrong since this was last cleared.", Modifier.padding(bottom = 18.dp))
             else {
                 Row(Modifier.padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip("Share", false, onClick = {
@@ -1745,7 +1744,7 @@ fun AddonsScreen(watch: Watch) {
         }
         if (addons.isEmpty()) {
             Text("No addons yet", Modifier.padding(start = 4.dp, top = 6.dp, bottom = 10.dp), style = Type.overline.copy(color = Ink.faint))
-            Note("Add one to find streams for every film and episode. Without any, only links you paste in Search will play.")
+            EmptyNote("Add one to find streams for every film and episode. Without any, only links you paste in Search will play.")
             return@Column
         }
         // Stremio's list: a search over what is installed, and a pill per type they serve.
@@ -1761,7 +1760,7 @@ fun AddonsScreen(watch: Watch) {
             (query.isBlank() || a.name.contains(query.trim(), ignoreCase = true)) &&
                 (type == null || a.resources.any { type in it.types } || a.catalogs.any { it.type == type })
         }
-        if (shown.isEmpty()) Note("No installed addon matches.")
+        if (shown.isEmpty()) EmptyNote("No installed addon matches.")
         shown.forEach { a ->
             val at = addons.indexOf(a)
             AddonCard(a, first = at == 0, last = at == addons.lastIndex, onRemoved = { watch.notes.tryEmit("Uninstalled ${a.name}") })
@@ -1833,7 +1832,7 @@ private class Entry(@androidx.annotation.DrawableRes val icon: Int, val title: S
 private fun SettingsList(groups: List<List<Entry>>, query: String) {
     val q = query.trim()
     val shown = if (q.isEmpty()) groups else listOf(groups.flatten().filter { it.matches(q) }).filter { it.isNotEmpty() }
-    if (shown.isEmpty()) Text("No settings match", Modifier.padding(start = 4.dp, bottom = 12.dp), style = Type.meta.copy(color = Ink.faint))
+    if (shown.isEmpty()) EmptyNote("No settings match", Modifier.padding(start = 4.dp, bottom = 12.dp))
     shown.forEach { group ->
         Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).frosted(RoundedCornerShape(12.dp)).padding(vertical = 4.dp)) {
             group.forEach { e ->

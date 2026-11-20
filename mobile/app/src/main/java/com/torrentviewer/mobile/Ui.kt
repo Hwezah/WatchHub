@@ -108,7 +108,6 @@ import com.torrentviewer.core.glow
 import com.torrentviewer.core.grain
 import com.torrentviewer.core.Lc
 import com.torrentviewer.core.Motion
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.ImdbMark
 import com.torrentviewer.core.ProgressLine
 import androidx.compose.animation.core.RepeatMode
@@ -453,7 +452,7 @@ fun <T> Sheet(
     BottomSheet(title, onDismiss) {
         when {
             busy && options.isEmpty() -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { Spinner(size = 40.dp) }
-            options.isEmpty() -> Note(empty ?: "Nothing to choose from.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+            options.isEmpty() -> EmptyNote(empty ?: "Nothing to choose from.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
             else -> LazyColumn {
                 itemsIndexed(options) { _, option ->
                     val on = option.value == selected

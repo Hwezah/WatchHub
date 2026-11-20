@@ -218,7 +218,7 @@ fun WatchOrdersScreen(onOpen: (WatchOrder) -> Unit, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("No watch order by that name", style = Type.meta.copy(color = Ink.faint))
+                EmptyNote("No watch order by that name")
             }
             items(shown, key = { it.id }) { order -> OrderCard(order, seen, { onOpen(order) }) }
         }

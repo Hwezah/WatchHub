@@ -47,7 +47,6 @@ import com.torrentviewer.core.Episode
 import com.torrentviewer.core.Hit
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.ProgressLine
 import com.torrentviewer.core.Title
 import com.torrentviewer.core.Type
@@ -302,25 +301,31 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     // in a shade between the card's and the page's — under the grain, so it reads as part of the card. Eased, not jumping.
     val done by androidx.compose.animation.core.animateFloatAsState(if (row.ratio.isNaN()) 0f else row.ratio.coerceIn(0f, 1f), label = "filled")
     val fill = androidx.compose.ui.graphics.lerp(CARD_FACE, Ink.bg, 0.5f)
-    // Paused (any download), a broken link, or one being fetched afresh (not one queued behind the others): the whole
-    // card in upright stripes of the card's shade and the fill's (the owner's choice: vertical, not diagonal), so what
-    // isn't downloading reads apart at a glance.
+    // Paused (any download), a broken link, or one being fetched afresh (not one queued behind the others): the card as
+    // upright strips (the owner's choice: vertical, not diagonal), so what isn't downloading reads apart at a glance —
+    // each strip a part of the file, filled as far as that part has come, as a download over several connections shows
+    // its threads (the owner's idea): uneven where the parts are, in order where the file fills from the start.
     val striped = row.state == DlState.PAUSED ||
         row.job.link && (row.state == DlState.FAILED || row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") != true)
-    val face = CARD_FACE
+    val known by androidx.compose.runtime.produceState<List<Float>?>(null, striped, row.state, row.done) {
+        value = if (striped) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Downloads.partsDone(row.job) } else null
+    }
+    val strips = known ?: com.torrentviewer.core.inOrderMap(row.ratio, 24)
     // Grabber's look (the owner's choice): a well-rounded card, a film badge where the poster was.
     Column(
         Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).background(CARD_FACE)
             .drawWithCache {
-                // One stripe of each shade, 14 dp wide (the owner's choice: not too thin), repeated left to right across the card.
-                val step = 28.dp.toPx()
-                val stripes = androidx.compose.ui.graphics.Brush.linearGradient(
-                    0f to face, 0.5f to face, 0.5f to fill, 1f to fill,
-                    start = androidx.compose.ui.geometry.Offset.Zero, end = androidx.compose.ui.geometry.Offset(step, 0f),
-                    tileMode = androidx.compose.ui.graphics.TileMode.Repeated,
-                )
+                // Each strip's edge: a hairline in the fill's shade, so empty strips still read as strips.
+                val edge = 1.dp.toPx()
                 onDrawBehind {
-                    if (striped) drawRect(stripes) else if (done > 0f) drawRect(fill, size = size.copy(width = size.width * done))
+                    if (striped && strips.isNotEmpty()) {
+                        val w = size.width / strips.size
+                        strips.forEachIndexed { i, f ->
+                            val x = i * w
+                            if (f > 0f) drawRect(fill, topLeft = androidx.compose.ui.geometry.Offset(x, 0f), size = size.copy(width = w * f))
+                            if (i > 0) drawRect(fill, topLeft = androidx.compose.ui.geometry.Offset(x, 0f), size = size.copy(width = edge))
+                        }
+                    } else if (done > 0f) drawRect(fill, size = size.copy(width = size.width * done))
                 }
             }
             .grain()
@@ -358,14 +363,14 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 )
                 if (pack) Text("$savedCount of ${wanted.size} episodes saved", style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint), maxLines = 1)
             }
-            // At the far right: what the file is ("720p · MKV · x265"), plain and dotted, to judge a size that looks wrong
+            // At the far right: what the file is ("720p | MKV | x265"), split by pipes, to judge a size that looks wrong
             // for its resolution — and under it the buttons (the owner's choice).
             Column(horizontalAlignment = Alignment.End) {
-                // The dots between them in the accent (the owner's choice).
                 if (row.job.tags3.isNotEmpty()) Text(
                     androidx.compose.ui.text.buildAnnotatedString {
                         row.job.tags3.forEachIndexed { i, tag ->
-                            if (i > 0) withStyle(androidx.compose.ui.text.SpanStyle(color = Ink.accent)) { append(" · ") }
+                            // A pipe between them in the accent (the owner's choice), not a dot.
+                            if (i > 0) withStyle(androidx.compose.ui.text.SpanStyle(color = Ink.accent)) { append("  |  ") }
                             append(tag)
                         }
                     },

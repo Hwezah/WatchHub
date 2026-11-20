@@ -40,7 +40,6 @@ import com.lagradost.cloudstream3.ui.settings.extensions.RepositoryData
 import com.torrentviewer.core.Artwork
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.Type
 import com.torrentviewer.core.Watch
 import com.torrentviewer.core.bytes
@@ -91,7 +90,7 @@ fun PluginsSection(watch: Watch) {
     }
 
     if (repos.isEmpty()) {
-        Note("No repositories yet. Add one above, then open it to pick plugins.")
+        EmptyNote("No repositories yet. Add one above, then open it to pick plugins.")
     } else {
         Text("Repositories", Modifier.padding(start = 4.dp, top = 6.dp, bottom = 10.dp), style = Type.overline.copy(color = Ink.faint))
         repos.forEach { repo -> RepoCard(repo, installed, changes, watch) }
@@ -149,8 +148,8 @@ private fun RepoCard(repo: RepositoryData, installed: List<PluginData>, changes:
         }
         if (!open) return@Column
         when {
-            error != null -> Note(error!!, Modifier.padding(top = 14.dp))
-            offered == null -> Note("Reading ${repo.name}…", Modifier.padding(top = 14.dp))
+            error != null -> EmptyNote(error!!, Modifier.padding(top = 14.dp))
+            offered == null -> EmptyNote("Reading ${repo.name}…", Modifier.padding(top = 14.dp))
             else -> {
                 val all = offered!!
                 val have = all.count { CsPlugins.installedOf(it) != null }
@@ -172,7 +171,7 @@ private fun RepoCard(repo: RepositoryData, installed: List<PluginData>, changes:
                     (kind == null || kind in w.plugin.tvTypes.orEmpty()) &&
                         (q.isEmpty() || listOfNotNull(w.plugin.name, w.plugin.description, w.plugin.language).any { it.contains(q, ignoreCase = true) })
                 }.sortedBy { it.plugin.name.lowercase() }
-                if (shown.isEmpty()) Note("No plugin matches.", Modifier.padding(top = 12.dp))
+                if (shown.isEmpty()) EmptyNote("No plugin matches.", Modifier.padding(top = 12.dp))
                 // The installed list changing (or a plugin loading) re-reads each row's state.
                 shown.forEach { w -> androidx.compose.runtime.key(w.plugin.url, changes, installed) { OfferedRow(w, busy, watch) } }
             }

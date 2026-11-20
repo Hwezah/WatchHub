@@ -139,7 +139,6 @@ import com.google.android.gms.cast.framework.SessionManagerListener
 import android.net.Uri
 import java.io.File
 import com.torrentviewer.core.Motion
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.Progress
 import com.torrentviewer.core.ProgressLine
 import com.torrentviewer.core.SavedSub
@@ -1819,7 +1818,7 @@ private fun TracksPanel(
         Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(start = 32.dp, end = 64.dp, top = 24.dp, bottom = 12.dp)) {
             TrackColumn("Audio", Modifier.weight(1f)) {
                 val list = tracks?.audio.orEmpty()
-                if (list.isEmpty()) item { Note("No audio tracks reported yet.", Modifier.padding(start = 14.dp)) }
+                if (list.isEmpty()) item { EmptyNote("No audio tracks reported yet.", Modifier.padding(start = 14.dp)) }
                 itemsIndexed(list) { _, t -> TrackRow(t.name, t.id == audio) { onAudio(t.id) } }
             }
             Spacer(Modifier.width(32.dp))

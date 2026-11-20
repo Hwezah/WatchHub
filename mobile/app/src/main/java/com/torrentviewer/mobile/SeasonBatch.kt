@@ -31,7 +31,6 @@ import com.torrentviewer.core.Hit
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
 import androidx.compose.foundation.shape.CircleShape
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.Spinner
 import com.torrentviewer.core.Title
 import com.torrentviewer.core.Type
@@ -373,7 +372,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
             }
 
             if (scan.done && all.none(::batchable)) {
-                Note("Nothing downloadable was found for this season's episodes.")
+                EmptyNote("Nothing downloadable was found for this season's episodes.")
                 return@Column
             }
 

@@ -48,7 +48,6 @@ import com.torrentviewer.core.GENRES
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Kids
 import com.torrentviewer.core.Meta
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.ImdbMark
 import com.torrentviewer.core.Pick
 import com.torrentviewer.core.SettingsStore
@@ -162,7 +161,7 @@ fun TopScreen(startKind: String, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                 }
             }
             if (titles == null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.padding(top = 40.dp), contentAlignment = Alignment.Center) { Spinner(size = 36.dp) } }
-            else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Note("Nothing rated that high here.") }
+            else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { EmptyNote("Nothing rated that high here.") }
             itemsIndexed(shown, key = { _, t -> t.imdb }) { i, t ->
                 Box {
                     PosterCard(t, { onOpen(t) }, sub = t.year?.take(4))
