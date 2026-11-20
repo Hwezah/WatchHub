@@ -242,7 +242,6 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
     val resumable = latestPerTitle(history).filter { inProgress(it) && !stremio.finishedSince(it) }.take(10)
     // Left part-way somewhere this phone never saw — another device, before a reinstall: Stremio kept the spot.
     val fromStremio = com.torrentviewer.core.Kids.only(stremio.paused.filter { p -> history.none { it.imdb == p.imdb } }.distinctBy { it.imdb }) { Title(it.imdb, it.kind, it.title) }.take(10)
-    val watchlist = saved.filter { it.list == "later" }.map { it.asTitle() }
     var menu by remember { mutableStateOf<Item?>(null) }
     var releases by remember { mutableStateOf<List<Item>?>(null) }
     // Nothing already played, seen elsewhere or saved is a suggestion.
@@ -354,9 +353,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                     }
                 }
             }
-            if (watchlist.isNotEmpty()) item(key = "list") {
-                Rail("My Listing") { TitleRow(state.row("list"), watchlist, onOpen) }
-            }
+            // No My Listing row here (the owner's choice): it lives in Library → My Wishlist.
             if (picks.isNotEmpty()) item(key = "picks") {
                 Rail("Picked for you") { PickedRow(state.row("picks"), picks, onOpen) }
             }
