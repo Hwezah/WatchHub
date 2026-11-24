@@ -389,8 +389,6 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         if (who == null) return@LaunchedEffect
         incoming.value = null
         if (uri.toString() == DOWNLOADS_LINK) {
-            // Behind the lock too: the notification's way in asks for the pin as the tab does.
-            if (FilesLock.locks(Tab.LIBRARY)) { FilesLock.asking = Tab.LIBRARY; return@LaunchedEffect }
             clearPages()
             tab = Tab.LIBRARY
             pages.add(Page.Downloads)
@@ -542,19 +540,21 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         focus.clearFocus(force = true)
         keyboard?.hide()
         // Library and Files behind the code (Settings → Lock): its row opens on top of the tab bar first.
-        if (FilesLock.locks(t)) FilesLock.asking = t
+        if (FilesLock.locks(t)) FilesLock.ask(t)
         else if (t == tab) clearPages() else tab = t
     }
     /** The tab bar's ＋: a link copied elsewhere, to download. */
     // Locked again whenever the app goes to the background.
     val shellLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     androidx.compose.runtime.DisposableEffect(shellLifecycle) {
-        val watcher = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) { FilesLock.unlocked = false; FilesLock.asking = null } }
+        val watcher = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) FilesLock.backgrounded() }
         shellLifecycle.addObserver(watcher)
         onDispose { shellLifecycle.removeObserver(watcher) }
     }
     // Any other way the tab changes (a link, a notification): the same.
     LaunchedEffect(tab) { focus.clearFocus(force = true) }
+    // Settings → Lock → Immediately: going to another tab or page locks it again (the owner's choice).
+    LaunchedEffect(tab, pages.size) { FilesLock.left() }
 
     Box(Modifier.fillMaxSize()) {
         if (isWide()) {

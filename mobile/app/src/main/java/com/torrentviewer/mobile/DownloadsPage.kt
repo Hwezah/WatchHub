@@ -119,6 +119,8 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     var options by remember { mutableStateOf<LiveDownload?>(null) }
     /** "On this phone" opened by its chevron. */
     var showSaved by rememberSaveable { mutableStateOf(false) }
+    /** Open, and not locked since: the lock timing out or (Immediately) another page shuts it again. */
+    val savedShown = showSaved && !FilesLock.needed()
     var deleting by remember { mutableStateOf<Finished?>(null) }
     /** A film's or episode's ⓘ tapped: its story. */
     var story by remember { mutableStateOf<Finished?>(null) }
@@ -168,15 +170,16 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
         }
         // What's on the phone, folded away until its chevron opens it (the owner's choice).
         if (finished.isNotEmpty()) item {
-            Tap({ showSaved = !showSaved }, Modifier.fillMaxWidth(), RoundedCornerShape(4.dp)) {
+            // Behind the lock (Settings → Lock): the chevron asks for the pin first, the list opening once it's right.
+            Tap({ if (savedShown) showSaved = false else if (FilesLock.needed()) FilesLock.ask(Tab.LIBRARY) { showSaved = true } else showSaved = true }, Modifier.fillMaxWidth(), RoundedCornerShape(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { Label("On this phone  ·  ${bytes(finished.sumOf { it.size })}") }
-                    Lc(if (showSaved) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(end = 8.dp), tint = Ink.muted, size = 22.dp)
+                    Lc(if (savedShown) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(end = 4.dp), tint = Ink.muted, size = 28.dp)
                 }
             }
         }
         // A show's episodes fold under one card; the most recently finished show first.
-        val shows = if (!showSaved) emptyList() else finished.groupBy { it.imdb ?: it.label.substringBefore(" · ") }.values.sortedByDescending { g -> g.maxOf { it.at } }
+        val shows = if (!savedShown) emptyList() else finished.groupBy { it.imdb ?: it.label.substringBefore(" · ") }.values.sortedByDescending { g -> g.maxOf { it.at } }
         items(shows, key = { "done-" + it.first().path }) { group ->
             val play: (Finished) -> Unit = { f ->
                 val from = f.imdb?.let { Title(it, f.kind ?: "movie", f.label.substringBefore(" · "), poster = f.poster) }
@@ -304,7 +307,7 @@ private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onSt
                     Text(first.label.substringBefore(" · "), Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
                     Text("${episodes.size} episodes  ·  ${bytes(episodes.sumOf { it.size })}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
                 }
-                Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp)
+                Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(8.dp), tint = Ink.muted, size = 26.dp)
             }
         }
         if (open) Column(Modifier.padding(top = 8.dp)) {
@@ -446,7 +449,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 22.dp) }
                 // A pack's episodes fold under the card from here (the owner's choice), right of the ✕.
                 if (pack) Tap({ open = !open }, shape = CircleShape) {
-                    Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(start = 6.dp, end = 4.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 22.dp)
+                    Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(start = 6.dp, end = 2.dp, top = 6.dp, bottom = 0.dp), tint = Ink.muted, size = 28.dp)
                 }
                 }
             }
@@ -521,7 +524,7 @@ private fun SeasonGroup(
                         Modifier.padding(end = 6.dp),
                         style = Type.meta.copy(fontSize = 12.sp, color = if (chosen.isNotEmpty() && saved == chosen.size) Ink.good else Ink.faint),
                     )
-                    Lc(if (expanded) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, tint = Ink.muted, size = 18.dp)
+                    Lc(if (expanded) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, tint = Ink.muted, size = 24.dp)
                 }
             }
         }

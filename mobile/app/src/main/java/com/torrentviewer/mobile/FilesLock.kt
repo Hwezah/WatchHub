@@ -34,20 +34,87 @@ import com.torrentviewer.core.Type
 import com.composables.icons.lucide.R as L
 
 /**
- * A four-digit code before Library and Files (the owner's choice: nobody else into the downloads). Set in Settings →
- * Lock; asked for in a row that opens on top of the tab bar; unlocked until the app goes to the background.
+ * A four-digit code before what's on the phone (the Library's saved downloads) and Files (the owner's choice: nobody else into the downloads). Set in Settings →
+ * Lock; asked for in a row that opens on top of the tab bar; unlocked for [FilesLock.timeout].
  */
 object FilesLock {
     private const val KEY = "files-lock-code"
 
-    /** The tabs behind the code. */
-    val LOCKED = setOf(Tab.LIBRARY, Tab.FILES)
+    /**
+     * The tabs behind the code. The Library itself opens: what's on the phone, under its "On this phone" chevron, is
+     * what asks (the owner's choice), so it isn't asked for twice.
+     */
+    val LOCKED = setOf(Tab.FILES)
 
-    /** Unlocked since the app last came to the front. */
+    /** Unlocked: by the code or the password, at [unlockedAt]; how long that lasts is [timeout]. */
     var unlocked by mutableStateOf(false)
+
+    /** When the code was last typed right. */
+    private var unlockedAt = 0L
 
     /** The tab the code is being asked for, its row open over the tab bar; null when none. */
     var asking by mutableStateOf<Tab?>(null)
+
+    /** What opens once the code is right, beside [asking]'s tab: the "On this phone" list. */
+    var then: (() -> Unit)? = null
+
+    /** Asks for the code before [tab], and [after] once it's right. */
+    fun ask(tab: Tab, after: (() -> Unit)? = null) {
+        then = after
+        asking = tab
+    }
+
+    private const val TIMEOUT = "files-lock-timeout"
+
+    /** How long an unlock lasts, in ms (Settings → Lock): [IMMEDIATELY], a few minutes, or [UNTIL_CLOSED]. */
+    const val IMMEDIATELY = 0L
+    const val UNTIL_CLOSED = -1L
+
+    /** The choices for [timeout], as Settings → Lock shows them. */
+    val TIMEOUTS = listOf(IMMEDIATELY to "Immediately", 60_000L to "1 min", 300_000L to "5 min", 900_000L to "15 min", UNTIL_CLOSED to "App closes")
+
+    /** Kept app-wide; until the app is closed (to the background) unless chosen otherwise. */
+    var timeout by mutableStateOf(Kv.global(TIMEOUT)?.toLongOrNull() ?: UNTIL_CLOSED)
+        private set
+
+    fun setTimeout(ms: Long) {
+        timeout = ms
+        Kv.setGlobal(TIMEOUT, ms.toString())
+    }
+
+    /** Unlocked now: by the code, and not timed out. */
+    private fun open() = unlocked && (timeout <= 0 || System.currentTimeMillis() - unlockedAt < timeout)
+
+    /** Whether what's locked needs the code now: a code set, and not [open]. */
+    fun needed() = code() != null && !open()
+
+    /** Another page or tab: locked again at once when the timeout is [IMMEDIATELY] (the owner's choice). */
+    fun left() {
+        if (timeout == IMMEDIATELY) unlocked = false
+    }
+
+    /** The app sent to the background: locked again, unless a few minutes were chosen (the clock decides those). */
+    fun backgrounded() {
+        if (timeout <= 0) unlocked = false
+        asking = null
+        then = null
+    }
+
+    /**
+     * The code was right: what was asked for opens — [then] where there is one (the saved list, on the page already),
+     * else the tab, through [onOpen].
+     */
+    fun passed(tab: Tab?, onOpen: (Tab) -> Unit) {
+        val after = then
+        asking = null
+        then = null
+        if (after != null) after() else tab?.let(onOpen)
+    }
+
+    private fun opened() {
+        unlocked = true
+        unlockedAt = System.currentTimeMillis()
+    }
 
     /** The code set, or null (no lock). Kept on this phone only. */
     fun code(): String? = Kv.global(KEY)?.takeIf { it.length == 4 }
@@ -69,13 +136,13 @@ object FilesLock {
     fun hasPassword() = Kv.global(PASS) != null
 
     /** The password typed: right, unlocked (for this session); wrong, false. */
-    fun tryPassword(typed: String): Boolean = (Kv.global(PASS) != null && digest(typed) == Kv.global(PASS)).also { if (it) unlocked = true }
+    fun tryPassword(typed: String): Boolean = (Kv.global(PASS) != null && digest(typed) == Kv.global(PASS)).also { if (it) opened() }
 
     /** Whether [tab] needs the code now. */
-    fun locks(tab: Tab) = tab in LOCKED && !unlocked && code() != null
+    fun locks(tab: Tab) = tab in LOCKED && needed()
 
     /** The code typed: right, unlocked; wrong, false. */
-    fun tryCode(typed: String): Boolean = (typed == code()).also { if (it) unlocked = true }
+    fun tryCode(typed: String): Boolean = (typed == code()).also { if (it) opened() }
 }
 
 /**
@@ -101,7 +168,7 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
                     val tab = FilesLock.asking
-                    if (FilesLock.tryPassword(typed)) { FilesLock.asking = null; tab?.let(onOpen) }
+                    if (FilesLock.tryPassword(typed)) FilesLock.passed(tab, onOpen)
                     else { typed = ""; android.widget.Toast.makeText(context, "Wrong password", android.widget.Toast.LENGTH_SHORT).show() }
                 }),
                 visualTransformation = PasswordVisualTransformation(),
@@ -113,10 +180,7 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
                     typed = v.filter(Char::isDigit).take(4)
                     if (typed.length == 4) {
                         val tab = FilesLock.asking
-                        if (FilesLock.tryCode(typed)) {
-                            FilesLock.asking = null
-                            tab?.let(onOpen)
-                        } else {
+                        if (FilesLock.tryCode(typed)) FilesLock.passed(tab, onOpen) else {
                             typed = ""
                             android.widget.Toast.makeText(context, "Wrong code", android.widget.Toast.LENGTH_SHORT).show()
                         }
@@ -181,7 +245,7 @@ fun LockSettings(say: (String) -> Unit) {
     }
 
     if (!on) {
-        Note("Lock Library and Files behind a four-digit pin. The Auth Password opens them if you forget the pin.")
+        Note("Lock your saved downloads and Files behind a four-digit pin. The Auth Password opens them if you forget the pin.")
         PinField(pin, { pin = it }, "Pin (four digits)")
         PinField(again, { again = it }, "The pin again")
         Field(pass, { pass = it }, "Auth Password", gap, secret = true)
@@ -193,7 +257,7 @@ fun LockSettings(say: (String) -> Unit) {
                 else -> {
                     FilesLock.set(pin)
                     FilesLock.setPassword(pass)
-                    FilesLock.unlocked = true
+                    FilesLock.tryCode(pin)
                     on = true
                     reset()
                     say("Lock on")
@@ -204,7 +268,15 @@ fun LockSettings(say: (String) -> Unit) {
     }
     when (step) {
         null -> {
-            Note("On. Library and Files ask for the pin once each time the app is opened" + if (FilesLock.hasPassword()) "; the Auth Password opens them too." else ". No Auth Password yet: set one in case you forget the pin.")
+            Note("On. Saved downloads and Files ask for the pin" + if (FilesLock.hasPassword()) "; the Auth Password opens them too." else ". No Auth Password yet: set one in case you forget the pin.")
+            Text("Lock Again", Modifier.padding(top = 8.dp), style = Type.label.copy(color = Ink.text))
+            Text(
+                "Immediately: as soon as you go to another page.",
+                Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint),
+            )
+            BarChoices(FilesLock.TIMEOUTS.map { it.second }, FilesLock.TIMEOUTS.indexOfFirst { it.first == FilesLock.timeout }.takeIf { it >= 0 }, Modifier.padding(top = 4.dp)) {
+                FilesLock.setTimeout(FilesLock.TIMEOUTS[it].first)
+            }
             Button("Change Pin", { step = "pin" }, gap, icon = L.drawable.lucide_ic_lock)
             Button(if (FilesLock.hasPassword()) "Change Auth Password" else "Set Auth Password", { step = "pass" }, gap, icon = L.drawable.lucide_ic_key_round)
             Button("Turn Off Lock", { step = "off" }, gap, icon = L.drawable.lucide_ic_lock_open, tint = Ink.accent)
@@ -236,7 +308,7 @@ fun LockSettings(say: (String) -> Unit) {
             }
         }
         "off" -> {
-            Note("Turn Off Lock: Library and Files will open for anyone.")
+            Note("Turn Off Lock: saved downloads and Files will open for anyone.")
             Field(current, { current = it }, "Current pin or Auth Password", gap, secret = true)
             CancelSave("Turn Off") {
                 if (!knows()) say("That isn't the current pin or Auth Password") else {
