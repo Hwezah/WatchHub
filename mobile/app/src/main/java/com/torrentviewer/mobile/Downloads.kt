@@ -740,17 +740,25 @@ object Downloads {
             else -> "mkv"
         }
         val dest = destOf(job, job.label, safe("${job.label} (partial).$ext"))
-        dest.parentFile?.mkdirs()
-        part.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
+        // Over several connections: every thread's section, in order, gaps left out (as 1DM merges). Over one, or a
+        // playlist, the file is already one unbroken run.
+        val plan = File(work, "parts.json").takeIf { it.isFile && part.parentFile == work }?.let { runCatching { org.json.JSONObject(it.readText()) }.getOrNull() }
+        val sections = plan?.let { o ->
+            val starts = o.getJSONArray("starts")
+            val done = o.getJSONArray("done")
+            com.torrentviewer.core.linkSections((0 until starts.length()).map { starts.getLong(it) }, (0 until done.length()).map { done.getLong(it) })
+        } ?: listOf(0L until part.length())
+        if (sections.isEmpty()) return@runCatching null
+        copySections(part, sections, dest)
         writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, job.poster, "${job.label} (partial)", job.imdb, job.kind)) + _finished.value.filter { it.path != dest.path })
         dest
     }.getOrNull()
 
     /**
-     * Force merge for a torrent ([savePartial]'s twin): each chosen, unsaved file of it — every episode of a pack — copied
-     * out up to its first missing piece ("Name (partial).mkv"), which is as far as it plays. The torrent carries on as it
-     * was. Torrents fetch pieces out of order, so a file with its opening piece missing has nothing to give yet. The
-     * files saved; empty when none had anything. Copies files: off the main thread.
+     * Force merge for a torrent ([savePartial]'s twin): each chosen, unsaved file of it — every episode of a pack — has
+     * every piece it has so far joined in order, gaps left out ("Name (partial).mkv"), as 1DM merges its threads'
+     * sections. The torrent carries on as it was. The files saved; empty when none had anything. Copies files: off the
+     * main thread.
      */
     fun savePartialTorrent(uri: String): List<File> = runCatching {
         val row = _live.value.find { it.job.uri == uri && !it.job.link } ?: return@runCatching emptyList()
@@ -764,31 +772,40 @@ object Downloads {
             val offset = fs.fileOffset(i)
             val size = fs.fileSize(i)
             if (size <= 0) return@mapNotNull null
-            com.torrentviewer.core.playablePrefix(offset, size, pieceLen, bits.size()) { bits.getBit(it) }.takeIf { it > 0 }?.let { have ->
+            val sections = com.torrentviewer.core.torrentSections(offset, size, pieceLen, bits.size()) { bits.getBit(it) }.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            run {
                 val src = File(pieceDir(), fs.filePath(i)).takeIf { it.isFile } ?: return@mapNotNull null
                 val name = fs.fileName(i)
                 val base = name.substringBeforeLast('.')
                 val ext = name.substringAfterLast('.', "mkv")
                 val dest = destOf(job, ti.name(), "$base (partial).$ext")
-                dest.parentFile?.mkdirs()
-                src.inputStream().use { input ->
-                    dest.outputStream().use { out ->
-                        val buf = ByteArray(1 shl 16)
-                        var left = have
-                        while (left > 0) {
-                            val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
-                            if (n < 0) break
-                            out.write(buf, 0, n)
-                            left -= n
-                        }
-                    }
-                }
+                copySections(src, sections, dest)
                 val label = if (job.files.size > 1) parseEpisode(name)?.let { e -> "${job.titleName?.substringBefore(" · ") ?: ti.name()} · S%02dE%02d".format(e.season, e.episode) } ?: name else job.label
                 writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, job.poster, "$label (partial)", job.imdb, job.kind)) + _finished.value.filter { it.path != dest.path })
                 dest
             }
         }
     }.getOrDefault(emptyList())
+
+    /** [sections] of [src], one after another, into [dest]: a force merge's file. */
+    private fun copySections(src: File, sections: List<LongRange>, dest: File) {
+        dest.parentFile?.mkdirs()
+        java.io.RandomAccessFile(src, "r").use { input ->
+            dest.outputStream().buffered(1 shl 16).use { out ->
+                val buf = ByteArray(1 shl 16)
+                for (r in sections) {
+                    input.seek(r.first)
+                    var left = (r.last - r.first + 1).coerceAtMost(input.length() - r.first)
+                    while (left > 0) {
+                        val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        left -= n
+                    }
+                }
+            }
+        }
+    }
 
     /** The folder a link's download is kept in while it runs, for the options' Properties. */
     fun workOf(uri: String): File = linkWork(uri)

@@ -43,14 +43,36 @@ fun runsOf(count: Int, has: (Int) -> Boolean): List<LongRange> {
 }
 
 /**
- * How many bytes of a torrent's file, from its start, are already on disk without a gap: what a force merge can copy
- * out and a player can play. A torrent fetches pieces out of order, so this stops at the first piece missing. The file
- * runs from [offset] for [size] bytes of the torrent; [pieces] are [pieceLength] long; [has] says whether one is in.
+ * The byte ranges of a file already downloaded, in order and joined where they touch: what a force merge copies out,
+ * one after another, as 1DM does with its threads' sections — every section that came in, not only the unbroken start.
+ * Empty ranges are dropped.
  */
-fun playablePrefix(offset: Long, size: Long, pieceLength: Long, pieces: Int, has: (Int) -> Boolean): Long {
-    if (size <= 0 || pieceLength <= 0) return 0
+fun mergedSections(ranges: List<LongRange>): List<LongRange> {
+    val sorted = ranges.filter { !it.isEmpty() }.sortedBy { it.first }
+    val out = mutableListOf<LongRange>()
+    for (r in sorted) {
+        val prev = out.lastOrNull()
+        if (prev != null && r.first <= prev.last + 1) out[out.size - 1] = prev.first..maxOf(prev.last, r.last) else out += r
+    }
+    return out
+}
+
+/**
+ * A multi-connection link's downloaded sections, from its parts.json: part i begins at [starts] and has [done] bytes in.
+ * See [mergedSections].
+ */
+fun linkSections(starts: List<Long>, done: List<Long>): List<LongRange> =
+    mergedSections(starts.indices.mapNotNull { i -> done.getOrNull(i)?.takeIf { it > 0 }?.let { d -> starts[i] until starts[i] + d } })
+
+/**
+ * A torrent file's downloaded sections, in the file's own bytes: the file runs from [offset] for [size] bytes of the
+ * torrent, [pieces] are [pieceLength] long, and [has] says whether one is in. A piece shared with the next file counts
+ * only for the part inside this one. See [mergedSections].
+ */
+fun torrentSections(offset: Long, size: Long, pieceLength: Long, pieces: Int, has: (Int) -> Boolean): List<LongRange> {
+    if (size <= 0 || pieceLength <= 0) return emptyList()
     val first = (offset / pieceLength).toInt()
-    val last = ((offset + size - 1) / pieceLength).toInt()
-    for (p in first..last) if (p >= pieces || !has(p)) return (p * pieceLength - offset).coerceIn(0, size)
-    return size
+    val last = ((offset + size - 1) / pieceLength).toInt().coerceAtMost(pieces - 1)
+    if (last < first) return emptyList()
+    return mergedSections((first..last).filter(has).map { p -> (p * pieceLength - offset).coerceAtLeast(0) until ((p + 1) * pieceLength - offset).coerceAtMost(size) })
 }

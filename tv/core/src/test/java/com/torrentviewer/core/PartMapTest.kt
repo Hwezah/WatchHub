@@ -33,14 +33,13 @@ class PartMapTest {
         near(listOf(1f, 0.5f, 0f, 1f), partMap(8, runsOf(bits.size) { bits[it] }, 4))
     }
 
-    /** A file inside a torrent plays up to its first missing piece: none, part of the way, or all of it. */
-    @Test fun playablePrefixStopsAtTheFirstGap() {
-        // File from byte 150 for 400 bytes, pieces of 100: pieces 1..5.
-        val all = { _: Int -> true }
-        assertEquals(400L, playablePrefix(150, 400, 100, 10, all))
-        assertEquals(0L, playablePrefix(150, 400, 100, 10) { it != 1 })
-        assertEquals(150L, playablePrefix(150, 400, 100, 10) { it != 3 })
-        assertEquals(350L, playablePrefix(150, 400, 100, 10) { it != 5 })
-        assertEquals(0L, playablePrefix(0, 0, 100, 10, all))
+    /** Every section that came in is merged, in order, touching ones joined: a link's threads and a torrent's pieces. */
+    @Test fun sectionsAreEverythingDownloadedInOrder() {
+        assertEquals(listOf(0L..49L, 100L..149L, 300L..349L), linkSections(listOf(0, 100, 300, 400), listOf(50, 50, 50, 0)))
+        assertEquals(listOf(0L..149L), linkSections(listOf(0, 100), listOf(100, 50)))
+        assertEquals(listOf(0L..9L, 20L..29L), mergedSections(listOf(20L..29L, 0L..4L, 5L..9L, 7L..3L)))
+        // File from byte 150 for 400 bytes, pieces of 100: pieces 1..5; 2 and 4 missing.
+        assertEquals(listOf(0L..49L, 150L..249L, 350L..399L), torrentSections(150, 400, 100, 10) { it != 2 && it != 4 })
+        assertEquals(emptyList<LongRange>(), torrentSections(150, 400, 100, 10) { false })
     }
 }
