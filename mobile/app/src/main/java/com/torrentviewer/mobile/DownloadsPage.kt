@@ -323,7 +323,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     // How far it has come, as a fill across the whole card from the left (the owner's choice: no strip, a shorter card),
     // in a shade between the card's and the page's — under the grain, so it reads as part of the card. Eased, not jumping.
     val done by androidx.compose.animation.core.animateFloatAsState(if (row.ratio.isNaN()) 0f else row.ratio.coerceIn(0f, 1f), label = "filled")
-    val fill = androidx.compose.ui.graphics.lerp(CARD_FACE, Ink.bg, 0.5f)
+    // The strips and the fill in the accent (the owner's choice), toned into the card so its words stay clear.
+    val fill = androidx.compose.ui.graphics.lerp(CARD_FACE, Ink.accent, 0.35f)
     // Paused (any download), a broken link, or one being fetched afresh (not one queued behind the others): the card as
     // upright strips (the owner's choice: vertical, not diagonal), so what isn't downloading reads apart at a glance —
     // each strip a part of the file, filled as far as that part has come, as a download over several connections shows
