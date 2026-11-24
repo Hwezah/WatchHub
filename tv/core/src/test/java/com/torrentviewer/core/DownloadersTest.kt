@@ -15,4 +15,14 @@ class DownloadersTest {
         assertEquals("idm.internet.download.manager", defaultDownloader(listOf("com.dv.adm", "idm.internet.download.manager"), null))
 
     @Test fun noDownloaderMeansPicker() = assertNull(defaultDownloader(listOf("org.telegram.messenger"), null))
+
+    @Test fun onlyDownloadersInTheSheet() {
+        assertEquals(true, looksLikeDownloader("idm.internet.download.manager.plus", "1DM+"))
+        assertEquals(true, looksLikeDownloader("com.example.grabber", "Grabber!"))
+        assertEquals(true, looksLikeDownloader("com.x.y", "Advanced Download Manager"))
+        assertEquals(false, looksLikeDownloader("com.samsung.android.calendar", "Calendar"))
+        assertEquals(false, looksLikeDownloader("com.google.android.apps.messaging", "Messages"))
+        assertEquals(false, looksLikeDownloader("com.anthropic.claude", "Claude"))
+        assertEquals(false, looksLikeDownloader("com.google.android.marvin.talkback", "Android Accessibility Suite"))
+    }
 }

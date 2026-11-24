@@ -62,25 +62,39 @@ class PreferredPickTest {
         assertEquals(0, resolutionDistance("4K", ""))
     }
 
-    /** Dope Thief S01E01: Torrentio's 720p x265 MKV (423 MB) against PenguPlay's 720p H.264 HLS links. Torrents aren't the priority. */
-    @Test fun linksBeforeTorrents() {
+    /**
+     * The smallest reasonable 720p MKV, torrents and links alike (the owner's rule): a 423 MB x265 MKV torrent over
+     * PenguPlay's 589 MB HLS link; a link or a trusted site only between files of about the same size.
+     */
+    @Test fun lightestWhateverItCameAs() {
         val torrent = hit("Dope.Thief.S01E01.720p.x265.mkv", "720p", 423 * mb)
         val light = link("PenguPlay 720p HLS H.264 589 MB", "720p", 589 * mb, "https://cdn.x/a.m3u8")
         val heavy = link("PenguPlay 720p HLS H.264 2.02 GB", "720p", 2068 * mb, "https://cdn.x/b.m3u8")
-        // A link at the resolution, whatever its format or size; among links, the lightest.
-        assertEquals(light, preferredPick(listOf(torrent, light, heavy), defaults))
+        assertEquals(torrent, preferredPick(listOf(torrent, light, heavy), defaults))
+        // Within a tenth of the lightest: MoviesMod's link before the torrent.
         val mkvLink = link("Moviesmod 720p [440MB].mkv", "720p", 440 * mb, "https://mm.x/e01.mkv")
         assertEquals(mkvLink, preferredPick(listOf(torrent, mkvLink, light), defaults))
-        // A torrent only when it matches the resolution better, or there's no link.
         val link1080 = link("Plugin 1080p [1.2GB].mkv", "1080p", 1200 * mb, "https://cdn.x/e01-1080.mkv")
         assertEquals(torrent, preferredPick(listOf(torrent, link1080), defaults))
         assertEquals(torrent, preferredPick(listOf(torrent), defaults))
         assertEquals(setOf(heavy), preferableLinks(listOf(heavy)))
         assertEquals(light, batchPick(listOf(torrent, light), BatchFilter(quality = "720p"), preferDirect = true))
-        assertEquals(light, seasonPick(listOf(torrent, light), defaults))
+        assertEquals(torrent, seasonPick(listOf(torrent, light), defaults))
     }
 
-    /** No 720p MKV anywhere: up the chain to 1080p MKV, before a 720p in another format. */
+    /** The owner's E07: HDHub's 809 MB x265 link against Torrentio's 203 MB 720p x265 MKV with 30 seeds — the torrent. */
+    @Test fun smallReasonableTorrentOverHeavyLink() {
+        val hub = link("Furious.S01E07.720p.HEVC.x265-HDHub4u.mkv [10Gbps Download Only]", "720p", 809 * mb, "https://h.x/e7").copy(addon = "HdHub")
+        val small = hit("Furious.S01E07.720p.HEVC.x265-MeGusta.mkv", "720p", 203 * mb, seeders = 30)
+        val thin = hit("Furious.S01E07.720p.x264-FENiX.mkv", "720p", 455 * mb, seeders = 11)
+        assertEquals(small, seasonPick(listOf(hub, small, thin), defaults))
+        // Suspiciously small for 720p (a sample): after every reasonable one.
+        val sample = hit("Furious.S01E07.720p.x265.sample.mkv", "720p", 40 * mb, seeders = 50)
+        assertEquals(small, seasonPick(listOf(hub, small, sample), defaults))
+        // A swarm too thin to finish (under 10 seeds) waits behind a link that can download now.
+        assertEquals(hub, seasonPick(listOf(hub, small.copy(seeders = 4)), defaults))
+    }
+
     @Test fun mkvUpTheChainBeforeOtherFormats() {
         val mp4 = hit("E01.720p.x264.mp4", "720p", 300 * mb)
         val mkv1080 = hit("E01.1080p.x265.mkv", "1080p", 900 * mb)
@@ -137,16 +151,18 @@ class PreferredPickTest {
         assertEquals(other, preferredPick(listOf(other, mod.copy(quality = "1080p")), defaults))
     }
 
-    /** The trusted sites in the owner's order — MoviesMod, then MoviesDrive, then HDHub — whatever their sizes. */
+    /** The trusted sites in the owner's order — MoviesMod, then MoviesDrive, then HDHub — among files of about the same size. */
     @Test fun trustedSitesInOrder() {
-        val hub = link("HDHub4u 720p [250MB]", "720p", 250 * mb, "https://h.x/e1")
-        val drive = link("MoviesDrive 720p [290MB]", "720p", 290 * mb, "https://d.x/e1").copy(addon = "StreamPlay")
+        val hub = link("HDHub4u 720p [300MB]", "720p", 300 * mb, "https://h.x/e1")
+        val drive = link("MoviesDrive 720p [310MB]", "720p", 310 * mb, "https://d.x/e1").copy(addon = "StreamPlay")
         val mod = link("Moviesmod Driveseed [320MB]", "720p", 320 * mb, "https://m.x/e1").copy(addon = "StreamPlay")
         assertEquals(3, trustRank(mod))
         assertEquals(2, trustRank(drive))
         assertEquals(1, trustRank(hub))
         assertEquals(mod, preferredPick(listOf(hub, drive, mod), defaults))
         assertEquals(drive, preferredPick(listOf(hub, drive), defaults))
+        // A third lighter is a different file: the smaller, whatever the site.
+        assertEquals(hub.copy(size = 220 * mb), preferredPick(listOf(hub.copy(size = 220 * mb), mod), defaults))
         assertEquals(mod, batchPick(listOf(hub, drive, mod), BatchFilter(quality = "720p")))
     }
 

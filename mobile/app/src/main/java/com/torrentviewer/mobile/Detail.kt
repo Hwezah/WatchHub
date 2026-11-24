@@ -677,7 +677,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     )
                 }
             } else {
-                sources(title, episode, kept, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> watch.stream(hit, title, among = kept.orEmpty()) }
+                sources(title, episode, kept, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> if (com.torrentviewer.core.downloadOnly(hit)) downloadFor = hit to null else watch.stream(hit, title, among = kept.orEmpty()) }
             }
         }
         // Over the art, a round back button; once the page scrolls under it, a solid bar with the name.
@@ -708,7 +708,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             LazyColumn {
                 sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
                     sheet = false
-                    watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep, among = kept.orEmpty())
+                    if (com.torrentviewer.core.downloadOnly(hit)) downloadFor = hit to ep
+                    else watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep, among = kept.orEmpty())
                 }
             }
         }
@@ -789,7 +790,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             },
             onReload = { reloadSources(ep) },
             busy = busy,
-            onDownload = { h -> Downloads.add(downloadJob(h, title, ep)) },
+            // Internal or external, as every download asks.
+            onDownload = { h -> downloadFor = h to ep },
             say = { watch.notes.tryEmit(it) },
             onDismiss = { actions = null },
         )

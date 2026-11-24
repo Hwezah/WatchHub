@@ -67,14 +67,14 @@ class LinkProbeTest {
         assertEquals(false, onTarget(emptyList(), p))
     }
 
-    @Test fun seasonPickIsTheLightest720pMkvLink() {
+    @Test fun seasonPickIsTheLightest720pMkv() {
         val heavy1080 = link("Show 1080p x264 .mkv", 3L shl 30, "1080p", "https://a.example/1")
         val big720 = link("Show 720p x265 .mkv", 900L shl 20, "720p", "https://a.example/2")
         val small720 = link("Show 720p .mkv", 320L shl 20, "720p", "https://a.example/3")
         val hls720 = link("Show 720p", 100L shl 20, "720p", "https://a.example/4.m3u8")
         val torrent720 = Hit("hash", "Show 720p x265 .mkv", "magnet:?xt=urn:btih:hash", 50, 0, 200L shl 20, "720p", "tv", Scope.EPISODE, null)
-        // Torrents aren't the priority (the owner's rule): the link, though a well-seeded torrent is lighter.
-        assertEquals(small720, seasonPick(listOf(heavy1080, big720, small720, hls720, torrent720), DownloadPrefs()))
+        // The smallest reasonable 720p MKV, torrents and links alike (the owner's rule): the well-seeded 200 MB torrent.
+        assertEquals(torrent720, seasonPick(listOf(heavy1080, big720, small720, hls720, torrent720), DownloadPrefs()))
         assertEquals(torrent720, seasonPick(listOf(torrent720), DownloadPrefs()))
         // A thin one (under 10 seeds) doesn't.
         val thin = torrent720.copy(id = "thin", uri = "magnet:?xt=urn:btih:thin", seeders = 6)

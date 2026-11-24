@@ -66,7 +66,11 @@ object ExternalDownloaders {
             .filter { it.first != context.packageName }
             .distinctBy { it.first }
         val known = com.torrentviewer.core.KNOWN_DOWNLOADERS
-        return found.sortedBy { known.indexOf(it.first).let { i -> if (i < 0) Int.MAX_VALUE else i } }
+        // Downloaders only (the owner's choice): calendars, messengers and the like are behind "Other Apps…". The one
+        // picked before stays, whatever it is.
+        val mine = remembered()
+        return found.filter { (pkg, name) -> pkg == mine || com.torrentviewer.core.looksLikeDownloader(pkg, name) }
+            .sortedBy { known.indexOf(it.first).let { i -> if (i < 0) Int.MAX_VALUE else i } }
     }
 
     /** Whether [pkg] has a screen that takes [intent]. */

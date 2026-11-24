@@ -51,4 +51,10 @@ class StreamPickTest {
         assertEquals(listOf("l4", "l1", "l2", "l3", "t1", "t2"), sourceOrder(all, "").map { it.id })
         assertEquals(listOf("4K", "1080p", "720p"), sourceResolutions(all + link720.copy(id = "k", quality = "4K") + link720.copy(id = "k2", quality = "2160p") + link720.copy(id = "c", quality = "CAM")))
     }
+
+    @Test fun downloadOnlySources() {
+        assertEquals(true, downloadOnly(hit("[10Gbps Download Only] [350MB] Film.720p.mkv", "720p")))
+        assertEquals(true, downloadOnly(hit("Film Direct-Download 720p", "720p")))
+        assertEquals(false, downloadOnly(hit("MoviesDrive GDFlix [Instant Download] 720p", "720p")))
+    }
 }

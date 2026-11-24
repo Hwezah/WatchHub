@@ -319,6 +319,61 @@ object Downloads {
 
     private fun safe(name: String) = name.replace(Regex("[\\\\/:*?\"<>|]+"), "_").trim().ifBlank { "Download" }
 
+    /**
+     * [subs] (a source's subtitles, the ones ticked) saved by the app itself, beside their video: Android's own downloader
+     * took every one of a film's dozens of files, flooded the folder and notified as "Download Manager" (the owner caught
+     * it). A film's go in a folder of its own, the film moved in with them if it's on the phone (the owner's choice); an
+     * episode's in its season's folder. [heading] is the title as the sources sheet shows it ("Show · S01E02" for an
+     * episode). How many were saved.
+     */
+    suspend fun saveSubtitles(subs: List<com.torrentviewer.core.Sub>, heading: String): Int = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        if (subs.isEmpty() || !::app.isInitialized) return@withContext 0
+        val ep = parseEpisode(heading)
+        val name = heading.substringBefore(" · ")
+        val dir = if (ep != null) libraryFolders(heading, "", "tv", ep.season).fold(keepDir()) { d, part -> File(d, part) }
+        else File(File(keepDir(), "Video/Movies"), safe(name))
+        dir.mkdirs()
+        // The film already saved, straight in Movies: into its folder, so it and its subtitles sit together.
+        val saved = _finished.value.firstOrNull { it.label == heading && it.file.isFile }
+        if (ep == null && saved != null && saved.file.parentFile?.name == "Movies") runCatching { moveInto(saved.file, File(dir, saved.file.name)) }
+        val video = _finished.value.firstOrNull { it.label == heading && it.file.isFile }
+        val base = video?.file?.nameWithoutExtension ?: safe(heading.replace(" · ", " "))
+        val taken = dir.list().orEmpty().toMutableList()
+        var count = 0
+        for (s in subs) {
+            val bytes = runCatching { smallFile(s.url) }.getOrNull() ?: continue
+            val ext = Regex("\\.(srt|vtt|ass|ssa)(\\?|$)", RegexOption.IGNORE_CASE).find(s.url)?.groupValues?.get(1)?.lowercase() ?: "srt"
+            val file = com.torrentviewer.core.subtitleFileName(base, s.language, ext, taken)
+            runCatching { File(dir, file).writeBytes(bytes) }.onSuccess { taken += file; count++ }
+        }
+        count
+    }
+
+    /** A subtitle file's bytes, 8 MB at most: one connection, a browser's agent, 15 seconds. */
+    private fun smallFile(url: String): ByteArray? {
+        if (!url.startsWith("http", true)) return null
+        val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 15_000
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36")
+        }
+        return try {
+            if (conn.responseCode !in 200..299) null
+            else conn.inputStream.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(16 * 1024)
+                while (out.size() < 8 * 1024 * 1024) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                }
+                out.toByteArray().takeIf { it.isNotEmpty() }
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     /** Grabber!/Video/Movies/file.mkv, or Grabber!/Video/Shows/<show>/Season N/file.mkv ([libraryFolders]). */
     private fun destOf(job: DownloadJob, torrentName: String, path: String): File {
         val file = safe(path.replace('\\', '/').split('/').last { it.isNotBlank() })
@@ -475,7 +530,13 @@ object Downloads {
     private fun jobs() = _live.value.map { it.job }
 
     private fun update(uri: String, change: (LiveDownload) -> LiveDownload) = synchronized(lock) {
-        _live.value = _live.value.map { if (it.job.uri == uri) change(it) else it }
+        _live.value = _live.value.map { row ->
+            if (row.job.uri != uri) return@map row
+            val next = change(row)
+            // Paused stays paused: a link's workers stop a moment after the pause, and their last progress reports
+            // put the row back to "downloading" — its ❚❚ never became ▶ (the owner caught it). Only resume clears it.
+            if (row.job.paused && next.job.paused && next.state != DlState.PAUSED) next.copy(state = DlState.PAUSED, speed = 0) else next
+        }
         writeQueue(jobs())
     }
 
@@ -499,6 +560,7 @@ object Downloads {
     fun init(context: Context) {
         if (::app.isInitialized) return
         app = context.applicationContext
+        forgetSystemDownloads()
         // Pages saved as videos by older builds (all a few hundred KB): deleted, and gone from the list.
         val (kept, junk) = readFinished().filter { it.file.exists() }.partition { it.file.length() >= MIN_VIDEO_BYTES }
         junk.forEach { runCatching { it.file.delete() } }
@@ -813,6 +875,25 @@ object Downloads {
 
     /** Where a link's segments and progress are kept until it is done. */
     private fun linkWork(uri: String) = File(pieceDir(), "links/${Integer.toHexString(uri.hashCode())}")
+
+    /**
+     * What older builds handed Android's own downloader (a source's subtitles): its failed, paused and waiting entries
+     * removed, once at start — they kept notifying as "Download Manager", long after the downloads were cleared, and a
+     * tap never opened this app (the owner caught it). Saved files are left alone; nothing is handed there any more.
+     */
+    private fun forgetSystemDownloads() = scope.launch {
+        runCatching {
+            val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+            val stale = android.app.DownloadManager.STATUS_FAILED or android.app.DownloadManager.STATUS_PAUSED or
+                android.app.DownloadManager.STATUS_PENDING or android.app.DownloadManager.STATUS_RUNNING
+            val ids = mutableListOf<Long>()
+            dm.query(android.app.DownloadManager.Query().setFilterByStatus(stale))?.use { c ->
+                val col = c.getColumnIndex(android.app.DownloadManager.COLUMN_ID)
+                while (col >= 0 && c.moveToNext()) ids += c.getLong(col)
+            }
+            if (ids.isNotEmpty()) dm.remove(*ids.toLongArray())
+        }
+    }
 
     /** Slices of a torrent's part map: enough to read as stripes on a phone-wide card. */
     private const val TORRENT_SLICES = 24

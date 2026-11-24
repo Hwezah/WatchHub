@@ -359,7 +359,14 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     // An addon's YouTube or outside link: whichever app takes it.
     LaunchedEffect(Unit) {
         watch.opens.collect { link ->
-            runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(link))) }
+            // A web page (a source that insists on one): the app's own Browser, in a tab of its own (the owner's choice) —
+            // YouTube and other apps' links still go to their apps.
+            val web = link.startsWith("http", true) && !Regex("(?i)(youtube\\.com|youtu\\.be)/").containsMatchIn(link)
+            if (web) {
+                Browser.newTab()
+                Browser.go(link)
+                tab = Tab.BROWSER
+            } else runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(link))) }
                 .onFailure { watch.notes.tryEmit("No app here can open that link") }
         }
     }
@@ -523,9 +530,17 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     val host = remember { androidx.compose.runtime.movableContentOf { content: @Composable () -> Unit -> content() } }
 
     // Another tab: its own stack, as it was left. The tab you're on, tapped again: back to its start.
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val choose: (Tab) -> Unit = { t ->
+        // Whatever was being typed in (Search, the Browser's address) lets go of the keyboard and its cursor: left
+        // focused in a hidden tab, its cursor and "Select all" showed up over Home's picture (the owner caught it).
+        focus.clearFocus(force = true)
+        keyboard?.hide()
         if (t == tab) clearPages() else tab = t
     }
+    // Any other way the tab changes (a link, a notification): the same.
+    LaunchedEffect(tab) { focus.clearFocus(force = true) }
 
     Box(Modifier.fillMaxSize()) {
         if (isWide()) {

@@ -62,3 +62,9 @@ fun sourceOrder(hits: List<Hit>, quality: String?): List<Hit> {
             .thenBy { if (it.direct) it.size else -it.seeders.toLong() },
     )
 }
+
+/** A source that says it can only be downloaded: "[10Gbps Download Only]", "Direct Download". */
+private val DOWNLOAD_ONLY = Regex("""(?i)download[\s._-]*only|direct[\s._-]*download""")
+
+/** Whether [hit] is for saving, not playing: its row opens the download sheet rather than the player (the owner's choice). */
+fun downloadOnly(hit: Hit): Boolean = DOWNLOAD_ONLY.containsMatchIn(hit.name)

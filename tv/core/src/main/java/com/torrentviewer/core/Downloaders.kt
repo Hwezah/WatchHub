@@ -20,3 +20,13 @@ val KNOWN_DOWNLOADERS = listOf(
  */
 fun defaultDownloader(able: List<String>, remembered: String?): String? =
     remembered?.takeIf { it in able } ?: KNOWN_DOWNLOADERS.firstOrNull { it in able }
+
+/** Words in an app's name or package that say it downloads files: a messenger, a calendar or a browser doesn't. */
+private val DOWNLOADER_WORDS = Regex("""(?i)download|downloader|\bdm\b|1dm|\badm\b|\bidm|fdm|grab|aria2?|torrent|getter|loader|leech|xdm|gopeed|snaptube|vidmate|tubemate|seal""")
+
+/**
+ * Whether the app [pkg] named [label] is a downloader, for the "Download With" sheet (the owner's choice: only apps that
+ * catch and download a link, not every app that takes text): a known one ([KNOWN_DOWNLOADERS]), or one whose name says so.
+ */
+fun looksLikeDownloader(pkg: String, label: String): Boolean =
+    pkg in KNOWN_DOWNLOADERS || DOWNLOADER_WORDS.containsMatchIn(label) || DOWNLOADER_WORDS.containsMatchIn(pkg.replace('.', ' '))

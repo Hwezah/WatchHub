@@ -216,41 +216,20 @@ fun resolutionDistance(quality: String?, wanted: String): Int {
 }
 
 /**
- * One-tap Download, the season sheet and every automatic rescue: never fails to pick while anything can be saved.
- * The owner's rule: the smallest 720p MKV, torrents and links alike; with no 720p MKV anywhere, up the chain
- * (1080p, 1440p, 4K MKV), and only then other formats the same way. In order:
- *  1. the preferred format (MKV) before any other;
+ * One-tap Download, Auto download, the season sheet and every automatic rescue: never fails to pick while anything can
+ * be saved. The owner's rule, held to with care: the smallest reasonable file at the preferred resolution in the
+ * preferred format — 720p MKV, x265 for choice — torrents and links alike; with none, up the chain (1080p, 1440p, 4K),
+ * and only then other formats. In order:
+ *  1. the preferred format (MKV), a link that doesn't say its format counted with it (its file name often comes later);
  *  2. the preferred resolution, else the next one up, lower only last ([resolutionDistance]);
- *  3. can download at all (a live swarm, or a link);
- *  4. the lightest known size — though among those within [NEAR_SIZE] of the lightest, a direct link (when
- *     [DownloadPrefs.direct]), a well-seeded torrent, a single file before a playlist and the preferred codec go first.
- * Unknown sizes come after every known one.
+ *  3. can download now: a link, a torrent with [MIN_SEEDS] seeds or one cached on TorBox; a single file before a playlist;
+ *  4. a reasonable size ([reasonableFloor]: under it, a sample or a fake) before a suspiciously small one;
+ *  5. the lightest known size — and among those within [NEAR_SIZE] of it, the trusted sites in the owner's order
+ *     (MoviesMod, MoviesDrive, HDHub), an MKV that says so, a link, a well-seeded swarm, the preferred codec, subtitles.
+ * Unknown sizes come after every known one. A 203 MB 720p x265 torrent with 30 seeds is taken over an 809 MB link (the
+ * owner caught it): a link or a trusted site only decides between files of about the same size.
  */
-fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? = linksFirst(hits, prefs.quality) { preferredAmong(it, prefs) }
-
-/**
- * The owner's rule for a film or an episode: torrents aren't the priority. [pick] runs on the direct links and on the
- * torrents apart, and the link is taken unless the torrent is a closer match to the [wanted] resolution (or there is
- * no link) — whatever their formats or sizes, as a link's name often doesn't say MKV and an addon's seed count is often
- * stale. (A whole season's pack is chosen elsewhere: a well-seeded one is still worth it.)
- */
-fun linksFirst(hits: List<Hit>, wanted: String, pick: (List<Hit>) -> Hit?): Hit? {
-    val (links, torrents) = hits.partition { it.direct }
-    // Among links, the trusted sites first, in the owner's order ([trustRank]: MoviesMod, MoviesDrive, HDHub), when one has
-    // the resolution as near as any; within a site, [pick]'s own order (the lightest).
-    val any = pick(links)
-    val trusted = (3 downTo 1).firstNotNullOfOrNull { r ->
-        pick(links.filter { trustRank(it) == r })?.takeIf { t -> any != null && resolutionDistance(t.quality, wanted) <= resolutionDistance(any.quality, wanted) }
-    }
-    val link = trusted ?: any
-    val torrent = pick(torrents)
-    return when {
-        link == null -> torrent
-        torrent == null -> link
-        resolutionDistance(torrent.quality, wanted) < resolutionDistance(link.quality, wanted) -> torrent
-        else -> link
-    }
-}
+fun preferredPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? = lightestReasonable(hits, prefs)
 
 /** Sites whose links are good small 720p files with good codecs, from experience (the owner's), in the owner's order. */
 private val MOVIESMOD = Regex("(?i)movies?\\W?mod")
@@ -281,7 +260,11 @@ fun trustedSource(hit: Hit) = trustRank(hit) > 0
  * several sites and miss the time limit when the scan is busy; an episode then fell to HDHub's 515 MB over MoviesDrive's
  * 394 MB, which a second, quieter look finds.
  */
-fun wantsTrustedAgain(hits: List<Hit>, prefs: DownloadPrefs): Boolean = seasonPick(hits, prefs)?.let { trustRank(it) < 2 } ?: true
+fun wantsTrustedAgain(hits: List<Hit>, prefs: DownloadPrefs): Boolean = seasonPick(hits, prefs)?.let { pick ->
+    // Already light (an episode's 400 MB, a film's 1 GB) at the resolution: nothing later would be meaningfully lighter.
+    val light = pick.size in 1..(if (pick.kind == "movie") 1000L else 400L) * 1024 * 1024 && resolutionDistance(pick.quality, prefs.quality) == 0
+    trustRank(pick) < 2 && !light
+} ?: true
 
 /**
  * An episode's links so far, with [newer] ones added: every link it has been seen with is kept (a later list — a plugin
@@ -290,55 +273,52 @@ fun wantsTrustedAgain(hits: List<Hit>, prefs: DownloadPrefs): Boolean = seasonPi
  */
 fun mergedHits(older: List<Hit>, newer: List<Hit>): List<Hit> = (newer + older).distinctBy { it.id }
 
-private fun preferredAmong(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
+/** A season download's pick for one episode: the same rule as every other ([preferredPick]). */
+fun seasonPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? = lightestReasonable(hits, prefs)
+
+/**
+ * Under this a file at [quality] is suspicious — a sample, a fake, a broken re-encode — and comes after every one that
+ * isn't: an episode at 720p 80 MB, 1080p 150 MB, 4K 400 MB (a film three times that). 0 when the resolution isn't known.
+ */
+fun reasonableFloor(quality: String?, kind: String): Long {
+    val episode = when (heightOf(quality)) {
+        null -> 0L
+        in 0..480 -> 40L
+        in 481..720 -> 80L
+        in 721..1440 -> 150L
+        else -> 400L
+    } * 1024 * 1024
+    return if (kind == "movie") episode * 3 else episode
+}
+
+/** [preferredPick]'s rule, for [preferredPick] and [seasonPick] alike. */
+private fun lightestReasonable(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
     val candidates = prefs.usable(hits).filter(::batchable)
     if (candidates.isEmpty()) return null
     val traits = candidates.associateWith(::traitsOf)
     fun t(h: Hit) = traits.getValue(h)
-    val wrongFormat = { h: Hit -> if (prefs.format.isNotEmpty() && t(h).format != prefs.format) 1 else 0 }
-    val tier = compareBy<Hit> { wrongFormat(it) }.thenBy { resolutionDistance(it.quality, prefs.quality) }.thenByDescending { alive(it) }
+    // A format that says otherwise is out of the first tier; one that says nothing (a plugin's link) is kept in it.
+    fun wrongFormat(h: Hit) = if (prefs.format.isNotEmpty() && t(h).format != prefs.format && t(h).format != UNKNOWN) 1 else 0
+    val tier = compareBy<Hit> { wrongFormat(it) }
+        .thenBy { resolutionDistance(it.quality, prefs.quality) }
+        .thenByDescending { ready(it, prefs.cached) }
+        .thenByDescending { !(it.direct && isPlaylist(it)) }
+        .thenBy { if (it.size > 0 && it.size < reasonableFloor(it.quality, it.kind)) 1 else 0 }
     val best = candidates.minWith(tier)
     val top = candidates.filter { tier.compare(it, best) == 0 }
     // Two steps, not one comparator: "about as light" isn't transitive, and a sort needs it to be.
     val lightest = top.filter { it.size > 0 }.minOfOrNull { it.size }
     val near = if (lightest == null) top else top.filter { it.size > 0 && it.size <= (lightest * NEAR_SIZE).toLong() }
     return near.sortedWith(
-        compareByDescending<Hit> { prefs.direct && it.direct }
+        compareByDescending<Hit> { trustRank(it) }
+            .thenByDescending { prefs.format.isNotEmpty() && t(it).format == prefs.format }
+            .thenByDescending { it.direct }
             .thenByDescending { quick(it) }
-            .thenByDescending { !(it.direct && isPlaylist(it)) }
             .thenByDescending { prefs.codec.isNotEmpty() && t(it).codec == prefs.codec }
             .thenByDescending { prefs.subs && t(it).subs }
             .thenBy { it.size }
             .thenByDescending { it.seeders },
     ).first()
-}
-
-/**
- * A season download's pick, by the owner's rule: the preferred format (MKV) first, then the preferred resolution (720p,
- * else the next up), then a direct link before a torrent or a playlist — and among those the fewest MB, strictly. An
- * unknown size after every known one; a dead torrent never before a live one.
- */
-fun seasonPick(hits: List<Hit>, prefs: DownloadPrefs): Hit? = linksFirst(hits, prefs.quality) { seasonAmong(it, prefs) }
-
-private fun seasonAmong(hits: List<Hit>, prefs: DownloadPrefs): Hit? {
-    val candidates = prefs.usable(hits).filter(::batchable)
-    if (candidates.isEmpty()) return null
-    val traits = candidates.associateWith(::traitsOf)
-    fun t(h: Hit) = traits.getValue(h)
-    return candidates.minWithOrNull(
-        compareBy<Hit> { if (prefs.format.isNotEmpty() && t(it).format != prefs.format) 1 else 0 }
-            .thenBy { resolutionDistance(it.quality, prefs.quality) }
-            // A file, link or torrent, before a stream (no size to go by, and joined from pieces).
-            .thenByDescending { !(it.direct && isPlaylist(it)) }
-            // Ready to download: a link, or a torrent with [MIN_SEEDS] or more — the owner's floor — or cached on TorBox.
-            .thenByDescending { ready(it, prefs.cached) }
-            .thenBy { if (it.size > 0) 0 else 1 }
-            // Then the fewest MB, links and torrents alike; a link only breaks a tie.
-            .thenBy { it.size }
-            .thenByDescending { it.direct }
-            .thenByDescending { prefs.codec.isNotEmpty() && t(it).codec == prefs.codec }
-            .thenByDescending { it.seeders },
-    )
 }
 
 /** Downloads without waiting on a thin swarm: a direct link, a torrent of [MIN_SEEDS] seeds or more, or one cached on TorBox. */
