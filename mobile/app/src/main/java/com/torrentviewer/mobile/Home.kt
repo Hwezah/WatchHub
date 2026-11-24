@@ -341,7 +341,8 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                 // Nothing chosen: what they watch stands in.
                 Rail("Watch orders", onMore = onOrders) { WatchOrderRow(settings.genres.ifEmpty { state.picks.mapNotNull { it.genre } }, onOrder) }
             }
-            if (state.fresh.isNotEmpty()) item(key = "fresh") {
+            // New Episodes is off (the owner's choice): its row stays in code, unreached. ponytail: revisit if missed.
+            if (false && state.fresh.isNotEmpty()) item(key = "fresh") {
                 Rail("New Episodes") {
                     LazyRow(state = state.row("fresh"), contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(CARD_GAP)) {
                         items(state.fresh, key = { it.title.imdb }) { f ->
