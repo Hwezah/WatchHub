@@ -39,7 +39,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
@@ -547,7 +546,6 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         else if (t == tab) clearPages() else tab = t
     }
     /** The tab bar's ＋: a link copied elsewhere, to download. */
-    var addingLink by remember { mutableStateOf(false) }
     // Locked again whenever the app goes to the background.
     val shellLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     androidx.compose.runtime.DisposableEffect(shellLifecycle) {
@@ -616,7 +614,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 AnimatedVisibility(
                     pillShown && OpenSheets.count == 0, Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
-                ) { PillBar(tab, choose, haze = haze.takeIf { glass }, onPlus = { addingLink = true }) }
+                ) { PillBar(tab, choose, haze = haze.takeIf { glass }) }
                 // A Tube video dropped down keeps playing here, above the bar; a tap opens it again in Tube.
                 if (TubeSession.playing.isEmpty()) TubeMiniPlayer(onOpen = { tab = Tab.YOUTUBE; TubeSession.expand() })
             }
@@ -627,7 +625,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             }
         }
 
-        if (addingLink) AddLinkSheet { addingLink = false }
+        if (AddLink.open) AddLinkSheet { AddLink.open = false }
         if (FilesLock.asking != null && (isWide() || SettingsStore.value.value.navStyle != "pill")) {
             BottomSheet("Code", onDismiss = { FilesLock.asking = null }) { CodeRow(onOpen = choose) }
         }
@@ -769,7 +767,7 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
  * on a capsule of the accent. One flat colour a little lighter than the page's cards, with the grain over it, no rim.
  */
 @Composable
-private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier, haze: dev.chrisbanes.haze.HazeState? = null, onPlus: () -> Unit = {}) {
+private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier, haze: dev.chrisbanes.haze.HazeState? = null) {
     // Dark: near pitch black, a breath above the page's own black, its parts toned down to match (the owner's choice:
     // dark, muted, nothing that clashes with the pages behind). Light: as it was.
     val face = if (Ink.isDark) NAV_DARK else Ink.surface2
@@ -803,14 +801,9 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
         // The code for Library or Files, asked for in a row of its own on top (the owner's design).
         if (FilesLock.asking != null) CodeRow(onOpen = onTab)
         tabs().chunked(4).forEachIndexed { i, row ->
-            // Between the two rows: a thin, quiet line, short of the panel's edges (the owner's choice: 90% wide), and
-            // in its middle — between the eight icons — the ＋ that takes a link copied elsewhere.
-            // The row stays the line's 1 dp (the owner's choice: the bar no taller for it): the ＋ sits over it, centred.
-            if (i > 0) Row(Modifier.fillMaxWidth(0.9f).height(1.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f).height(1.dp).background(edge))
-                Box(Modifier.width(56.dp).height(1.dp), contentAlignment = Alignment.Center) { NavPlus(onPlus, Modifier.requiredSize(46.dp)) }
-                Box(Modifier.weight(1f).height(1.dp).background(edge))
-            }
+            // Between the two rows: a thin, quiet line, short of the panel's edges (the owner's choice: 90% wide). The ＋ for
+            // a copied link moved to the Library's heading (the owner's choice).
+            if (i > 0) Box(Modifier.fillMaxWidth(0.9f).height(1.dp).background(edge))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 row.forEach { t ->
                     val on = t == tab

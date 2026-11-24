@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
@@ -139,12 +138,17 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
     }
 }
 
-/** The ＋ between the tab bar's two rows: a link copied elsewhere, to download (the owner's design). */
+/** Whether the "Add a link" sheet is up: opened from the Library's heading, shown by the shell over every tab. */
+object AddLink {
+    /** Set by the Library's ＋, cleared when the sheet is dismissed. */
+    var open by mutableStateOf(false)
+}
+
+/** The ＋ beside the Library's heading: a link copied elsewhere, to download (the owner's design: big, in the accent). */
 @Composable
-fun NavPlus(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    // No disc behind it (the owner's choice): the ＋ alone, large.
-    Tap(onClick, modifier, CircleShape) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_plus, tint = Ink.accent, size = 36.dp) }
+fun AddLinkPlus(modifier: Modifier = Modifier) {
+    Tap({ AddLink.open = true }, modifier, CircleShape) {
+        Lc(L.drawable.lucide_ic_plus, Modifier.padding(6.dp), tint = Ink.accent, size = 34.dp)
     }
 }
 

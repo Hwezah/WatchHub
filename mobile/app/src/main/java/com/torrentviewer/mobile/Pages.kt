@@ -646,7 +646,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
     }
     if (section == LibrarySection.DOWNLOADS) {
         DownloadsScreen(watch, onBack = null) {
-            Heading("Library")
+            Heading("Library") { AddLinkPlus() }
             LibraryTabs(section, downloading.isNotEmpty()) { section = it }
         }
         return
@@ -684,6 +684,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
                     if (shelf == Shelfs.HISTORY && items.isNotEmpty()) Tap({ clearing = true }, shape = CircleShape) {
                         Lc(L.drawable.lucide_ic_trash_2, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp)
                     }
+                    AddLinkPlus()
                 }
                 LibraryTabs(section, downloading.isNotEmpty()) { section = it }
                 // Where the history is, the history's sync is offered.
