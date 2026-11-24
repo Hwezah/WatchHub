@@ -54,6 +54,23 @@ object FilesLock {
 
     fun set(code: String?) = Kv.setGlobal(KEY, code?.takeIf { it.length == 4 && it.all(Char::isDigit) })
 
+    private const val PASS = "files-lock-pass"
+
+    /** A one-way digest: the password itself is never kept. */
+    private fun digest(text: String) = java.security.MessageDigest.getInstance("SHA-256").digest(("watchhub:" + text).toByteArray())
+        .joinToString("") { "%02x".format(it) }
+
+    /**
+     * The password for a forgotten pin: kept on this phone only, as a digest (a session-only stand-in for a real
+     * account sign-in, the owner's choice for now). Null clears it.
+     */
+    fun setPassword(password: String?) = Kv.setGlobal(PASS, password?.takeIf { it.length >= 4 }?.let(::digest))
+
+    fun hasPassword() = Kv.global(PASS) != null
+
+    /** The password typed: right, unlocked (for this session); wrong, false. */
+    fun tryPassword(typed: String): Boolean = (Kv.global(PASS) != null && digest(typed) == Kv.global(PASS)).also { if (it) unlocked = true }
+
     /** Whether [tab] needs the code now. */
     fun locks(tab: Tab) = tab in LOCKED && !unlocked && code() != null
 
@@ -69,13 +86,28 @@ object FilesLock {
 fun CodeRow(onOpen: (Tab) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var typed by remember { mutableStateOf("") }
+    /** The pin forgotten: the password instead. */
+    var byPassword by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(byPassword) { runCatching { focus.requestFocus() } }
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Lc(L.drawable.lucide_ic_lock, tint = Ink.muted, size = 20.dp)
         Box(Modifier.weight(1f).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-            if (typed.isEmpty()) Text("****", style = Type.title.copy(color = Ink.faint, letterSpacing = 8.sp), textAlign = TextAlign.Center)
-            BasicTextField(
+            if (typed.isEmpty()) Text(if (byPassword) "Auth Password" else "Auth Pin", style = Type.label.copy(color = Ink.faint), textAlign = TextAlign.Center, maxLines = 1)
+            if (byPassword) BasicTextField(
+                typed, { typed = it.replace("\n", "") },
+                Modifier.fillMaxWidth().focusRequester(focus),
+                textStyle = TextStyle(color = Ink.text, fontSize = 16.sp, textAlign = TextAlign.Center),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                    val tab = FilesLock.asking
+                    if (FilesLock.tryPassword(typed)) { FilesLock.asking = null; tab?.let(onOpen) }
+                    else { typed = ""; android.widget.Toast.makeText(context, "Wrong password", android.widget.Toast.LENGTH_SHORT).show() }
+                }),
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                cursorBrush = SolidColor(Ink.download),
+            ) else BasicTextField(
                 typed,
                 { v ->
                     typed = v.filter(Char::isDigit).take(4)
@@ -97,6 +129,10 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
                 singleLine = true,
                 cursorBrush = SolidColor(Ink.download),
             )
+        }
+        // The pin forgotten: the password (when one is set).
+        if (FilesLock.hasPassword()) Tap({ byPassword = !byPassword; typed = "" }, shape = CircleShape) {
+            Lc(if (byPassword) L.drawable.lucide_ic_hash else L.drawable.lucide_ic_key_round, Modifier.padding(6.dp), tint = Ink.muted, size = 20.dp)
         }
         Tap({ FilesLock.asking = null }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 20.dp) }
     }
@@ -133,8 +169,17 @@ fun LockSettings(say: (String) -> Unit) {
         }, Modifier.weight(1f), icon = L.drawable.lucide_ic_lock, compact = true)
         if (has) Button("Remove", {
             FilesLock.set(null)
+            FilesLock.setPassword(null)
             has = false
             say("Code removed")
         }, Modifier.weight(1f), icon = L.drawable.lucide_ic_x, compact = true)
+    }
+    // For a forgotten pin: a password, kept on this phone only (a real account sign-in comes later).
+    if (has) {
+        var pass by remember { mutableStateOf("") }
+        Field(pass, { pass = it }, if (FilesLock.hasPassword()) "New Auth Password" else "Auth Password (for a forgotten pin)", Modifier.padding(top = 14.dp).fillMaxWidth(), secret = true)
+        Button(if (FilesLock.hasPassword()) "Change Password" else "Set Password", {
+            if (pass.length < 4) say("Four characters at least") else { FilesLock.setPassword(pass); pass = ""; say("Password set") }
+        }, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_key_round, compact = true)
     }
 }

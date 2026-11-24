@@ -117,6 +117,8 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     var swapping by remember { mutableStateOf<LiveDownload?>(null) }
     /** A download's card tapped: its every action ([DownloadOptionsSheet]). */
     var options by remember { mutableStateOf<LiveDownload?>(null) }
+    /** "On this phone" opened by its chevron. */
+    var showSaved by rememberSaveable { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Finished?>(null) }
     /** A film's or episode's ⓘ tapped: its story. */
     var story by remember { mutableStateOf<Finished?>(null) }
@@ -164,9 +166,17 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 onOptions = { options = row },
             )
         }
-        if (finished.isNotEmpty()) item { Label("On this phone  ·  ${bytes(finished.sumOf { it.size })}") }
+        // What's on the phone, folded away until its chevron opens it (the owner's choice).
+        if (finished.isNotEmpty()) item {
+            Tap({ showSaved = !showSaved }, Modifier.fillMaxWidth(), RoundedCornerShape(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { Label("On this phone  ·  ${bytes(finished.sumOf { it.size })}") }
+                    Lc(if (showSaved) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(end = 8.dp), tint = Ink.muted, size = 22.dp)
+                }
+            }
+        }
         // A show's episodes fold under one card; the most recently finished show first.
-        val shows = finished.groupBy { it.imdb ?: it.label.substringBefore(" · ") }.values.sortedByDescending { g -> g.maxOf { it.at } }
+        val shows = if (!showSaved) emptyList() else finished.groupBy { it.imdb ?: it.label.substringBefore(" · ") }.values.sortedByDescending { g -> g.maxOf { it.at } }
         items(shows, key = { "done-" + it.first().path }) { group ->
             val play: (Finished) -> Unit = { f ->
                 val from = f.imdb?.let { Title(it, f.kind ?: "movie", f.label.substringBefore(" · "), poster = f.poster) }
