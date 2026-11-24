@@ -210,7 +210,8 @@ fun Button(
     // (the owner's choice).
     val greyDownload = fill != null && fill == Ink.download
     val fill = fill.takeUnless { greyDownload }
-    Tap(onClick, modifier, RoundedCornerShape(5.dp), onLongClick = onLongClick) { pressed ->
+    // The same corners as the chips and inputs ([PILL]): 5 dp read too square beside them (the owner's choice).
+    Tap(onClick, modifier, PILL, onLongClick = onLongClick) { pressed ->
         val bg by animateColorAsState(
             when {
                 fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
@@ -237,7 +238,7 @@ fun Button(
                 fill != null -> Modifier.background(lerp(fill, Color.Black, if (pressed) 0.56f else 0.46f)).grain()
                 else -> Modifier.background(bg)
             })
-                .height(if (compact) 34.dp else 46.dp).padding(horizontal = if (compact) 14.dp else 20.dp),
+                .height(if (compact) 34.dp else 50.dp).padding(horizontal = if (compact) 14.dp else 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -290,7 +291,7 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = M
         val fg = if (on) Ink.onAccent else Ink.muted
         Row(
             // With an icon (Pause All…), a notch more room after the words and less between icon and words (the owner's choice).
-            Modifier.background(bg).height(if (tall) 46.dp else if (compact) 32.dp else 36.dp).padding(
+            Modifier.background(bg).height(if (tall) 50.dp else if (compact) 32.dp else 36.dp).padding(
                 start = if (tall) 20.dp else if (compact) 11.dp else 16.dp,
                 end = (if (tall) 20.dp else if (compact) 11.dp else 16.dp) + if (icon != null) 3.dp else 0.dp,
             ),
@@ -416,7 +417,7 @@ fun Field(
     // Very faint (the owner's choice): enough to show where the typing goes, not a frame.
     val ring by animateColorAsState(if (focused) Ink.text.copy(alpha = 0.16f) else Color.Transparent, Motion.effects(), label = "ring")
     Row(
-        modifier.height(50.dp).clip(RoundedCornerShape(5.dp)).background(if (focused) Ink.text.copy(alpha = 0.12f) else QUIET_FILL).border(1.dp, ring, RoundedCornerShape(5.dp)).padding(horizontal = 14.dp),
+        modifier.height(50.dp).clip(PILL).background(if (focused) Ink.text.copy(alpha = 0.12f) else QUIET_FILL).border(1.dp, ring, PILL).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading?.let {
