@@ -380,7 +380,9 @@ object Downloads {
         // From the Browser: Grabber!/Browser/Video, Audio, Documents or Other, by what the file is (the owner's layout).
         if (job.kind == WEB_KIND) return File(File(keepDir(), webFolder(file)), file)
         val folders = libraryFolders(job.titleName ?: torrentName, file, job.kind, job.season?.takeIf { it >= 0 })
-        return File(folders.fold(keepDir()) { dir, part -> File(dir, part) }, file)
+        // A film whose subtitles were saved first has a folder of its own in Movies (the owner's choice): it goes in there.
+        val own = if (folders == listOf("Video", "Movies")) File(File(keepDir(), "Video/Movies"), safe((job.titleName ?: torrentName).substringBefore(" · "))).takeIf { it.isDirectory } else null
+        return File(own ?: folders.fold(keepDir()) { dir, part -> File(dir, part) }, file)
     }
 
     /**
@@ -561,6 +563,7 @@ object Downloads {
         if (::app.isInitialized) return
         app = context.applicationContext
         forgetSystemDownloads()
+        watchStalls()
         // Pages saved as videos by older builds (all a few hundred KB): deleted, and gone from the list.
         val (kept, junk) = readFinished().filter { it.file.exists() }.partition { it.file.length() >= MIN_VIDEO_BYTES }
         junk.forEach { runCatching { it.file.delete() } }
@@ -682,6 +685,96 @@ object Downloads {
         update(uri) { it.copy(job = it.job.copy(paused = true), state = DlState.PAUSED, speed = 0) }
         settle()
     }
+
+    /** Its card's and its saved file's name, changed by hand (the download's options → Rename). */
+    fun rename(uri: String, name: String) {
+        val clean = name.trim().takeIf { it.isNotEmpty() } ?: return
+        update(uri) { it.copy(job = it.job.copy(titleName = clean)) }
+    }
+
+    /** Stopped and begun again where it is: a download that sits still (the options → Force start, or [watchStalls]). */
+    fun forceStart(uri: String) {
+        val row = _live.value.find { it.job.uri == uri } ?: return
+        synchronized(lock) { handles[uri] }?.let { runCatching { it.pause(); it.resume() } }
+        if (row.job.link) {
+            synchronized(lock) { links.remove(uri) }?.cancel()
+            update(uri) { it.copy(job = it.job.copy(paused = false), state = DlState.RESOLVING, error = "Starting again…", speed = 0) }
+            _live.value.find { it.job.uri == uri }?.let { begin(it.job) }
+        } else resume(uri)
+    }
+
+    /**
+     * A new link to the same file, pasted by hand (the options → Update link): what's downloaded moves with it — its
+     * folder renamed to the new link's — so it carries on from there when the server says it's the same size (the
+     * owner's ask: users can't lose their data). False when there's nothing to change.
+     */
+    fun replaceLink(uri: String, newUri: String): Boolean {
+        val next = newUri.trim()
+        if (next.isEmpty() || next == uri || !next.startsWith("http", true)) return false
+        val row = _live.value.find { it.job.uri == uri && it.job.link } ?: return false
+        synchronized(lock) { links.remove(uri) }?.cancel()
+        runCatching { linkWork(uri).takeIf { it.isDirectory }?.renameTo(linkWork(next)) }
+        val job = row.job.copy(uri = next, fetchedAt = System.currentTimeMillis(), refreshes = row.job.refreshes + 1)
+        synchronized(lock) {
+            _live.value = _live.value.map { if (it.job.uri == uri) it.copy(job = job, state = if (job.paused) DlState.PAUSED else DlState.RESOLVING, error = null) else it }
+            writeQueue(jobs())
+        }
+        if (!job.paused) begin(job)
+        return true
+    }
+
+    /**
+     * What a link has downloaded so far, copied out as a file that plays up to where it stopped ("Name (partial).mkv"),
+     * the download left as it was to carry on (the options → Save what's downloaded, as 1DM's force merge). Null when
+     * nothing was downloaded.
+     */
+    fun savePartial(uri: String): File? = runCatching {
+        val row = _live.value.find { it.job.uri == uri && it.job.link } ?: return@runCatching null
+        val work = linkWork(uri)
+        val part = listOf(File(work, "data.part"), File(File(work, "v"), "data.part")).firstOrNull { it.isFile && it.length() > 0 } ?: return@runCatching null
+        val job = row.job
+        val said = listOfNotNull(job.linkName, job.title, job.uri).joinToString(" ").lowercase()
+        val ext = when {
+            job.playlist -> "ts"
+            ".mp4" in said -> "mp4"
+            else -> "mkv"
+        }
+        val dest = destOf(job, job.label, safe("${job.label} (partial).$ext"))
+        dest.parentFile?.mkdirs()
+        part.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
+        writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, job.poster, "${job.label} (partial)", job.imdb, job.kind)) + _finished.value.filter { it.path != dest.path })
+        dest
+    }.getOrNull()
+
+    /** The folder a link's download is kept in while it runs, for the options' Properties. */
+    fun workOf(uri: String): File = linkWork(uri)
+
+    /**
+     * Downloads that sit still: a link "downloading" with nothing new for [STALL_MS] — a connection that hung, the app
+     * sent away and back, the phone asleep — is started again where it is, by itself (the owner caught them stuck).
+     */
+    private fun watchStalls() = scope.launch {
+        val seen = HashMap<String, Pair<Long, Long>>()
+        while (true) {
+            kotlinx.coroutines.delay(30_000L)
+            val now = System.currentTimeMillis()
+            for (row in _live.value) {
+                val uri = row.job.uri
+                if (!row.job.link || row.state != DlState.DOWNLOADING) { seen.remove(uri); continue }
+                val (done, since) = seen[uri] ?: (row.done to now)
+                if (row.done != done) seen[uri] = row.done to now
+                else if (now - since >= STALL_MS) {
+                    Log.w(TAG, "${row.job.label}: no progress for ${(now - since) / 1000}s — starting it again")
+                    seen.remove(uri)
+                    forceStart(uri)
+                } else seen[uri] = done to since
+            }
+            seen.keys.retainAll(_live.value.map { it.job.uri }.toSet())
+        }
+    }
+
+    /** How long a link may download nothing before it's started again ([watchStalls]). */
+    private const val STALL_MS = 90_000L
 
     /** Resume on a download held for Wi-Fi is the viewer choosing mobile data for it. */
     fun resume(uri: String) {

@@ -1,6 +1,7 @@
 package com.torrentviewer.mobile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import com.torrentviewer.core.grain
@@ -111,6 +112,8 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     val finished by Downloads.finished.collectAsState()
     var cancelling by remember { mutableStateOf<LiveDownload?>(null) }
     var swapping by remember { mutableStateOf<LiveDownload?>(null) }
+    /** A download's card tapped: its every action ([DownloadOptionsSheet]). */
+    var options by remember { mutableStateOf<LiveDownload?>(null) }
     var deleting by remember { mutableStateOf<Finished?>(null) }
     /** A film's or episode's ⓘ tapped: its story. */
     var story by remember { mutableStateOf<Finished?>(null) }
@@ -155,6 +158,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 onSwap = { swapping = row },
                 onWanted = { index, on -> Downloads.setWanted(row.job.uri, index, on) },
                 onOrder = { Downloads.setOrder(row.job.uri, it) },
+                onOptions = { options = row },
             )
         }
         if (finished.isNotEmpty()) item { Label("On this phone  ·  ${bytes(finished.sumOf { it.size })}") }
@@ -209,6 +213,11 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
         onDismiss = { deletingAll = false },
     )
     story?.let { f -> FileStorySheet(f.file, f, emptyList()) { story = null } }
+    options?.let { row ->
+        // The live row, not the one tapped: its state moves on while the sheet is up.
+        val now = live.find { it.job.uri == row.job.uri } ?: row
+        DownloadOptionsSheet(now, onCancel = { options = null; cancelling = now }, onSwap = { options = null; swapping = now }, onDismiss = { options = null })
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     // A saved file's choices (its bin, or held): send it to another app, delete it, or keep it.
     deleting?.let { f ->
@@ -301,7 +310,7 @@ private fun Label(text: String) {
  * listed in episode order, each with its own progress and a circle to skip it or put it back.
  */
 @Composable
-private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Unit, onRetry: () -> Unit, onCancel: () -> Unit, onSwap: () -> Unit, onWanted: (Int, Boolean) -> Unit, onOrder: (Boolean) -> Unit) {
+private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Unit, onRetry: () -> Unit, onCancel: () -> Unit, onSwap: () -> Unit, onWanted: (Int, Boolean) -> Unit, onOrder: (Boolean) -> Unit, onOptions: () -> Unit = {}) {
     val pct = (row.ratio * 100).toInt()
     val pack = row.files.size > 1
     val wanted = row.files.filter { it.wanted }
@@ -343,6 +352,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 }
             }
             .grain()
+            // The card itself, tapped: every action for this download (the owner's ask, as 1DM's list).
+            .clickable(onClick = onOptions)
             .padding(start = 16.dp, end = CARD - 2.dp, top = 10.dp, bottom = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

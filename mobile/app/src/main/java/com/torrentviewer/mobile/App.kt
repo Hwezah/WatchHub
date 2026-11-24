@@ -167,7 +167,7 @@ private fun keyOf(index: Int, page: Page) = when (page) {
  * activity (Android rebuilt it, the app was left with Back) opens on the same page; and on disk, so an app Android
  * closed in the background comes back there too. Home's rows and scroll, while the process lives.
  */
-private object Nav {
+internal object Nav {
     var tab by mutableStateOf(Tab.HOME)
     val stacks = androidx.compose.runtime.mutableStateMapOf<Tab, androidx.compose.runtime.snapshots.SnapshotStateList<Page>>()
     val home = HomeState()
@@ -539,7 +539,18 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         // focused in a hidden tab, its cursor and "Select all" showed up over Home's picture (the owner caught it).
         focus.clearFocus(force = true)
         keyboard?.hide()
-        if (t == tab) clearPages() else tab = t
+        // Library and Files behind the code (Settings → Lock): its row opens on top of the tab bar first.
+        if (FilesLock.locks(t)) FilesLock.asking = t
+        else if (t == tab) clearPages() else tab = t
+    }
+    /** The tab bar's ＋: a link copied elsewhere, to download. */
+    var addingLink by remember { mutableStateOf(false) }
+    // Locked again whenever the app goes to the background.
+    val shellLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(shellLifecycle) {
+        val watcher = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) { FilesLock.unlocked = false; FilesLock.asking = null } }
+        shellLifecycle.addObserver(watcher)
+        onDispose { shellLifecycle.removeObserver(watcher) }
     }
     // Any other way the tab changes (a link, a notification): the same.
     LaunchedEffect(tab) { focus.clearFocus(force = true) }
@@ -602,7 +613,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 AnimatedVisibility(
                     pillShown && OpenSheets.count == 0, Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
-                ) { PillBar(tab, choose, haze = haze.takeIf { glass }) }
+                ) { PillBar(tab, choose, haze = haze.takeIf { glass }, onPlus = { addingLink = true }) }
                 // A Tube video dropped down keeps playing here, above the bar; a tap opens it again in Tube.
                 if (TubeSession.playing.isEmpty()) TubeMiniPlayer(onOpen = { tab = Tab.YOUTUBE; TubeSession.expand() })
             }
@@ -611,6 +622,11 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 Box(Modifier.weight(1f).fillMaxWidth()) { host(body) }
                 TabBar(tab, choose)
             }
+        }
+
+        if (addingLink) AddLinkSheet { addingLink = false }
+        if (FilesLock.asking != null && (isWide() || SettingsStore.value.value.navStyle != "pill")) {
+            BottomSheet("Code", onDismiss = { FilesLock.asking = null }) { CodeRow(onOpen = choose) }
         }
 
         // A slim strip along the very top, its face reaching up behind the status bar (it pads itself below it).
@@ -750,7 +766,7 @@ private fun TabBar(tab: Tab, onTab: (Tab) -> Unit) {
  * on a capsule of the accent. One flat colour a little lighter than the page's cards, with the grain over it, no rim.
  */
 @Composable
-private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier, haze: dev.chrisbanes.haze.HazeState? = null) {
+private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifier, haze: dev.chrisbanes.haze.HazeState? = null, onPlus: () -> Unit = {}) {
     // Dark: near pitch black, a breath above the page's own black, its parts toned down to match (the owner's choice:
     // dark, muted, nothing that clashes with the pages behind). Light: as it was.
     val face = if (Ink.isDark) NAV_DARK else Ink.surface2
@@ -781,9 +797,16 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
         verticalArrangement = Arrangement.spacedBy(7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // The code for Library or Files, asked for in a row of its own on top (the owner's design).
+        if (FilesLock.asking != null) CodeRow(onOpen = onTab)
         tabs().chunked(4).forEachIndexed { i, row ->
-            // Between the two rows: a thin, quiet line, short of the panel's edges (the owner's choice: 90% wide).
-            if (i > 0) Box(Modifier.fillMaxWidth(0.9f).height(1.dp).background(edge))
+            // Between the two rows: a thin, quiet line, short of the panel's edges (the owner's choice: 90% wide), and
+            // in its middle — between the eight icons — the ＋ that takes a link copied elsewhere.
+            if (i > 0) Row(Modifier.fillMaxWidth(0.9f), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f).height(1.dp).background(edge))
+                NavPlus(onPlus, Modifier.padding(horizontal = 8.dp))
+                Box(Modifier.weight(1f).height(1.dp).background(edge))
+            }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 row.forEach { t ->
                     val on = t == tab

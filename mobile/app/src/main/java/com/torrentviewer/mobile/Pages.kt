@@ -926,6 +926,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         },
                     ),
                     listOf(
+                        Entry(L.drawable.lucide_ic_lock, "Lock", "A code before Library and Files", "pin password code private downloads") { page = "Lock" },
                         Entry(L.drawable.lucide_ic_file_text, "Last crash report", if (crashed) "Something failed — open to read and share it" else "Nothing has gone wrong", "crash error bug log") { page = "Last crash report" },
                         Entry(L.drawable.lucide_ic_scale, "Legal notice", "WatchHub is a media player only", "disclaimer copyright dmca") { page = "Legal notice" },
                         Entry(L.drawable.lucide_ic_shield, "Privacy policy", "What stays here and what is sent", "data") { page = "Privacy policy" },
@@ -965,6 +966,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 Text(text, Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.muted, fontSize = 11.sp))
             }
         }
+        if (page == "Lock") Panel { LockSettings { watch.notes.tryEmit(it) } }
         if (page == "Legal notice") Panel { LegalText(com.torrentviewer.core.Legal.NOTICE) }
         if (page == "Privacy policy") Panel { LegalText(com.torrentviewer.core.Legal.PRIVACY) }
         if (page == "Terms and conditions") Panel { LegalText(com.torrentviewer.core.Legal.TERMS) }

@@ -243,6 +243,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var batchFor by remember(title.imdb) { mutableStateOf<Int?>(null) }
     /** A source's ⬇ asked: where to download it (this app or another), for that source and its episode. */
     var downloadFor by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
+    /** A link to save internally: its "Download file" sheet first. */
+    var fileFor by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
     /** An episode's ⬇ or a season's Download asked: this app's downloader, or another app's. */
     var askEpisode by remember(title.imdb) { mutableStateOf<Episode?>(null) }
     /** A film's Download in the actions row: internal or external first. */
@@ -823,7 +825,25 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     downloadFor?.let { (hit, ep) ->
         DownloadChoice(
             hit, ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title,
-            onInternal = { keep(hit, ep) }, say = { watch.notes.tryEmit(it) }, onDismiss = { downloadFor = null },
+            // A link: first the "Download file" sheet (the owner's ask); a torrent straight in.
+            onInternal = { if (hit.direct) fileFor = hit to ep else keep(hit, ep) }, say = { watch.notes.tryEmit(it) }, onDismiss = { downloadFor = null },
+        )
+    }
+    fileFor?.let { (hit, ep) ->
+        val heading = ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title
+        val job = remember(hit.uri) { downloadJob(hit, title, ep) }
+        DownloadFileSheet(
+            hit.uri, job.label, hit.headers, isPlaylist(hit), remember(hit.uri) { com.torrentviewer.mobile.cs.CsStreams.subtitlesFor(hit.uri) },
+            onSave = { name, referer, paused, subs ->
+                val headers = if (referer.isEmpty()) job.headers.filterKeys { !it.equals("referer", true) } else job.headers.filterKeys { !it.equals("referer", true) } + ("Referer" to referer)
+                Downloads.add(job.copy(titleName = if (name != job.label) name else job.titleName, headers = headers, paused = paused))
+                watch.notes.tryEmit(if (paused) "Added, paused — see Downloads" else "Downloading $heading — see Downloads")
+                if (subs.isNotEmpty()) scope.launch {
+                    val n = Downloads.saveSubtitles(subs, heading)
+                    if (n > 0) watch.notes.tryEmit("Saved $n subtitle${if (n == 1) "" else "s"} beside it")
+                }
+            },
+            onDismiss = { fileFor = null },
         )
     }
 
