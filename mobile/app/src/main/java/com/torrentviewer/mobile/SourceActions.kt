@@ -79,7 +79,7 @@ fun SourceActions(
 ) {
     val context = LocalContext.current
     /** The source the sheet is about: the one opened, or a mirror whose ⋮ turned the sheet to it. */
-    var current by remember { mutableStateOf(current) }
+    var current by remember { mutableStateOf(hit) }
     /** Which list is unfolded under its row: "play" or "download" (the mirrors), "subs" (the subtitles to save). */
     var unfolded by remember { mutableStateOf<String?>(null) }
     val scroll = rememberScrollState()
