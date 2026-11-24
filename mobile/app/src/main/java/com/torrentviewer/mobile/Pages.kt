@@ -1090,6 +1090,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 com.torrentviewer.core.STREAM_QUALITIES.forEach { q -> Chip(q.ifEmpty { "Auto" }, settings.streamQuality == q, onClick = { set(settings.copy(streamQuality = q)) }) }
             }
         }
+        // Tube's own: what a YouTube video opens at (the owner's choice), Auto among them.
+        Section("YouTube Resolution", "What YouTube videos open at: that resolution, else the nearest below, else above. Auto lets YouTube adapt to the connection.") {
+            SpreadRow {
+                com.torrentviewer.core.TUBE_QUALITIES.forEach { q -> Chip(q.ifEmpty { "Auto" }, settings.tubeQuality == q, onClick = { set(settings.copy(tubeQuality = q)) }) }
+            }
+        }
         // Two-way choices are switches here, as Grabber's settings are (the owner's choice); three or more stay chips.
         ToggleSection("Skip intros automatically", "Where an episode's intro is known, jump past it by itself; off shows a Skip intro button instead. Once per episode — seek back to watch it.", settings.autoSkipIntro) {
             set(settings.copy(autoSkipIntro = it))
@@ -1437,6 +1443,10 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
         if (settings.themeMode != "system") ToggleSection("Dark theme", "Near-black pages; off for warm paper.", settings.themeMode == "dark") {
             set(settings.copy(themeMode = if (it) "dark" else "light"))
+        }
+
+        ToggleSection("Plain surfaces", "The same colours throughout, without the frosted grain over cards, sheets, buttons and the tab bar.", settings.plainSurfaces) {
+            set(settings.copy(plainSurfaces = it))
         }
 
         Section("Button Colour", "Play, Watch and the app's other main buttons and highlights: ${settings.accent}.") {

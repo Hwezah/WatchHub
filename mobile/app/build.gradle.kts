@@ -129,6 +129,8 @@ dependencies {
     implementation("org.conscrypt:conscrypt-android:2.5.3")
     // The Browser tab's pages: Android's WebView with its darkening for light sites (as the Grabber app).
     implementation("androidx.webkit:webkit:1.12.1")
+    // The Browser's pull to refresh: the platform's own, which follows a web page's scroll as Chrome's does.
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     // Tube's background play: a media session with its own notification, kept running as a media service.
     implementation("androidx.media3:media3-session:1.9.4")
     // The tab bar's "Glass" look: what scrolls behind it blurred live and tinted (Android 12+; a tint before that).

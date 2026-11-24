@@ -14,6 +14,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,11 +95,21 @@ fun VpnSettings(say: (String) -> Unit) {
         var pasted by remember { mutableStateOf("") }
         if (!pasting) Button("Paste Config Text", { pasting = true }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_copy, compact = true)
         else {
-            androidx.compose.foundation.text.BasicTextField(
-                pasted, { pasted = it },
-                Modifier.padding(top = 10.dp).fillMaxWidth().heightIn(min = 140.dp).frosted(androidx.compose.foundation.shape.RoundedCornerShape(9.dp)).padding(12.dp),
-                textStyle = Type.meta.copy(color = Ink.text), cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink.download),
-            )
+            // Focused as it opens (the owner's choice): the cursor blinks where the text goes and the keyboard is up; a
+            // line says what to do, and Paste takes what was copied in one tap.
+            val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+            LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+            Box(Modifier.padding(top = 10.dp).fillMaxWidth().heightIn(min = 140.dp).frosted(androidx.compose.foundation.shape.RoundedCornerShape(9.dp)).padding(12.dp)) {
+                if (pasted.isEmpty()) Text("Paste the config here ([Interface] … [Peer] …)", style = Type.meta.copy(color = Ink.faint))
+                androidx.compose.foundation.text.BasicTextField(
+                    pasted, { pasted = it }, Modifier.fillMaxWidth().heightIn(min = 116.dp).focusRequester(focus),
+                    textStyle = Type.meta.copy(color = Ink.text), cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink.download),
+                )
+            }
+            Button("Paste", {
+                val clip = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clip.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.let { pasted = it }
+            }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_clipboard_paste, compact = true)
             Button("Use This Config", {
                 val problem = Vpn.import(pasted)
                 has = Vpn.hasConfig()
@@ -104,6 +117,14 @@ fun VpnSettings(say: (String) -> Unit) {
                 say(problem ?: "VPN config added")
             }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_check, compact = true)
         }
+        // The saved config, copied out (it holds the private key: paste it only somewhere safe).
+        if (has) Button("Copy Config", {
+            Vpn.configText()?.let { text ->
+                val clip = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clip.setPrimaryClip(android.content.ClipData.newPlainText("WireGuard config", text))
+                say("Config copied — it holds your private key, keep it safe")
+            }
+        }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_copy, compact = true)
         if (has) Button("Remove Config", { Vpn.forget(); has = false; say("VPN config removed") }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_trash_2, compact = true)
         Text(
             "Use a WireGuard config (.conf) from your VPN's website: Mullvad (Account → WireGuard configuration), " +

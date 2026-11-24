@@ -773,7 +773,11 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
             upNext.clear(); upNext += d.related.filter { it.id != start.id }
             details = d
             // 720p or the nearest below: sharp on a phone, half 1080p's data. Live: its HLS.
-            quality = d.qualities.firstOrNull { it.hls } ?: d.qualities.filter { it.height in 1..720 }.maxByOrNull { it.height } ?: d.qualities.firstOrNull()
+            // Settings → Playback → YouTube Resolution: that height (or the nearest); Auto, YouTube's adaptive stream.
+            val wanted = com.torrentviewer.core.SettingsStore.value.value.tubeQuality
+            val height = com.torrentviewer.core.tubeHeight(d.qualities.filter { !it.hls }.map { it.height }, wanted)
+            quality = height?.let { h -> d.qualities.firstOrNull { !it.hls && it.height == h } }
+                ?: d.qualities.firstOrNull { it.hls } ?: d.qualities.filter { it.height in 1..720 }.maxByOrNull { it.height } ?: d.qualities.firstOrNull()
             Tube.watched(d.video)
         }.onFailure { error = tubeError(it) }
     }

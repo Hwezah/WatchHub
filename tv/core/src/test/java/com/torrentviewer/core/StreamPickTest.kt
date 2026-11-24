@@ -74,4 +74,13 @@ class StreamPickTest {
         // The copy shown: the one ranked highest (a trusted site).
         assertEquals("hub-ds4k", foldCopies(listOf(hub1, hub2)) { if (it.id == "hub-ds4k") 3 else 0 }.first().first.id)
     }
+
+    @Test fun tubeOpensAtTheChosenHeight() {
+        val offered = listOf(144, 360, 720, 1080)
+        assertEquals(720, tubeHeight(offered, "720p"))
+        assertEquals(360, tubeHeight(offered, "480p"))
+        assertEquals(144, tubeHeight(listOf(144, 1080), "360p"))
+        assertEquals(1080, tubeHeight(listOf(1080, 1440), "720p"))
+        assertNull(tubeHeight(offered, ""))
+    }
 }

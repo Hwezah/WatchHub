@@ -933,12 +933,23 @@ object Browser {
                 done?.let { return it }
                 val host = android.net.Uri.parse(url).host.orEmpty().lowercase()
                 val ad = url.startsWith("about:") || host.isEmpty() || (blockAds && blockedHost(host)) || BAD_JUMP.containsMatchIn(host)
-                done = ad
+                // A tapped link to the same site's own click-through page ("/out/?l=…" on a thumbnail): followed right here,
+                // in this tab, with this page as its Referer — opened as new windows they piled up in Tabs as dead pages and
+                // the viewer never got to the video (the owner caught it).
+                val sameSite = !ad && siteOf(host) == siteOf(android.net.Uri.parse(t.url).host) && siteOf(host).isNotEmpty()
+                done = ad || sameSite
                 main.post {
-                    if (ad) {
+                    if (ad || sameSite) {
                         dead += probe
                         runCatching { probe.stopLoading(); probe.destroy() }
-                        t.blocked++
+                        if (ad) t.blocked++
+                        else {
+                            t.tappedAt = System.currentTimeMillis()
+                            t.openedAt = System.currentTimeMillis()
+                            t.pass = url
+                            val from = t.url
+                            t.web?.loadUrl(url, mapOf("Referer" to from))
+                        }
                     } else {
                         // A tapped link to a real page: this very window as a new tab of the same kind (incognito stays
                         // incognito), still loading, its redirects let through.
@@ -951,7 +962,7 @@ object Browser {
                         if (probe !in dead) tab.adopt = probe
                     }
                 }
-                return ad
+                return ad || sameSite
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = decide(request.url.toString())

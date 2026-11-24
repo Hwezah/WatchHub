@@ -90,3 +90,16 @@ fun foldCopies(hits: List<Hit>, rank: (Hit) -> Int = { 0 }): List<Pair<Hit, List
     }
     return groups.map { g -> (g.maxByOrNull { rank(it) }?.takeIf { rank(it) > rank(g.first()) } ?: g.first()) to g.toList() }
 }
+
+/** Tube's resolutions (Settings → Playback): "" is Auto, YouTube's own adaptive stream. */
+val TUBE_QUALITIES = listOf("", "1080p", "720p", "480p", "360p")
+
+/**
+ * Which of [heights] (a video's offered resolutions) Tube opens at for [wanted] ("720p"): that one, else the nearest below
+ * (it plays sooner), else the nearest above; null for Auto or nothing offered.
+ */
+fun tubeHeight(heights: List<Int>, wanted: String): Int? {
+    val w = resolutionOf(wanted) ?: return null
+    val known = heights.filter { it > 0 }.distinct()
+    return known.filter { it == w }.firstOrNull() ?: known.filter { it < w }.maxOrNull() ?: known.filter { it > w }.minOrNull()
+}

@@ -162,6 +162,9 @@ object Vpn {
 
     fun hasConfig() = !Secrets.get(CONFIG).isNullOrBlank()
 
+    /** The config as it was imported, for the viewer to copy out (VPN page → Copy Config): it holds their private key. */
+    fun configText(): String? = Secrets.get(CONFIG)?.takeIf { it.isNotBlank() }
+
     /** The server the config connects to, to show. */
     fun server(): String? = Secrets.get(CONFIG)?.let(::wireguardServer)
 

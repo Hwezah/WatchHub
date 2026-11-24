@@ -122,6 +122,8 @@ object Ink {
     val imdb = Color(0xFFF5C518)
     /** The phone's spinners are the downloads' green (an app may switch it on before it composes); the TV's stay red. */
     var greenSpinner by mutableStateOf(false)
+    /** Plain surfaces (Settings → Appearance, the owner's choice): the same colours, without the frosted grain over them. */
+    var plain by mutableStateOf(false)
     /** Every download button's colour: a dark green, deep enough to read on either page. */
     val download get() = if (isDark) Color(0xFF1E9E52) else Color(0xFF13703A)
     val focus = Color.White
@@ -390,7 +392,7 @@ fun Modifier.glow(colors: List<Color>, cx: Float, cy: Float) = drawBehind {
 }
 
 /** Film grain on a surface, under its content: after `.background(…)`. */
-fun Modifier.grain() = drawBehind { drawRect(grainBrush) }
+fun Modifier.grain() = if (Ink.plain) this else drawBehind { drawRect(grainBrush) }
 
 /** [glow]'s colours for the accent: a deep base, the red itself, and a warm light rising in it. */
 fun accentGlow() = listOf(

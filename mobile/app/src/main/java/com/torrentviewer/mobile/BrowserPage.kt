@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
@@ -132,9 +133,25 @@ fun BrowserScreen() {
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 // The current tab's page, swapped in when the tab changes.
+                // Pulled down at the top of a page, it loads again (the owner's choice): the page sits in a frame inside the
+                // platform's pull-to-refresh, which asks the page itself whether it can still scroll up.
+                val green = Ink.download.toArgb()
+                val face = Ink.surface.toArgb()
                 AndroidView(
-                    factory = { android.widget.FrameLayout(it) },
-                    update = { frame ->
+                    factory = { ctx ->
+                        androidx.swiperefreshlayout.widget.SwipeRefreshLayout(ctx).apply {
+                            addView(android.widget.FrameLayout(ctx).apply { tag = "page" }, android.view.ViewGroup.LayoutParams(-1, -1))
+                            setColorSchemeColors(green)
+                            setProgressBackgroundColorSchemeColor(face)
+                            setOnChildScrollUpCallback { _, _ -> Browser.tab.web?.canScrollVertically(-1) ?: false }
+                            setOnRefreshListener {
+                                Browser.reload()
+                                postDelayed({ isRefreshing = false }, 900)
+                            }
+                        }
+                    },
+                    update = { pull ->
+                        val frame = pull.findViewWithTag<android.widget.FrameLayout>("page") ?: return@AndroidView
                         Browser.rebuilt // a crashed page's tab gets its new view here
                         val w = Browser.view(frame.context, Browser.tab)
                         if (w.parent !== frame) {
