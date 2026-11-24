@@ -77,7 +77,7 @@ object FilesLock {
     var timeout by mutableStateOf(Kv.global(TIMEOUT)?.toLongOrNull() ?: UNTIL_CLOSED)
         private set
 
-    fun setTimeout(ms: Long) {
+    fun chooseTimeout(ms: Long) {
         timeout = ms
         Kv.setGlobal(TIMEOUT, ms.toString())
     }
@@ -275,7 +275,7 @@ fun LockSettings(say: (String) -> Unit) {
                 Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint),
             )
             BarChoices(FilesLock.TIMEOUTS.map { it.second }, FilesLock.TIMEOUTS.indexOfFirst { it.first == FilesLock.timeout }.takeIf { it >= 0 }, Modifier.padding(top = 4.dp)) {
-                FilesLock.setTimeout(FilesLock.TIMEOUTS[it].first)
+                FilesLock.chooseTimeout(FilesLock.TIMEOUTS[it].first)
             }
             Button("Change Pin", { step = "pin" }, gap, icon = L.drawable.lucide_ic_lock)
             Button(if (FilesLock.hasPassword()) "Change Auth Password" else "Set Auth Password", { step = "pass" }, gap, icon = L.drawable.lucide_ic_key_round)
