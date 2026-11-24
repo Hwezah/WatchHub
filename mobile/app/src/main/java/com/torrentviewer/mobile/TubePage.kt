@@ -547,7 +547,8 @@ private fun VideoCard(v: TubeVideo, onOpen: (TubeVideo) -> Unit, onMenu: (TubeVi
         Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
             Box(Modifier.padding(start = 4.dp, end = 12.dp).clip(CircleShape).clickable { v.channelUrl?.let { onChannel(it, v.channel) } }) { ChannelAvatar(v.avatar, v.channel, 40.dp) }
             Column(Modifier.weight(1f).clickable(remember { MutableInteractionSource() }, indication = null) { onOpen(v) }) {
-                Text(v.title, style = Type.title.copy(fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 22.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                // A phone's size, as YouTube's own app sets it (the owner's choice: 17 sp read too big).
+                Text(v.title, style = Type.title.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(tubeLine(v), Modifier.padding(top = 4.dp), style = Type.meta.copy(fontSize = 13.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Tap({ onMenu(v) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(6.dp), tint = Ink.text, size = 20.dp) }
@@ -843,7 +844,7 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
                 LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), state = watchList, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 40.dp)) {
                     item {
                         Column(Modifier.fillMaxWidth().clickable(remember { MutableInteractionSource() }, indication = null) { more = !more }) {
-                            Text(v.title, style = Type.title.copy(fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 24.sp), maxLines = if (more) 6 else 2, overflow = TextOverflow.Ellipsis)
+                            Text(v.title, style = Type.title.copy(fontWeight = FontWeight.Bold, fontSize = 17.sp, lineHeight = 22.sp), maxLines = if (more) 6 else 2, overflow = TextOverflow.Ellipsis)
                             Text(listOfNotNull(v.views.takeIf { it >= 0 }?.let { "${compactCount(it)} views" }, v.ago).joinToString(" • ") + if (d != null && d.description.isNotBlank()) "  ...more" else "", Modifier.padding(top = 6.dp), style = Type.meta.copy(fontSize = 13.sp))
                         }
                     }

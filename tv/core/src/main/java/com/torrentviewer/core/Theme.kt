@@ -90,12 +90,13 @@ object Ink {
     private val DARK = Palette(
         Color(0xFF0A0A0A), Color(0xFF181818), Color(0xFF262626), Color(0xFF333333),
         // Errors in the same deep red as the buttons (the owner's choice).
-        Color(0xFFFFFFFF), Color(0xFFB3B3B3), Color(0xFF7A7A7A), Color(0xFF46D369), Color(0xFFFFB340), Color(0xFF781317),
+        // One green throughout the app (the owner's choice): the downloads' dark green, not a bright one beside it.
+        Color(0xFFFFFFFF), Color(0xFFB3B3B3), Color(0xFF7A7A7A), Color(0xFF1E9E52), Color(0xFFFFB340), Color(0xFF781317),
     )
     private val LIGHT = Palette(
         // A warm paper page, as the Grabber app's light theme (the owner's choice: less white); cards and sheets white on it.
         Color(0xFFEAE5DF), Color(0xFFFFFFFF), Color(0xFFE0D9D2), Color(0xFFDDD5CE),
-        Color(0xFF141414), Color(0xFF575757), Color(0xFF8A8A8A), Color(0xFF1E8E3E), Color(0xFFB26A00), Color(0xFF781317),
+        Color(0xFF141414), Color(0xFF575757), Color(0xFF8A8A8A), Color(0xFF13703A), Color(0xFFB26A00), Color(0xFF781317),
     )
     private var p by mutableStateOf(DARK)
 

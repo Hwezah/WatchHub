@@ -18,6 +18,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -205,6 +206,10 @@ fun Button(
         seen = on
         pop.animateTo(1f, keyframes { durationMillis = 360; 0.72f at 100; 1.15f at 230; 1f at 360 })
     }
+    // The download buttons (filled with the download green): dark grey like the rest, the green kept on the icon alone
+    // (the owner's choice).
+    val greyDownload = fill != null && fill == Ink.download
+    val fill = fill.takeUnless { greyDownload }
     Tap(onClick, modifier, RoundedCornerShape(5.dp), onLongClick = onLongClick) { pressed ->
         val bg by animateColorAsState(
             when {
@@ -251,7 +256,7 @@ fun Button(
                     Lc(icon, Modifier.graphicsLayer {
                         scaleX = pop.value
                         scaleY = pop.value
-                    }, tint = lerp(fg, if (quietTick) glassFill else Color.White, disc.coerceIn(0f, 1f)),
+                    }, tint = lerp(if (greyDownload) Ink.download else fg, if (quietTick) glassFill else Color.White, disc.coerceIn(0f, 1f)),
                         // The hero's plus a notch bigger (the owner's choice); its tick, once added, stays small.
                         size = if (quietTick) (if (on == true) 12.dp else 20.dp) else if (on != null) 16.dp else 18.dp)
                 }
@@ -328,6 +333,10 @@ fun Dropdown(label: String, options: List<String>, onPick: (String) -> Unit) {
     }
 }
 
+/** The app's one filled green: the downloads' green a long way toward black, under the grain (the owner's choice). */
+val FROSTED_GREEN: Color
+    get() = lerp(Ink.download, Color.Black, 0.46f)
+
 /** Netflix's phone actions under the Play button: an icon over a word. */
 @Composable
 fun Action(
@@ -338,7 +347,8 @@ fun Action(
     modifier: Modifier = Modifier.width(84.dp),
     /** A toggle (My List, Like): switched on it fills with [onColor] — see below. */
     on: Boolean? = null,
-    onColor: Color = Ink.good,
+    // The app's frosted dark green (the owner's choice): the download buttons' deep green, not a bright one.
+    onColor: Color = FROSTED_GREEN,
 ) {
     // Switched on: a disc of onColor springs in behind the icon, which dips and pops back
     // white. Switched off, the disc shrinks away. Every value starts where the last frame
@@ -368,7 +378,7 @@ fun Action(
                     scaleY = pop.value
                 }, tint = lerp(tint, Color.White, disc.coerceIn(0f, 1f)), size = 22.dp)
             }
-            Text(label, Modifier.padding(top = 4.dp), style = Type.meta.copy(fontSize = 12.sp, color = if (filled) onColor else Ink.muted, fontWeight = if (filled) FontWeight.SemiBold else FontWeight.Medium), maxLines = 1)
+            Text(label, Modifier.padding(top = 4.dp), style = Type.meta.copy(fontSize = 12.sp, color = if (filled) (if (onColor == FROSTED_GREEN) Ink.download else onColor) else Ink.muted, fontWeight = if (filled) FontWeight.SemiBold else FontWeight.Medium), maxLines = 1)
         }
     }
 }
@@ -571,7 +581,13 @@ fun BottomSheet(
                     if (title.isEmpty() && trailing == null && leading == null) Spacer(Modifier.height(14.dp))
                     else Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         leading?.invoke()
-                        Text(title, Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        // One line, never wrapped: a long title scrolls slowly across (the owner's choice). Alone in its row on
+                        // an upright phone, in the middle; beside a Reload, from the start.
+                        val alone = trailing == null && leading == null && isPortraitPhone()
+                        Text(
+                            title, Modifier.weight(1f).basicMarquee(), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 1,
+                            textAlign = if (alone) TextAlign.Center else TextAlign.Start,
+                        )
                         trailing?.invoke()
                     }
                 }
@@ -731,16 +747,17 @@ val PosterGrid = object : androidx.compose.foundation.lazy.grid.GridCells {
  */
 @Composable
 fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    val travel by androidx.compose.animation.core.animateDpAsState(if (checked) 18.dp else 0.dp, tween(160), label = "toggle")
+    // A notch smaller than it was (the owner's choice): 38 × 22, a 15 dp thumb.
+    val travel by androidx.compose.animation.core.animateDpAsState(if (checked) 16.dp else 0.dp, tween(160), label = "toggle")
     // A white thumb, on and off, in both themes (the owner's choice); off, the track a touch darker so it still shows.
     val track by animateColorAsState(if (checked) Ink.accent else Ink.text.copy(alpha = if (Ink.isDark) 0.18f else 0.24f), tween(160), label = "track")
     val thumb by animateColorAsState(Color.White, tween(160), label = "thumb")
     Box(
-        modifier.size(width = 44.dp, height = 26.dp).clip(RoundedCornerShape(50)).background(track)
+        modifier.size(width = 38.dp, height = 22.dp).clip(RoundedCornerShape(50)).background(track)
             .toggleable(checked, remember { MutableInteractionSource() }, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange)
-            .padding(4.dp),
+            .padding(3.5.dp),
     ) {
-        Box(Modifier.offset(x = travel).size(18.dp).clip(CircleShape).background(thumb))
+        Box(Modifier.offset(x = travel).size(15.dp).clip(CircleShape).background(thumb))
     }
 }
 

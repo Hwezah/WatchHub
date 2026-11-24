@@ -109,8 +109,6 @@ import com.composables.icons.lucide.R as L
 /** The exact strings quality() returns, best first. */
 private val QUALITY_ORDER = listOf("4K", "1440p", "1080p", "720p", "480p", "360p", "CAM")
 
-/** Episodes listed before "Show all". */
-private const val FIRST_EPISODES = 10
 
 /** Past this the list is noise; the best are at the top. */
 private const val MAX_SOURCES = 60
@@ -225,7 +223,6 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     fun searchLang() = LANGS.find { it.code == lang }
     var pickingLang by remember { mutableStateOf(false) }
     var expanded by remember(title.imdb) { mutableStateOf(false) }
-    var allEpisodes by rememberSaveable(title.imdb, season) { mutableStateOf(false) }
     /** "Download season" open: the season, and its packs (null while still looking). */
     var seasonPacks by remember(title.imdb) { mutableStateOf<Pair<Int, List<Hit>?>?>(null) }
     /** The trailer playing in its card, over the page: its YouTube id. */
@@ -558,7 +555,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     Row(Modifier.fillMaxWidth().padding(top = 14.dp)) {
                         val share = Modifier.weight(1f)
                         // Green tick for My List, red heart for Like — each fills its disc when on.
-                        Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My Listing" else "My Listing", { SavedStore.toggle(title) }, modifier = share, on = inList, onColor = Ink.good)
+                        Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My Listing" else "My Listing", { SavedStore.toggle(title) }, modifier = share, on = inList)
                         Action(L.drawable.lucide_ic_heart, if (liked) "Liked" else "Like", { SavedStore.toggle(title, "favorite") }, modifier = share, on = liked, onColor = Ink.accent)
                         // No Download here: each source row has its own ⬇ (one-tap, by Preferred download, is the episodes').
                         // Always here: Cinemeta's trailer, else TMDB's, played in the card over the page.
@@ -638,7 +635,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                         // The stacked layers say "all of them" (a whole season), a notch smaller than the words (the owner's choice).
                                         Lc(L.drawable.lucide_ic_layers, tint = Ink.download, size = 20.dp)
-                                        Text("  Download Season $s", style = Type.title.copy(fontWeight = FontWeight.Bold, color = Ink.text.copy(alpha = 0.85f)))
+                                        Text("  Batch!", style = Type.title.copy(fontWeight = FontWeight.Bold, color = Ink.text.copy(alpha = 0.85f)))
                                     }
                                 }
                             }
@@ -660,7 +657,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     }
                 }
                 // Ten at a time: a long season is a wall of rows otherwise.
-                items(if (allEpisodes) episodes else episodes.take(FIRST_EPISODES), key = { "ep-" + it.id }) { ep ->
+                // Every episode of the season, at once (the owner's choice): no "Show all" to tap through.
+                items(episodes, key = { "ep-" + it.id }) { ep ->
                     EpisodeRow(
                         ep,
                         fallback = title.wide,
@@ -676,14 +674,6 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         },
                         onDownload = { downloadEpisode(ep) },
                         onStory = { storyEp = ep; storyOpen = true },
-                    )
-                }
-                if (!allEpisodes && episodes.size > FIRST_EPISODES) item(key = "all-episodes") {
-                    Button(
-                        "Show all ${episodes.size} episodes",
-                        { allEpisodes = true },
-                        Modifier.padding(horizontal = EDGE, vertical = 8.dp).fillMaxWidth().widthIn(max = 720.dp),
-                        icon = L.drawable.lucide_ic_list_video,
                     )
                 }
             } else {
@@ -756,7 +746,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     // Said in green on both choices: the resolution comes from Settings, and that's where to change it.
     fun resolutionNote(): String {
         val q = com.torrentviewer.core.SettingsStore.value.value.dlQuality
-        return "The Resolution Picked By Default Is ${q.ifEmpty { "Any (The Best Found)" }}, As Set In Settings → Preferred Download. Change It There For A Different Resolution!"
+        return "Picks ${q.ifEmpty { "the best found" }} · change it in Settings → Preferred Download"
     }
     askEpisode?.let { ep ->
         DownloadChoice(
@@ -773,8 +763,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
             onInternal = { batchExternal = false; batchFor = s },
             onExternal = { to -> askSeason = null; batchExternal = true; batchTo = to; batchFor = s },
             onDismiss = { askSeason = null },
-            internalNote = "Pick resolution, codec, format, subtitles and source, see what each episode gets, then everything goes to the Downloads tab.",
-            externalNote = "The same filters, then every episode's link goes to 1DM, ADM or another downloader in one go.",
+            internalNote = "Pick the filters, see each episode's file",
+            externalNote = "Every episode's link at once",
             probe = ExternalDownloaders.sendProbe(),
             disclaimer = resolutionNote(),
         )
@@ -894,7 +884,7 @@ private fun LazyListScope.sources(
                 if (onReload != null && hits != null) Tap(onReload, shape = RoundedCornerShape(4.dp)) {
                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         ReloadArrow(busy, Ink.download, 18.dp)
-                        Text("  Reload Fresh Links!", style = Type.label.copy(color = Ink.download, fontWeight = FontWeight.SemiBold))
+                        Text("  Reload Links!", style = Type.label.copy(color = Ink.download, fontWeight = FontWeight.SemiBold))
                     }
                 }
             }
@@ -903,9 +893,10 @@ private fun LazyListScope.sources(
                 // Words split by coloured bars, the chosen one with a dot (the owner's choice); the reload stays a pill.
                 // Under a heading, the reload is the heading's; in the episode sheet (no heading), this pill, first.
                 val names = listOf<String?>(null) + qualities
+                // Spread end to end here (the owner's choice), still split by pipes.
                 BarChoices(
                     listOf("All") + qualities, names.indexOf(quality).takeIf { it >= 0 }, Modifier.padding(bottom = 12.dp),
-                    leading = if (onReload != null && !heading) ({ ReloadPill(busy, onReload) }) else null,
+                    leading = if (onReload != null && !heading) ({ ReloadPill(busy, onReload) }) else null, spread = true,
                 ) { onQuality(names[it]) }
             }
             // The progress line: centred on an upright phone, from the start elsewhere.

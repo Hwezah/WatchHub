@@ -112,6 +112,8 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     var cancelling by remember { mutableStateOf<LiveDownload?>(null) }
     var swapping by remember { mutableStateOf<LiveDownload?>(null) }
     var deleting by remember { mutableStateOf<Finished?>(null) }
+    /** A film's or episode's ⓘ tapped: its story. */
+    var story by remember { mutableStateOf<Finished?>(null) }
     var deletingAll by remember { mutableStateOf(false) }
 
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE)) {
@@ -163,8 +165,8 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 val from = f.imdb?.let { Title(it, f.kind ?: "movie", f.label.substringBefore(" · "), poster = f.poster) }
                 watch.playFile(f.path, f.label, from, f.poster)
             }
-            if (group.size == 1) FinishedRow(group[0], group[0].label, poster = true, { play(group[0]) }, { deleting = group[0] })
-            else ShowGroup(group.sortedBy { it.label }, play) { deleting = it }
+            if (group.size == 1) FinishedRow(group[0], group[0].label, poster = true, { play(group[0]) }, { deleting = group[0] }, onStory = storyOf(group[0]) { story = it })
+            else ShowGroup(group.sortedBy { it.label }, play, onStory = { story = it }) { deleting = it }
         }
     }
 
@@ -206,13 +208,23 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
         },
         onDismiss = { deletingAll = false },
     )
+    story?.let { f -> FileStorySheet(f.file, f, emptyList()) { story = null } }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // A saved file's choices (its bin, or held): send it to another app, delete it, or keep it.
     deleting?.let { f ->
         Sheet(
-            title = "Delete ${f.label}?",
-            options = listOf(Option(true, "Delete from this phone", bytes(f.size), icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep it", icon = L.drawable.lucide_ic_check)),
+            title = f.label,
+            options = listOf(
+                Option("share", "Share", "Send the file to another app", icon = L.drawable.lucide_ic_share_2),
+                Option("delete", "Delete from this phone", bytes(f.size), icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
+                Option("keep", "Keep it", icon = L.drawable.lucide_ic_check),
+            ),
             selected = null,
             onPick = {
-                if (it) Downloads.delete(f)
+                when (it) {
+                    "share" -> shareFile(context, f.file, f.label)
+                    "delete" -> Downloads.delete(f)
+                }
                 deleting = null
             },
             onDismiss = { deleting = null },
@@ -237,7 +249,7 @@ private fun FilmBadge() {
 
 /** A saved file: a card of its own ([card]), or a plain line inside its show's card. */
 @Composable
-private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -> Unit, onDelete: () -> Unit) {
+private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -> Unit, onDelete: () -> Unit, onStory: (() -> Unit)? = null) {
     val card = poster
     Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), if (card) DL_CARD else RoundedCornerShape(5.dp), onLongClick = onDelete) {
         Row(
@@ -249,7 +261,9 @@ private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -
                 Text(name, Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
                 Text("${bytes(f.size)}  ·  ${ago(f.at)}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
             }
-            Lc(L.drawable.lucide_ic_play, tint = Ink.text, size = 20.dp)
+            // A film's or an episode's story (not YouTube's or the Browser's files): its ⓘ, before Play.
+            if (onStory != null) Tap(onStory, shape = CircleShape) { Lc(L.drawable.lucide_ic_info, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
+            Lc(L.drawable.lucide_ic_play, Modifier.padding(start = 4.dp), tint = Ink.text, size = 20.dp)
             Tap(onDelete, shape = CircleShape) { Lc(L.drawable.lucide_ic_trash_2, Modifier.padding(10.dp), tint = Ink.muted, size = 20.dp) }
         }
     }
@@ -257,7 +271,7 @@ private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -
 
 /** A show's downloaded episodes under one card, folded until tapped. */
 @Composable
-private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onDelete: (Finished) -> Unit) {
+private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onStory: (Finished) -> Unit = {}, onDelete: (Finished) -> Unit) {
     val first = episodes.first()
     var open by rememberSaveable(first.imdb ?: first.label) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
@@ -272,7 +286,7 @@ private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onDe
             }
         }
         if (open) Column(Modifier.padding(top = 8.dp)) {
-            episodes.forEach { f -> FinishedRow(f, f.label.substringAfter(" · "), poster = false, { onPlay(f) }, { onDelete(f) }) }
+            episodes.forEach { f -> FinishedRow(f, f.label.substringAfter(" · "), poster = false, { onPlay(f) }, { onDelete(f) }, onStory = storyOf(f, onStory)) }
         }
     }
 }
@@ -509,9 +523,8 @@ private fun EpisodeLine(f: DlFile, isNext: Boolean, onToggle: () -> Unit) {
             )
         }
         Text(ep, Modifier.width(64.dp).padding(start = 4.dp), style = Type.meta.copy(color = if (f.wanted) Ink.text else Ink.faint, fontWeight = FontWeight.SemiBold), maxLines = 1)
-        Box(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-            if (f.wanted && !f.saved) ProgressLine(pct / 100f, Modifier.clip(CircleShape), height = 2.dp, color = Ink.download)
-        }
+        // The room the line had, kept (the owner's choice): no line now, only the percentage at the end.
+        Spacer(Modifier.weight(1f).padding(horizontal = 8.dp))
         Text(
             when {
                 f.saved -> "Saved"
@@ -528,3 +541,17 @@ private fun EpisodeLine(f: DlFile, isNext: Boolean, onToggle: () -> Unit) {
 
 /** "20.1 MB of 718 MB", as Grabber says it; null before the size is known. */
 private fun sizes(row: LiveDownload): String? = if (row.total > 0) "${bytes(row.done)} of ${bytes(row.total)}" else null
+
+/** A saved file's ⓘ, for a film or an episode of the catalogue only (it has an IMDb id): YouTube's and the Browser's files have none. */
+private fun storyOf(f: Finished, open: (Finished) -> Unit): (() -> Unit)? = if (f.imdb?.startsWith("tt") == true) ({ open(f) }) else null
+
+/** [file] handed to another app (a chat, Drive, another player): through the app's file provider, read-only. */
+fun shareFile(context: android.content.Context, file: java.io.File, title: String) {
+    runCatching {
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        val type = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "*/*"
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType(type).putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            .putExtra(android.content.Intent.EXTRA_SUBJECT, title).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        context.startActivity(android.content.Intent.createChooser(send, "Share $title").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+}

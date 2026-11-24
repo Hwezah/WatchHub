@@ -542,7 +542,7 @@ private suspend fun identify(file: File, saved: Finished?, folders: List<String>
  * once it's known which title it is; meanwhile a spinner, or a note when it can't be told.
  */
 @Composable
-private fun FileStorySheet(file: File, saved: Finished?, folders: List<String>, onDismiss: () -> Unit) {
+fun FileStorySheet(file: File, saved: Finished?, folders: List<String>, onDismiss: () -> Unit) {
     var found by remember(file.path) { mutableStateOf<Pair<Title, Episode?>?>(null) }
     var lost by remember(file.path) { mutableStateOf(false) }
     LaunchedEffect(file.path) {

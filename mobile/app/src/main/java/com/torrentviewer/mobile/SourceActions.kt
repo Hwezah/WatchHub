@@ -2,6 +2,7 @@ package com.torrentviewer.mobile
 
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.widthIn
@@ -283,8 +284,8 @@ fun DownloadChoice(
     /** Tapped: [Downloader.Default]; held: whatever was picked in the "Download With" sheet. */
     onExternal: (Downloader) -> Unit,
     onDismiss: () -> Unit,
-    internalNote: String = "Saved in the Downloads tab. Resumes after a pause, keeps to Wi-Fi if you set it, and gets a fresh link if this one expires.",
-    externalNote: String = "1DM, ADM or another downloader on your phone. Start it soon: links like these can expire.",
+    internalNote: String = "Into the Downloads tab · resumes, renews its link",
+    externalNote: String = "1DM, ADM or another downloader",
     /** What kind of hand-off this is, to find the apps that take it: one link, or a season's as text. */
     probe: Intent = ExternalDownloaders.viewProbe(),
     /** A line in green under the choices: where the picked resolution comes from, and where to change it. */
@@ -296,38 +297,29 @@ fun DownloadChoice(
         DownloaderSheet(probe, many = probe.action == Intent.ACTION_SEND, onPick = { onExternal(it) }, onDismiss = { choosing = false })
         return
     }
-    androidx.compose.ui.window.Dialog(onDismiss, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        // Low on the screen, resting just a notch above the tab bar (about 70 dp over the system's own bar);
-        // a tap on the dimmed page around it closes it.
-        Box(
-            Modifier.fillMaxSize().clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = onDismiss)
-                .navigationBarsPadding().padding(start = EDGE + 4.dp, end = EDGE + 4.dp, bottom = 82.dp),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-        Column(
-            Modifier.widthIn(max = 360.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface)
-                .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
-                .padding(CARD + 2.dp),
-        ) {
-            Text("Download", style = Type.title.copy(fontWeight = FontWeight.Bold))
-            Text(detail, Modifier.padding(top = 2.dp, bottom = 14.dp), style = Type.meta.copy(color = Ink.faint), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            ChoiceTile(L.drawable.lucide_ic_download, "Use Internal App Downloader", internalNote, Ink.download) {
+    // A sheet from below, as every other choice in the app (the owner's choice), not a box floating over the page.
+    BottomSheet("", onDismiss) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 6.dp)) {
+            // "Download" and, beside it, what it is: an asterisk, then the resolution, size and site, in the dark green.
+            Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Download", style = Type.title.copy(fontWeight = FontWeight.Bold))
+                Lc(L.drawable.lucide_ic_asterisk, Modifier.padding(start = 12.dp, end = 4.dp), tint = Ink.download, size = 16.dp)
+                Text(
+                    detail, Modifier.weight(1f).basicMarquee(), maxLines = 1,
+                    style = Type.meta.copy(color = Ink.download, fontWeight = FontWeight.SemiBold),
+                )
+            }
+            ChoiceTile(L.drawable.lucide_ic_download, "Internal Downloader", internalNote, Ink.download) {
                 onDismiss()
                 onInternal()
             }
             Spacer(Modifier.height(10.dp))
             // A tap goes to the default app; held, the "Download With" sheet offers the others.
             ChoiceTile(
-                L.drawable.lucide_ic_external_link, "Use External Downloader",
-                "$externalNote\nLong tap for share and download options!", onLongClick = { choosing = true },
+                L.drawable.lucide_ic_external_link, "External Downloader",
+                "$externalNote · hold for more", onLongClick = { choosing = true },
             ) { onExternal(Downloader.Default) }
             disclaimer?.let { Text(it, Modifier.padding(top = 12.dp), style = Type.meta.copy(color = Ink.download, fontWeight = FontWeight.Medium)) }
-            Text(
-                "Cancel", Modifier.align(Alignment.End).padding(top = 14.dp).clip(RoundedCornerShape(5.dp))
-                    .clickable(onClick = onDismiss).padding(horizontal = 10.dp, vertical = 6.dp),
-                style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.muted),
-            )
-        }
         }
     }
 }

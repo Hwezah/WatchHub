@@ -874,7 +874,8 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
     val pageScroll = rememberScrollState()
     LaunchedEffect(page) { if (page != null) pageScroll.scrollTo(0) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(if (page == null) listScroll else pageScroll).padding(horizontal = EDGE).padding(bottom = 32.dp)) {
+    // Its foot scrolls up clear of the tab bar, as every page's does (the owner's choice).
+    Column(Modifier.fillMaxSize().verticalScroll(if (page == null) listScroll else pageScroll).padding(horizontal = EDGE).padding(bottom = NAV_CLEARANCE)) {
         if (page == null) {
             Heading("Settings")
             Field(query, { query = it }, "Search settings", Modifier.fillMaxWidth().padding(bottom = 12.dp), leading = L.drawable.lucide_ic_search)
