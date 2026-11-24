@@ -90,7 +90,8 @@ fun SourceActions(
     var ticked by remember(current.uri) { mutableStateOf(com.torrentviewer.core.defaultSubtitlePicks(subs.map { it.language })) }
     // The same source's other links, for Play mirror and Download mirror alike: the highest resolution first, then the lightest.
     val others = remember(current.uri, all) {
-        all.filter { it.addon == current.addon && it.uri != current.uri }
+        // The same file from other addons too: the list folds those copies into one row.
+        all.filter { it.uri != current.uri && (it.addon == current.addon || com.torrentviewer.core.sameFile(it, current)) }
             .sortedWith(compareByDescending<Hit> { rankOf(it.quality) }.thenBy { if (it.size > 0) it.size else Long.MAX_VALUE })
     }
     /** A mirror's ⋮: the whole sheet is about it now, from its top. */

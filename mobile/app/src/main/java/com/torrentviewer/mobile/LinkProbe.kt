@@ -119,12 +119,13 @@ object LinkProbe {
      * [hits] with the unlabelled links among them described by their file names — the [MOST] lightest of them (unknown
      * sizes last), since a pick wants the lightest. Never fails: a link that doesn't answer stays as it was.
      */
-    suspend fun describe(hits: List<Hit>): List<Hit> {
+    suspend fun describe(hits: List<Hit>, sizes: Boolean = false): List<Hit> {
         // The preferred resolution's first, then the lightest: those are the ones a pick might take.
         val wanted = downloadPrefs().quality
         // Data saver on mobile data: only the preferred resolution's (and unlabelled) links, and fewer of them.
         val saving = Downloads.saving()
-        val ask = hits.filter { (unlabelled(it) || withHeaders(it)) && !known.containsKey(it.uri) && it.uri !in asking && (failed[it.uri] ?: 0) < TRIES }
+        // [sizes]: a link that doesn't say its size is asked too, for the sources list to show every one (the owner asked).
+        val ask = hits.filter { (unlabelled(it) || withHeaders(it) || sizes && it.direct && it.size <= 0 && !isPlaylist(it) && !isDash(it)) && !known.containsKey(it.uri) && it.uri !in asking && (failed[it.uri] ?: 0) < TRIES }
             .filter { !saving || it.quality == null || it.quality == wanted }
             .sortedWith(compareBy<Hit> { if (it.quality == null || it.quality == wanted) 0 else 1 }.thenBy { if (it.size > 0) 0 else 1 }.thenBy { it.size })
             .take(if (saving) SAVING_MOST else MOST)

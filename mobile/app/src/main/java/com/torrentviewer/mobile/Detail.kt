@@ -210,7 +210,16 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     val hideFew = settingsNow.hideFewSeeds
     val cachedLower = remember(cachedIds) { cachedIds.mapTo(HashSet()) { c -> c.lowercase() } }
     // distinctBy: a list crashes on two rows with one id, wherever the sources came from.
-    val kept = remember(hits, leaveOut, cachedLower) { hits?.filter { allowed(it, leaveOut, cachedLower) }?.distinctBy { it.id } }
+    /** Settings → Leave out set aside for this title, from the note under the pills. */
+    var showLeft by remember(title.imdb) { mutableStateOf(false) }
+    /** The season in view being asked for afresh (its pill's ↻). */
+    var refetching by remember(title.imdb) { mutableStateOf(false) }
+    val kept = remember(hits, leaveOut, cachedLower, showLeft) { hits?.filter { allowed(it, if (showLeft) emptyList() else leaveOut, cachedLower) }?.distinctBy { it.id } }
+    // How many Leave out took away: a plugin's "47 links" with far fewer listed was them (the owner asked) — most plugin
+    // links don't say their format, and "Other / not stated" left out drops them all.
+    val hiddenLeft = remember(hits, leaveOut, cachedLower, showLeft) {
+        if (showLeft) 0 else hits.orEmpty().distinctBy { it.id }.count { allowed(it, emptyList(), cachedLower) && !allowed(it, leaveOut, cachedLower) }
+    }
     val atQuality = remember(kept, quality) { kept.orEmpty().filter { quality == null || it.quality == quality } }
     val shown = remember(atQuality, hideFew, showFew, cachedLower) { if (hideFew && !showFew) atQuality.filterNot { fewSeeds(it, cachedLower) } else atQuality }
     val hiddenFew = atQuality.size - shown.size
@@ -236,6 +245,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     var downloadFor by remember(title.imdb) { mutableStateOf<Pair<Hit, Episode?>?>(null) }
     /** An episode's ⬇ or a season's Download asked: this app's downloader, or another app's. */
     var askEpisode by remember(title.imdb) { mutableStateOf<Episode?>(null) }
+    /** A film's Download in the actions row: internal or external first. */
+    var askFilm by remember(title.imdb) { mutableStateOf(false) }
     var askSeason by remember(title.imdb) { mutableStateOf<Int?>(null) }
     /** The batch sheet hands its picks to another app's downloader instead of this one's. */
     var batchExternal by remember(title.imdb) { mutableStateOf(false) }
@@ -266,6 +277,15 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         return scope.quickest(run) { partial -> if (mine == ticket) hits = partial }.also { d ->
             scope.launch { val all = d.await(); if (mine == ticket && hits.isNullOrEmpty()) hits = all }
         }
+    }
+
+    // Once a search is done, the links that don't say their size are asked (a byte each), so every row shows one.
+    LaunchedEffect(busy, ticket) {
+        if (busy) return@LaunchedEffect
+        val now = hits ?: return@LaunchedEffect
+        if (now.none { it.direct && it.size <= 0 && !isPlaylist(it) }) return@LaunchedEffect
+        val described = runCatching { LinkProbe.describe(now, sizes = true) }.getOrNull() ?: return@LaunchedEffect
+        if (hits === now) hits = described
     }
 
     /** The sources' ↻: every addon and plugin asked again, not their answers kept from earlier. */
@@ -557,7 +577,9 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         // Green tick for My List, red heart for Like — each fills its disc when on.
                         Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My Listing" else "My Listing", { SavedStore.toggle(title) }, modifier = share, on = inList)
                         Action(L.drawable.lucide_ic_heart, if (liked) "Liked" else "Like", { SavedStore.toggle(title, "favorite") }, modifier = share, on = liked, onColor = Ink.accent)
-                        // No Download here: each source row has its own ⬇ (one-tap, by Preferred download, is the episodes').
+                        // A film's one-tap download (the owner's choice), by Settings → Preferred download: the smallest reasonable
+                        // file at that resolution and format, from every source, links and torrents alike ([preferredPick]).
+                        if (!title.isSeries) Action(L.drawable.lucide_ic_download, "Download", { askFilm = true }, tint = Ink.download, modifier = share)
                         // Always here: Cinemeta's trailer, else TMDB's, played in the card over the page.
                         Action(L.drawable.lucide_ic_film, "Trailer", {
                             val known = title.trailer
@@ -644,16 +666,36 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         // gaps close to 8 dp and the row scrolls sideways.
                         SpreadRow(Modifier.padding(horizontal = EDGE)) {
                             run { seasons.forEach { s ->
+                                // The season in view carries a ↻ (the owner's choice): tapped again, the whole season is asked for
+                                // afresh — its episodes from TMDB, its sources from every site, nothing kept from before.
                                 Chip("Season $s", s == season, onClick = {
+                                    if (s == season) {
+                                        if (refetching) return@Chip
+                                        refetching = true
+                                        ticket++
+                                        busy = false
+                                        hits = null
+                                        episode = null
+                                        com.torrentviewer.core.forgetStreams()
+                                        scope.launch {
+                                            runCatching { com.torrentviewer.mobile.cs.CsPlugins.forgetPages() }
+                                            val eps = runCatching { com.torrentviewer.core.Tmdb.episodes(title.imdb) }.getOrNull().orEmpty()
+                                            if (eps.isNotEmpty()) title = title.copy(episodes = eps)
+                                            watch.notes.tryEmit("Season $s asked for afresh")
+                                            refetching = false
+                                        }
+                                        return@Chip
+                                    }
                                     season = s
                                     // Retire whatever search is out: it belongs to the season being left.
                                     ticket++
                                     busy = false
                                     hits = null
                                     episode = null
-                                })
+                                }, trailing = if (s == season) L.drawable.lucide_ic_rotate_cw else null)
                             } }
                         }
+                        if (refetching) LoadingLine("Asking for season $season afresh…", Modifier.padding(top = 10.dp))
                     }
                 }
                 // Ten at a time: a long season is a wall of rows otherwise.
@@ -677,7 +719,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     )
                 }
             } else {
-                sources(title, episode, kept, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> if (com.torrentviewer.core.downloadOnly(hit)) downloadFor = hit to null else watch.stream(hit, title, among = kept.orEmpty()) }
+                sources(title, episode, kept, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, hiddenLeft = hiddenLeft, onShowLeft = { showLeft = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> if (com.torrentviewer.core.downloadOnly(hit)) downloadFor = hit to null else watch.stream(hit, title, among = kept.orEmpty()) }
             }
         }
         // Over the art, a round back button; once the page scrolls under it, a solid bar with the name.
@@ -706,7 +748,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         val ep = episode
         BottomSheet(ep?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: "Sources", onDismiss = { sheet = false }) {
             LazyColumn {
-                sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
+                sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, hiddenLeft = hiddenLeft, onShowLeft = { showLeft = true }, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
                     sheet = false
                     if (com.torrentviewer.core.downloadOnly(hit)) downloadFor = hit to ep
                     else watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep, among = kept.orEmpty())
@@ -719,7 +761,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         val ep = episode
         BottomSheet(ep?.let { "Download ${episodeTag(it.season, it.episode)}: pick a release" } ?: "Download: pick a release", onDismiss = { downloadSheet = false }) {
             LazyColumn {
-                sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, language = searchLang()?.name, onDownload = { hit ->
+                sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, hiddenLeft = hiddenLeft, onShowLeft = { showLeft = true }, language = searchLang()?.name, onDownload = { hit ->
                     downloadSheet = false
                     keep(hit, ep)
                 }) { hit ->
@@ -749,6 +791,13 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
         val q = com.torrentviewer.core.SettingsStore.value.value.dlQuality
         return "Picks ${q.ifEmpty { "the best found" }} · change it in Settings → Preferred Download"
     }
+    if (askFilm) DownloadChoice(
+        "${title.title} · your preferred ${preferred()}, or the nearest found",
+        onInternal = { quickDownload(null) },
+        onExternal = { to -> askFilm = false; quickDownload(null, external = true, to = to) },
+        onDismiss = { askFilm = false },
+        disclaimer = resolutionNote(),
+    )
     askEpisode?.let { ep ->
         DownloadChoice(
             "${episodeTag(ep.season, ep.episode)} · picks your preferred ${preferred()}, or the nearest found",
@@ -869,6 +918,9 @@ private fun LazyListScope.sources(
     /** Torrents left out for too few seeds, and how to show them. */
     hiddenFew: Int = 0,
     onShowFew: (() -> Unit)? = null,
+    /** Sources Settings → Leave out took away, and how to show them for this title. */
+    hiddenLeft: Int = 0,
+    onShowLeft: (() -> Unit)? = null,
     onPlay: (Hit) -> Unit,
 ) {
     val qualities = hits.orEmpty().mapNotNull { it.quality }.distinct().sortedBy { QUALITY_ORDER.indexOf(it).let { i -> if (i < 0) 9 else i } }
@@ -920,6 +972,14 @@ private fun LazyListScope.sources(
                 )
                 hits == null && episode == null && title.isSeries -> EmptyNote("Choose an episode to see what is available.")
             }
+            // What Leave out took away, and a tap to show it for this title.
+            if (hiddenLeft > 0 && onShowLeft != null) Box(Modifier.fillMaxWidth().padding(bottom = 6.dp), contentAlignment = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart) {
+                Text(
+                    "$hiddenLeft left out by Settings → Leave out · Show",
+                    Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onShowLeft).padding(horizontal = 6.dp, vertical = 4.dp),
+                    style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold),
+                )
+            }
             // What was left out, and a tap to bring it back.
             if (hiddenFew > 0 && onShowFew != null) Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart) {
                 Text(
@@ -931,8 +991,11 @@ private fun LazyListScope.sources(
         }
     }
     if (heading) item(key = "sources-head") { head() } else stickyHeader(key = "sources-head") { head() }
-    items(shown.take(MAX_SOURCES), key = { "src-" + it.id }) { hit ->
-        Source(hit, modifier.padding(start = EDGE, end = EDGE, bottom = 8.dp), runtimeSeconds(title.runtime), onDownload = { onDownload(hit) }, onMore = onMore?.let { more -> { more(hit) } }) { onPlay(hit) }
+    // One row per file: the same file from several sites, servers or addons folded together (the owner's choice), the
+    // trusted site's copy shown; the others stay in Play mirror and Download mirror.
+    val folded = com.torrentviewer.core.foldCopies(shown.take(MAX_SOURCES)) { trustRank(it) }
+    items(folded, key = { "src-" + it.first.id }) { (hit, copies) ->
+        Source(hit, modifier.padding(start = EDGE, end = EDGE, bottom = 8.dp), runtimeSeconds(title.runtime), onDownload = { onDownload(hit) }, onMore = onMore?.let { more -> { more(hit) } }, copies = copies.size) { onPlay(hit) }
     }
 }
 
@@ -1079,7 +1142,7 @@ private const val TOO_HEAVY_MBPS = 80.0
  * With [runtimeSeconds], a release too big to stream as it plays says what it needs.
  */
 @Composable
-fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0, onDownload: (() -> Unit)? = null, onMore: (() -> Unit)? = null, onClick: () -> Unit) {
+fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0, onDownload: (() -> Unit)? = null, onMore: (() -> Unit)? = null, copies: Int = 1, onClick: () -> Unit) {
     val grade = health(hit.seeders)
     // Cached on TorBox: it plays from TorBox's servers, so the swarm's health says nothing.
     val torbox by TorBox.key.collectAsState()
@@ -1115,6 +1178,8 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
                         hit.scope.label.takeIf { hit.kind == "tv" || hit.scope != Scope.EPISODE },
                         bytes(hit.size).takeIf { hit.size > 0 },
                         hit.addon.ifEmpty { null },
+                        // The same file from other sites or servers, folded into this row (the owner's choice).
+                        "$copies copies".takeIf { copies > 1 },
                     ).joinToString("  ·  "),
                     Modifier.padding(top = 2.dp),
                     style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp),

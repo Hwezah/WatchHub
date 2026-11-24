@@ -57,4 +57,21 @@ class StreamPickTest {
         assertEquals(true, downloadOnly(hit("Film Direct-Download 720p", "720p")))
         assertEquals(false, downloadOnly(hit("MoviesDrive GDFlix [Instant Download] 720p", "720p")))
     }
+
+    @Test fun copiesOfOneFileFold() {
+        val mb = 1024L * 1024
+        fun link(id: String, q: String, size: Long) = Hit(id, id, "https://x/$id", 0, 0, size, q, "movie", Scope.EPISODE, null)
+        val hub1 = link("hub-imax", "720p", 1434 * mb)
+        val hub2 = link("hub-ds4k", "720p", 1433 * mb)
+        val drive = link("drive", "720p", 1464 * mb)
+        val other1080 = link("hub-1080", "1080p", 1434 * mb)
+        val torrent = Hit("t", "t", "magnet:?xt=urn:btih:t", 30, 0, 1434 * mb, "720p", "movie", Scope.EPISODE, null)
+        val tiny = link("tiny", "720p", 20 * mb)
+        val tiny2 = link("tiny2", "720p", 20 * mb)
+        val folded = foldCopies(listOf(hub1, drive, hub2, other1080, torrent, tiny, tiny2))
+        assertEquals(listOf("hub-imax", "drive", "hub-1080", "t", "tiny", "tiny2"), folded.map { it.first.id })
+        assertEquals(listOf("hub-imax", "hub-ds4k"), folded.first().second.map { it.id })
+        // The copy shown: the one ranked highest (a trusted site).
+        assertEquals("hub-ds4k", foldCopies(listOf(hub1, hub2)) { if (it.id == "hub-ds4k") 3 else 0 }.first().first.id)
+    }
 }
