@@ -148,7 +148,7 @@ object AddLink {
 @Composable
 fun AddLinkPlus(modifier: Modifier = Modifier) {
     Tap({ AddLink.open = true }, modifier, CircleShape) {
-        Lc(L.drawable.lucide_ic_plus, Modifier.padding(6.dp), tint = Ink.accent, size = 34.dp)
+        Lc(L.drawable.lucide_ic_plus, Modifier.padding(4.dp), tint = Ink.accent, size = 42.dp)
     }
 }
 
