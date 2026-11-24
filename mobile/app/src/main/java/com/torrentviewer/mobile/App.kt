@@ -389,6 +389,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         if (who == null) return@LaunchedEffect
         incoming.value = null
         if (uri.toString() == DOWNLOADS_LINK) {
+            // Behind the lock too: the notification's way in asks for the pin as the tab does.
+            if (FilesLock.locks(Tab.LIBRARY)) { FilesLock.asking = Tab.LIBRARY; return@LaunchedEffect }
             clearPages()
             tab = Tab.LIBRARY
             pages.add(Page.Downloads)
