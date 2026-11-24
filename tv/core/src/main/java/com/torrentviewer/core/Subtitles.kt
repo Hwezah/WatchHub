@@ -5,7 +5,7 @@ package com.torrentviewer.core
  */
 
 /** Languages as sources write them, to one name: "en", "eng", "English (SDH)", "english" → "English". */
-private val LANGS = mapOf(
+private val SUB_LANGS = mapOf(
     "en" to "English", "eng" to "English", "english" to "English",
     "fr" to "French", "fre" to "French", "fra" to "French", "french" to "French",
     "es" to "Spanish", "spa" to "Spanish", "spanish" to "Spanish", "esp" to "Spanish",
@@ -17,10 +17,10 @@ private val LANGS = mapOf(
     "sw" to "Swahili", "swa" to "Swahili", "swahili" to "Swahili",
 )
 
-/** [language] as one name ([LANGS]), anything in brackets after it ("(SDH)", "[Forced]") dropped; unknown ones title-cased. */
+/** [language] as one name ([SUB_LANGS]), anything in brackets after it ("(SDH)", "[Forced]") dropped; unknown ones title-cased. */
 fun subtitleLanguage(language: String): String {
     val bare = language.substringBefore('(').substringBefore('[').trim().lowercase()
-    return LANGS[bare] ?: LANGS[bare.substringBefore(' ')] ?: bare.split(' ', '-', '_').filter { it.isNotEmpty() }
+    return SUB_LANGS[bare] ?: SUB_LANGS[bare.substringBefore(' ')] ?: bare.split(' ', '-', '_').filter { it.isNotEmpty() }
         .joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }.ifEmpty { "Subtitles" }
 }
 
