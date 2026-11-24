@@ -105,10 +105,9 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
 /** The ＋ between the tab bar's two rows: a link copied elsewhere, to download (the owner's design). */
 @Composable
 fun NavPlus(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    // No disc behind it (the owner's choice): the ＋ alone, large.
     Tap(onClick, modifier, CircleShape) {
-        Box(Modifier.background(Ink.accent.copy(alpha = 0.18f), CircleShape).padding(5.dp), contentAlignment = Alignment.Center) {
-            Lc(L.drawable.lucide_ic_plus, tint = Ink.accent, size = 18.dp)
-        }
+        Lc(L.drawable.lucide_ic_plus, Modifier.padding(4.dp), tint = Ink.accent, size = 30.dp)
     }
 }
 

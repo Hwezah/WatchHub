@@ -38,6 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -335,13 +338,18 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
         value = if (striped) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Downloads.partsDone(row.job) } else null
     }
     val strips = known ?: com.torrentviewer.core.inOrderMap(row.ratio, 24)
+    /** The card's own row's height: stripes and fill stop there. */
+    var headPx by remember { mutableIntStateOf(0) }
     // Grabber's look (the owner's choice): a well-rounded card, a film badge where the poster was.
     Column(
         Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).background(CARD_FACE)
             .drawWithCache {
                 // Each strip's edge: a hairline in the fill's shade, so empty strips still read as strips.
                 val edge = 1.dp.toPx()
+                // Only the card's own row (the owner's choice): the episodes folded open under it stay plain.
+                val head = if (headPx > 0) minOf(size.height, headPx + 20.dp.toPx()) else size.height
                 onDrawBehind {
+                    clipRect(bottom = head) {
                     if (striped && strips.isNotEmpty()) {
                         val w = size.width / strips.size
                         strips.forEachIndexed { i, f ->
@@ -350,6 +358,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                             if (i > 0) drawRect(fill, topLeft = androidx.compose.ui.geometry.Offset(x, 0f), size = size.copy(width = edge))
                         }
                     } else if (done > 0f) drawRect(fill, size = size.copy(width = size.width * done))
+                    }
                 }
             }
             .grain()
@@ -357,7 +366,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             .clickable(onClick = onOptions)
             .padding(start = 16.dp, end = CARD - 2.dp, top = 10.dp, bottom = 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.onSizeChanged { headPx = it.height }, verticalAlignment = Alignment.CenterVertically) {
             FilmBadge()
             // Beside the badge, centred on it (the owner's choice): the name and how it's going.
             Column(Modifier.weight(1f).padding(start = 12.dp, end = 12.dp)) {
@@ -425,6 +434,10 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 }
                 // Inside the card's padding (the owner's choice: a notch of room from the edge).
                 Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 22.dp) }
+                // A pack's episodes fold under the card from here (the owner's choice), right of the ✕.
+                if (pack) Tap({ open = !open }, shape = CircleShape) {
+                    Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(start = 6.dp, end = 4.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 22.dp)
+                }
                 }
             }
         }
@@ -434,13 +447,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
         // Fastest / In order live in Settings → Downloads now, for every download, not on each card.
 
         if (pack) {
-            Tap({ open = !open }, Modifier.fillMaxWidth().padding(top = 6.dp), RoundedCornerShape(4.dp)) {
-                Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Episodes  ·  ${wanted.size} of ${row.files.size} chosen", Modifier.weight(1f), style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
-                    Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, tint = Ink.muted, size = 18.dp)
-                }
-            }
             if (open) {
+                Text("Episodes  ·  ${wanted.size} of ${row.files.size} chosen", Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
                 Row(Modifier.padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip("All", wanted.size == row.files.size, onClick = { row.files.filter { !it.wanted }.forEach { onWanted(it.index, true) } })
                     // Skips everything not on the phone yet; what is saved stays.
