@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
@@ -143,7 +144,7 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
 fun NavPlus(onClick: () -> Unit, modifier: Modifier = Modifier) {
     // No disc behind it (the owner's choice): the ＋ alone, large.
     Tap(onClick, modifier, CircleShape) {
-        Lc(L.drawable.lucide_ic_plus, Modifier.padding(4.dp), tint = Ink.accent, size = 30.dp)
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_plus, tint = Ink.accent, size = 36.dp) }
     }
 }
 

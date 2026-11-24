@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
@@ -804,9 +805,10 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
         tabs().chunked(4).forEachIndexed { i, row ->
             // Between the two rows: a thin, quiet line, short of the panel's edges (the owner's choice: 90% wide), and
             // in its middle — between the eight icons — the ＋ that takes a link copied elsewhere.
-            if (i > 0) Row(Modifier.fillMaxWidth(0.9f), verticalAlignment = Alignment.CenterVertically) {
+            // The row stays the line's 1 dp (the owner's choice: the bar no taller for it): the ＋ sits over it, centred.
+            if (i > 0) Row(Modifier.fillMaxWidth(0.9f).height(1.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f).height(1.dp).background(edge))
-                NavPlus(onPlus, Modifier.padding(horizontal = 8.dp))
+                Box(Modifier.width(56.dp).height(1.dp), contentAlignment = Alignment.Center) { NavPlus(onPlus, Modifier.requiredSize(46.dp)) }
                 Box(Modifier.weight(1f).height(1.dp).background(edge))
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -822,7 +824,7 @@ private fun PillBar(tab: Tab, onTab: (Tab) -> Unit, modifier: Modifier = Modifie
                                     .then(if (on && NavActive.style != "Accent") Modifier.grain() else Modifier)
                                     .padding(horizontal = 20.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center,
-                            ) { Lc(t.icon, tint = if (on) NavActive.tint else if (Ink.isDark) NAV_DARK_ICON else Ink.muted, size = 22.dp) }
+                            ) { Lc(t.icon, tint = if (on) NavActive.tint else if (Ink.isDark) NAV_DARK_ICON else Ink.muted, size = 24.dp) }
                         }
                     }
                 }
