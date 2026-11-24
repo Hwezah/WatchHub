@@ -746,6 +746,50 @@ object Downloads {
         dest
     }.getOrNull()
 
+    /**
+     * Force merge for a torrent ([savePartial]'s twin): each chosen, unsaved file of it — every episode of a pack — copied
+     * out up to its first missing piece ("Name (partial).mkv"), which is as far as it plays. The torrent carries on as it
+     * was. Torrents fetch pieces out of order, so a file with its opening piece missing has nothing to give yet. The
+     * files saved; empty when none had anything. Copies files: off the main thread.
+     */
+    fun savePartialTorrent(uri: String): List<File> = runCatching {
+        val row = _live.value.find { it.job.uri == uri && !it.job.link } ?: return@runCatching emptyList()
+        val h = synchronized(lock) { handles[uri] }?.takeIf { it.isValid } ?: return@runCatching emptyList()
+        val ti = h.torrentFile() ?: return@runCatching emptyList()
+        val fs = ti.files()
+        val bits = h.status(TorrentHandle.QUERY_PIECES).pieces()
+        val pieceLen = ti.pieceLength().toLong().takeIf { it > 0 } ?: return@runCatching emptyList()
+        val job = row.job
+        job.files.filter { it !in job.saved && it in 0 until fs.numFiles() }.mapNotNull { i ->
+            val offset = fs.fileOffset(i)
+            val size = fs.fileSize(i)
+            if (size <= 0) return@mapNotNull null
+            com.torrentviewer.core.playablePrefix(offset, size, pieceLen, bits.size()) { bits.getBit(it) }.takeIf { it > 0 }?.let { have ->
+                val src = File(pieceDir(), fs.filePath(i)).takeIf { it.isFile } ?: return@mapNotNull null
+                val name = fs.fileName(i)
+                val base = name.substringBeforeLast('.')
+                val ext = name.substringAfterLast('.', "mkv")
+                val dest = destOf(job, ti.name(), "$base (partial).$ext")
+                dest.parentFile?.mkdirs()
+                src.inputStream().use { input ->
+                    dest.outputStream().use { out ->
+                        val buf = ByteArray(1 shl 16)
+                        var left = have
+                        while (left > 0) {
+                            val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            left -= n
+                        }
+                    }
+                }
+                val label = if (job.files.size > 1) parseEpisode(name)?.let { e -> "${job.titleName?.substringBefore(" · ") ?: ti.name()} · S%02dE%02d".format(e.season, e.episode) } ?: name else job.label
+                writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, job.poster, "$label (partial)", job.imdb, job.kind)) + _finished.value.filter { it.path != dest.path })
+                dest
+            }
+        }
+    }.getOrDefault(emptyList())
+
     /** The folder a link's download is kept in while it runs, for the options' Properties. */
     fun workOf(uri: String): File = linkWork(uri)
 

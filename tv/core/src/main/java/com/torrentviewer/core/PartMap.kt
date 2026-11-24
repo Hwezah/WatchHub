@@ -41,3 +41,16 @@ fun runsOf(count: Int, has: (Int) -> Boolean): List<LongRange> {
     if (start >= 0) out += start.toLong() until count.toLong()
     return out
 }
+
+/**
+ * How many bytes of a torrent's file, from its start, are already on disk without a gap: what a force merge can copy
+ * out and a player can play. A torrent fetches pieces out of order, so this stops at the first piece missing. The file
+ * runs from [offset] for [size] bytes of the torrent; [pieces] are [pieceLength] long; [has] says whether one is in.
+ */
+fun playablePrefix(offset: Long, size: Long, pieceLength: Long, pieces: Int, has: (Int) -> Boolean): Long {
+    if (size <= 0 || pieceLength <= 0) return 0
+    val first = (offset / pieceLength).toInt()
+    val last = ((offset + size - 1) / pieceLength).toInt()
+    for (p in first..last) if (p >= pieces || !has(p)) return (p * pieceLength - offset).coerceIn(0, size)
+    return size
+}

@@ -32,4 +32,15 @@ class PartMapTest {
         assertEquals(listOf(0L..1L, 3L..3L, 6L..7L), runsOf(bits.size) { bits[it] })
         near(listOf(1f, 0.5f, 0f, 1f), partMap(8, runsOf(bits.size) { bits[it] }, 4))
     }
+
+    /** A file inside a torrent plays up to its first missing piece: none, part of the way, or all of it. */
+    @Test fun playablePrefixStopsAtTheFirstGap() {
+        // File from byte 150 for 400 bytes, pieces of 100: pieces 1..5.
+        val all = { _: Int -> true }
+        assertEquals(400L, playablePrefix(150, 400, 100, 10, all))
+        assertEquals(0L, playablePrefix(150, 400, 100, 10) { it != 1 })
+        assertEquals(150L, playablePrefix(150, 400, 100, 10) { it != 3 })
+        assertEquals(350L, playablePrefix(150, 400, 100, 10) { it != 5 })
+        assertEquals(0L, playablePrefix(0, 0, 100, 10, all))
+    }
 }

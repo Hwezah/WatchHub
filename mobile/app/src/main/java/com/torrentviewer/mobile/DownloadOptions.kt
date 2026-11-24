@@ -25,6 +25,9 @@ import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Type
 import com.torrentviewer.core.bytes
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.torrentviewer.core.AppScope
 import com.composables.icons.lucide.R as L
 
 /**
@@ -57,7 +60,8 @@ fun DownloadOptionsSheet(row: LiveDownload, onCancel: () -> Unit, onSwap: () -> 
         add(Option("copy", "Copy download link", icon = L.drawable.lucide_ic_copy))
         add(Option("copyname", "Copy download link + file name", icon = L.drawable.lucide_ic_clipboard_copy))
         add(Option("rename", "Rename file", icon = L.drawable.lucide_ic_pencil))
-        if (job.link && row.done > 0) add(Option("partial", "Save what's downloaded", "${bytes(row.done)} so far, as a file that plays up to there", icon = L.drawable.lucide_ic_save))
+        // Force merge, as 1DM calls it: for links and torrents alike (a torrent saves each episode up to its first gap).
+        if (row.done > 0) add(Option("partial", "Force merge", "Save what's downloaded (${bytes(row.done)}) as a file that plays up to there; the download carries on", icon = L.drawable.lucide_ic_save))
         add(Option("props", "Properties", "Link, size, folder, source", icon = L.drawable.lucide_ic_info))
         add(Option("delete", "Delete…", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger))
     }
@@ -74,9 +78,17 @@ fun DownloadOptionsSheet(row: LiveDownload, onCancel: () -> Unit, onSwap: () -> 
             "swap" -> onSwap()
             "copy" -> copyText(context, job.label, job.uri).also { say("Link copied") }
             "copyname" -> copyText(context, job.label, "${job.uri}\n${job.label}").also { say("Link and name copied") }
-            "partial" -> {
-                val f = Downloads.savePartial(job.uri)
-                say(if (f == null) "Nothing to save yet" else "Saved as ${f.name} — see On this phone")
+            // Copying a gigabyte takes a while: off the main thread, the answer when it's done.
+            "partial" -> AppScope.launch {
+                say("Merging…")
+                val saved = withContext(Dispatchers.IO) { if (job.link) listOfNotNull(Downloads.savePartial(job.uri)) else Downloads.savePartialTorrent(job.uri) }
+                say(
+                    when {
+                        saved.isEmpty() -> if (job.link) "Nothing to save yet" else "Nothing plays yet: the start of each file hasn't come in"
+                        saved.size == 1 -> "Saved as ${saved[0].name} — see On this phone"
+                        else -> "Saved ${saved.size} partial episodes — see On this phone"
+                    },
+                )
             }
             "delete" -> onCancel()
             "rename", "update", "props" -> { inner = pick; return@Sheet }
