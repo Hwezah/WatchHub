@@ -212,60 +212,65 @@ fun Button(
     val fill = fill.takeUnless { greyDownload }
     // The same corners as the chips and inputs ([PILL]): 5 dp read too square beside them (the owner's choice).
     Tap(onClick, modifier, PILL, onLongClick = onLongClick) { pressed ->
-        val bg by animateColorAsState(
-            when {
-                fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
-                primary -> if (pressed) Ink.accent.copy(alpha = 0.8f) else Ink.accent
-                // A tint of the text colour: grey on either page.
-                else -> tint.copy(alpha = if (pressed) 0.18f else 0.09f)
-            },
-            Motion.effects(), label = "bg",
-        )
-        // The second glass button (My Listing): near-white with black words on the dark theme, near-black with white
-        // words on the light one (the owner's choice).
-        val glassFill = if (Ink.isDark) GLASS_LIGHT else Color(0xFF161616)
-        val fg = if (glass && !primary) (if (Ink.isDark) Color.Black else Color.White) else if (primary && fill == null) Ink.onAccent else if (fill != null) Color.White else tint
-        Row(
-            // The primary one — Play, Watch — a flat grainy red, a shade deeper while pressed; the rest a flat tint.
-            (when {
-                // Opaque, one flat colour under the app's grain, no rim: red for the main one, near-white for the other.
-                // A notch quieter than full strength (the owner's choice): a little black in every fill.
-                // The second (My Listing) stays at full strength: toned down, the near-white read as a faint grey.
-                glass -> Modifier.background(lerp(if (primary) Ink.accent else glassFill, Color.Black, if (pressed) 0.28f else if (primary) 0.12f else 0f)).grain()
-                // No button carries a gradient (the owner's choice): the main action is one flat red under the grain.
-                primary && fill == null -> Modifier.background(lerp(Ink.accent, Color.Black, if (pressed) 0.28f else 0.12f)).grain()
-                // The download buttons' green as frosted glass: a deep, opaque green under the grain (the owner's choice).
-                fill != null -> Modifier.background(lerp(fill, Color.Black, if (pressed) 0.56f else 0.46f)).grain()
-                else -> Modifier.background(bg)
-            })
-                .height(if (compact) 34.dp else 50.dp).padding(horizontal = if (compact) 14.dp else 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            if (icon != null) {
-                // The hero's My Listing switched on: a smaller tick in the words' own colour — black on the dark theme's
-                // near-white button, white on the light theme's near-black one — not the green disc (the owner's choice).
-                val quietTick = glass && !primary && on != null
-                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                    if (on != null) Box(
-                        Modifier.size(if (quietTick) 18.dp else 24.dp).graphicsLayer {
-                            scaleX = disc
-                            scaleY = disc
-                            alpha = disc.coerceIn(0f, 1f)
-                        }.clip(CircleShape).background(if (quietTick) fg else onColor),
-                    )
-                    Lc(icon, Modifier.graphicsLayer {
-                        scaleX = pop.value
-                        scaleY = pop.value
-                    }, tint = lerp(if (greyDownload) Ink.download else fg, if (quietTick) glassFill else Color.White, disc.coerceIn(0f, 1f)),
-                        // The hero's plus a notch bigger (the owner's choice); its tick, once added, stays small.
-                        size = if (quietTick) (if (on == true) 12.dp else 20.dp) else if (on != null) 16.dp else 18.dp)
+        // [compact] only where the button is short: one stretched across a row, alone or as one of two, keeps the full
+        // height (the owner's choice: wide, thin buttons look wrong). A stretched button's least width is its width.
+        androidx.compose.foundation.layout.BoxWithConstraints(propagateMinConstraints = true) {
+            val thin = compact && minWidth < 140.dp
+            val bg by animateColorAsState(
+                when {
+                    fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
+                    primary -> if (pressed) Ink.accent.copy(alpha = 0.8f) else Ink.accent
+                    // A tint of the text colour: grey on either page.
+                    else -> tint.copy(alpha = if (pressed) 0.18f else 0.09f)
+                },
+                Motion.effects(), label = "bg",
+            )
+            // The second glass button (My Listing): near-white with black words on the dark theme, near-black with white
+            // words on the light one (the owner's choice).
+            val glassFill = if (Ink.isDark) GLASS_LIGHT else Color(0xFF161616)
+            val fg = if (glass && !primary) (if (Ink.isDark) Color.Black else Color.White) else if (primary && fill == null) Ink.onAccent else if (fill != null) Color.White else tint
+            Row(
+                // The primary one — Play, Watch — a flat grainy red, a shade deeper while pressed; the rest a flat tint.
+                (when {
+                    // Opaque, one flat colour under the app's grain, no rim: red for the main one, near-white for the other.
+                    // A notch quieter than full strength (the owner's choice): a little black in every fill.
+                    // The second (My Listing) stays at full strength: toned down, the near-white read as a faint grey.
+                    glass -> Modifier.background(lerp(if (primary) Ink.accent else glassFill, Color.Black, if (pressed) 0.28f else if (primary) 0.12f else 0f)).grain()
+                    // No button carries a gradient (the owner's choice): the main action is one flat red under the grain.
+                    primary && fill == null -> Modifier.background(lerp(Ink.accent, Color.Black, if (pressed) 0.28f else 0.12f)).grain()
+                    // The download buttons' green as frosted glass: a deep, opaque green under the grain (the owner's choice).
+                    fill != null -> Modifier.background(lerp(fill, Color.Black, if (pressed) 0.56f else 0.46f)).grain()
+                    else -> Modifier.background(bg)
+                })
+                    .height(if (thin) 34.dp else 50.dp).padding(horizontal = if (thin) 14.dp else 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                if (icon != null) {
+                    // The hero's My Listing switched on: a smaller tick in the words' own colour — black on the dark theme's
+                    // near-white button, white on the light theme's near-black one — not the green disc (the owner's choice).
+                    val quietTick = glass && !primary && on != null
+                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                        if (on != null) Box(
+                            Modifier.size(if (quietTick) 18.dp else 24.dp).graphicsLayer {
+                                scaleX = disc
+                                scaleY = disc
+                                alpha = disc.coerceIn(0f, 1f)
+                            }.clip(CircleShape).background(if (quietTick) fg else onColor),
+                        )
+                        Lc(icon, Modifier.graphicsLayer {
+                            scaleX = pop.value
+                            scaleY = pop.value
+                        }, tint = lerp(if (greyDownload) Ink.download else fg, if (quietTick) glassFill else Color.White, disc.coerceIn(0f, 1f)),
+                            // The hero's plus a notch bigger (the owner's choice); its tick, once added, stays small.
+                            size = if (quietTick) (if (on == true) 12.dp else 20.dp) else if (on != null) 16.dp else 18.dp)
+                    }
+                    // The hero's pair keep their icon close to the word.
+                    Spacer(Modifier.width(if (glass) 2.dp else 8.dp))
                 }
-                // The hero's pair keep their icon close to the word.
-                Spacer(Modifier.width(if (glass) 2.dp else 8.dp))
+                Text(label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (balanced && icon != null) Spacer(Modifier.width(if (glass) 26.dp else 32.dp))
             }
-            Text(label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (balanced && icon != null) Spacer(Modifier.width(if (glass) 26.dp else 32.dp))
         }
     }
 }

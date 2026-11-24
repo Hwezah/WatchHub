@@ -152,39 +152,101 @@ fun AddLinkPlus(modifier: Modifier = Modifier) {
     }
 }
 
-/** Settings → Lock: set, change or remove the four-digit code. */
+/**
+ * Settings → Lock, as steps (the owner found one page of fields confusing). Off: one form — the pin twice and the Auth
+ * Password — and one button to turn it on. On: what's set, and three choices, each opening its own short form that asks
+ * for the current pin first.
+ */
 @Composable
 fun LockSettings(say: (String) -> Unit) {
-    var code by remember { mutableStateOf("") }
-    var has by remember { mutableStateOf(FilesLock.code() != null) }
-    Text(
-        if (has) "Library and Files ask for the code, once each time the app is opened." else "No code yet: Library and Files open for anyone.",
-        Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint),
-    )
-    Field(code, { code = it.filter(Char::isDigit).take(4) }, if (has) "New four-digit code" else "Four-digit code", Modifier.fillMaxWidth(), secret = true, digits = true)
-    Row(Modifier.padding(top = 10.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button(if (has) "Change Code" else "Set Code", {
-            if (code.length != 4) say("Four digits, please") else {
-                FilesLock.set(code)
-                FilesLock.unlocked = true
-                has = true
-                code = ""
-                say("Code set")
-            }
-        }, Modifier.weight(1f), icon = L.drawable.lucide_ic_lock, compact = true)
-        if (has) Button("Remove", {
-            FilesLock.set(null)
-            FilesLock.setPassword(null)
-            has = false
-            say("Code removed")
-        }, Modifier.weight(1f), icon = L.drawable.lucide_ic_x, compact = true)
+    var on by remember { mutableStateOf(FilesLock.code() != null) }
+    /** The open form while on: "pin", "pass" or "off"; null for the three choices. */
+    var step by remember { mutableStateOf<String?>(null) }
+    var current by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
+    var again by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    fun reset() { step = null; current = ""; pin = ""; again = ""; pass = "" }
+    val gap = Modifier.padding(top = 10.dp).fillMaxWidth()
+    @Composable
+    fun Note(text: String) = Text(text, Modifier.padding(bottom = 4.dp), style = Type.meta.copy(color = Ink.faint))
+    @Composable
+    fun PinField(value: String, set: (String) -> Unit, hint: String) = Field(value, { set(it.filter(Char::isDigit).take(4)) }, hint, gap, secret = true, digits = true)
+    /** The current pin, or the Auth Password for a forgotten one: what every change asks for. */
+    fun knows() = FilesLock.tryCode(current) || FilesLock.tryPassword(current)
+    @Composable
+    fun CancelSave(label: String, onSave: () -> Unit) = Row(gap, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Button("Cancel", { reset() }, Modifier.weight(1f))
+        Button(label, onSave, Modifier.weight(1f), primary = true)
     }
-    // For a forgotten pin: a password, kept on this phone only (a real account sign-in comes later).
-    if (has) {
-        var pass by remember { mutableStateOf("") }
-        Field(pass, { pass = it }, if (FilesLock.hasPassword()) "New Auth Password" else "Auth Password (for a forgotten pin)", Modifier.padding(top = 14.dp).fillMaxWidth(), secret = true)
-        Button(if (FilesLock.hasPassword()) "Change Password" else "Set Password", {
-            if (pass.length < 4) say("Four characters at least") else { FilesLock.setPassword(pass); pass = ""; say("Password set") }
-        }, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_key_round, compact = true)
+
+    if (!on) {
+        Note("Lock Library and Files behind a four-digit pin. The Auth Password opens them if you forget the pin.")
+        PinField(pin, { pin = it }, "Pin (four digits)")
+        PinField(again, { again = it }, "The pin again")
+        Field(pass, { pass = it }, "Auth Password", gap, secret = true)
+        Button("Turn On Lock", {
+            when {
+                pin.length != 4 -> say("The pin is four digits")
+                again != pin -> say("The two pins don't match")
+                pass.length < 4 -> say("The Auth Password needs four characters at least")
+                else -> {
+                    FilesLock.set(pin)
+                    FilesLock.setPassword(pass)
+                    FilesLock.unlocked = true
+                    on = true
+                    reset()
+                    say("Lock on")
+                }
+            }
+        }, gap, icon = L.drawable.lucide_ic_lock, primary = true)
+        return
+    }
+    when (step) {
+        null -> {
+            Note("On. Library and Files ask for the pin once each time the app is opened" + if (FilesLock.hasPassword()) "; the Auth Password opens them too." else ". No Auth Password yet: set one in case you forget the pin.")
+            Button("Change Pin", { step = "pin" }, gap, icon = L.drawable.lucide_ic_lock)
+            Button(if (FilesLock.hasPassword()) "Change Auth Password" else "Set Auth Password", { step = "pass" }, gap, icon = L.drawable.lucide_ic_key_round)
+            Button("Turn Off Lock", { step = "off" }, gap, icon = L.drawable.lucide_ic_lock_open, tint = Ink.accent)
+        }
+        "pin" -> {
+            Note("Change Pin")
+            Field(current, { current = it }, "Current pin or Auth Password", gap, secret = true)
+            PinField(pin, { pin = it }, "New pin (four digits)")
+            PinField(again, { again = it }, "The new pin again")
+            CancelSave("Save") {
+                when {
+                    !knows() -> say("That isn't the current pin or Auth Password")
+                    pin.length != 4 -> say("The pin is four digits")
+                    again != pin -> say("The two pins don't match")
+                    else -> { FilesLock.set(pin); reset(); say("Pin changed") }
+                }
+            }
+        }
+        "pass" -> {
+            Note(if (FilesLock.hasPassword()) "Change Auth Password" else "Set Auth Password")
+            Field(current, { current = it }, "Current pin", gap, secret = true, digits = true)
+            Field(pass, { pass = it }, "New Auth Password", gap, secret = true)
+            CancelSave("Save") {
+                when {
+                    !FilesLock.tryCode(current) -> say("That isn't the current pin")
+                    pass.length < 4 -> say("Four characters at least")
+                    else -> { FilesLock.setPassword(pass); reset(); say("Auth Password saved") }
+                }
+            }
+        }
+        "off" -> {
+            Note("Turn Off Lock: Library and Files will open for anyone.")
+            Field(current, { current = it }, "Current pin or Auth Password", gap, secret = true)
+            CancelSave("Turn Off") {
+                if (!knows()) say("That isn't the current pin or Auth Password") else {
+                    FilesLock.set(null)
+                    FilesLock.setPassword(null)
+                    on = false
+                    reset()
+                    say("Lock off")
+                }
+            }
+        }
     }
 }
