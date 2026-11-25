@@ -361,7 +361,7 @@ private fun PlaceRow(p: Place, onOpen: () -> Unit, onRemove: (() -> Unit)?) {
                 Text(p.title, style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(p.url.removePrefix("https://").removePrefix("http://").removePrefix("www."), style = Type.meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (onRemove != null) BarIcon(L.drawable.lucide_ic_x, onRemove)
+            if (onRemove != null) BarIcon(L.drawable.lucide_ic_x, onClick = onRemove)
         }
     }
 }
