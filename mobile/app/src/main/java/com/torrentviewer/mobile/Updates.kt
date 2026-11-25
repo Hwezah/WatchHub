@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -98,6 +99,9 @@ fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
                 }
             }
             .statusBarsPadding()
+            // One height in every phase (the owner's ask, as Grabber's): "Installing…" has no buttons, so without this
+            // the strip would sit shorter than while it downloads.
+            .heightIn(min = 34.dp)
             .padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
