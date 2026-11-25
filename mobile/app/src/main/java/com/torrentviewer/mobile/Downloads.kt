@@ -874,11 +874,11 @@ object Downloads {
         if (job.imdb != null) return retry(uri)
         val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
         saveMemory()
-        val wait = waitMinutes(round)
-        update(uri) { it.copy(state = DlState.FAILED, speed = 0, error = "Nothing came from the host · retrying in $wait min") }
-        wakeIn(wait)
+        val wait = waitSeconds(round)
+        update(uri) { it.copy(state = DlState.FAILED, speed = 0, error = "Nothing came from the host · retrying in ${waitText(wait)}") }
+        wakeInSeconds(wait)
         scope.launch {
-            kotlinx.coroutines.delay(wait * 60_000L)
+            kotlinx.coroutines.delay(wait * 1000L)
             if (_live.value.any { it.job.uri == uri && it.state == DlState.FAILED }) forceStart(uri)
         }
     }
@@ -1282,36 +1282,42 @@ object Downloads {
                 // Out of fresh links for now: not left for the viewer to retry by hand — asked again on its own a little later
                 // (sources come back, links get renewed), a few times, by the same rules.
                 val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
-                val wait = waitMinutes(round)
+                val wait = waitSeconds(round)
                 // Short (one line on the card): what's saved is always kept, so it isn't said.
-                errors[job.uri] = justTried(job.uri) + (if (dead && job.imdb != null) "No fresh link" else (e.message ?: "Couldn't save that link")) + " · retrying in $wait min"
+                errors[job.uri] = justTried(job.uri) + (if (dead && job.imdb != null) "No fresh link" else (e.message ?: "Couldn't save that link")) + " · retrying in ${waitText(wait)}"
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
                 saveMemory()
-                wakeIn(wait)
+                wakeInSeconds(wait)
                 scope.launch {
-                    kotlinx.coroutines.delay(wait * 60_000L)
+                    kotlinx.coroutines.delay(wait * 1000L)
                     // Unless it was cancelled, paused or retried by hand meanwhile.
                     if (_live.value.any { it.job.uri == job.uri && it.state == DlState.FAILED }) retry(job.uri)
                 }
             }
     }
 
-    /** Fresh links tried in a row per download before it waits a while ([AUTO_ROUNDS]). */
+    /** Fresh links tried in a row per download before it waits a while ([waitSeconds]). */
     private const val MAX_REFRESHES = 4
 
-    /** Quick rounds for a download that ran out of fresh links (after 2, 4, 6 minutes); then it keeps trying, less often. */
-    private const val AUTO_ROUNDS = 3
-
     /**
-     * Minutes before a download out of fresh links is tried again, round by round: 2, 4, 6, then 15, 30, then every hour
-     * for as long as it takes — days if need be, as 1DM does — what's saved kept all the while. Only cancel ends it.
+     * Seconds before a download out of fresh links is tried again, round by round: 10, 20, 30, a minute, two, then every
+     * five for as long as it takes — days if need be, as 1DM does — what's saved kept all the while. Only cancel ends it.
+     * Seconds, not minutes (the owner's ask): a source that answers again is used at once, not a quarter-hour later.
      */
-    private fun waitMinutes(round: Int) = when {
-        round <= AUTO_ROUNDS -> round * 2
-        round == AUTO_ROUNDS + 1 -> 15
-        round == AUTO_ROUNDS + 2 -> 30
-        else -> 60
+    private fun waitSeconds(round: Int) = when (round) {
+        1 -> 10
+        2 -> 20
+        3 -> 30
+        4 -> 60
+        5 -> 120
+        else -> 300
     }
+
+    /** "20s" or "2 min", for the card. */
+    private fun waitText(seconds: Int) = if (seconds < 60) "${seconds}s" else "${seconds / 60} min"
+
+    /** The background check as a backstop, in whole minutes (the soonest it can be): the app itself retries in seconds. */
+    private fun wakeInSeconds(seconds: Int) = wakeIn((seconds + 59) / 60)
 
     /** Per download (by its name): how many automatic rounds it has had. */
     private val autoRounds = java.util.concurrent.ConcurrentHashMap<String, Int>()
@@ -1392,13 +1398,13 @@ object Downloads {
                 // Still nothing: asked again on its own, a few rounds, before it waits for the viewer.
                 val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
                 saveMemory()
-                val wait = waitMinutes(round)
+                val wait = waitSeconds(round)
                 update(uri) {
-                    it.copy(state = DlState.FAILED, speed = 0, error = "No other ${wantedQuality(job, downloadPrefs().quality) ?: "working"} source · retrying in $wait min")
+                    it.copy(state = DlState.FAILED, speed = 0, error = "No other ${wantedQuality(job, downloadPrefs().quality) ?: "working"} source · retrying in ${waitText(wait)}")
                 }
-                wakeIn(wait)
+                wakeInSeconds(wait)
                 scope.launch {
-                    kotlinx.coroutines.delay(wait * 60_000L)
+                    kotlinx.coroutines.delay(wait * 1000L)
                     if (_live.value.any { it.job.uri == uri && it.state == DlState.FAILED }) retry(uri)
                 }
             }

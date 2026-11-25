@@ -120,4 +120,12 @@ class LinkRefreshTest {
         )
         assertEquals("https://ss.example/720.mkv", refreshPick(hits, old, "SuperStream", "Server 1", "720p")!!.uri)
     }
+
+    @Test fun rescuesGoUpTheChainNeverDown() {
+        org.junit.Assert.assertTrue(rankUp("1080p", "720p"))
+        org.junit.Assert.assertTrue(rankUp("4K", "720p"))
+        org.junit.Assert.assertTrue(rankUp("720p", "720p"))
+        org.junit.Assert.assertFalse(rankUp("480p", "720p"))
+        org.junit.Assert.assertTrue(rankUp(null, "720p"))
+    }
 }

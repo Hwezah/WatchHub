@@ -63,6 +63,17 @@ fun linkHost(uri: String): String = runCatching { java.net.URI(uri).host.orEmpty
  */
 fun wantedQuality(job: DownloadJob, preferred: String): String? = job.wanted ?: preferred.ifEmpty { null } ?: job.quality
 
+/**
+ * Whether [q] is [wanted] or a resolution above it (720p → 1080p, 1440p, 4K): a rescue goes up the chain, never down to
+ * a worse copy. Unknown on either side counts, as the preferred pick treats it.
+ */
+fun rankUp(q: String?, wanted: String?): Boolean {
+    fun n(x: String?) = x?.let { Regex("(\\d{3,4})p").find(it.lowercase())?.groupValues?.get(1)?.toIntOrNull() ?: if ("4k" in it.lowercase() || "2160" in it) 2160 else null }
+    val a = n(q) ?: return true
+    val w = n(wanted) ?: return true
+    return a >= w
+}
+
 /** A fresh link may be up to this many times the size of the one it replaces, when anything that size is found. */
 const val GROWTH = 1.3
 
@@ -151,6 +162,10 @@ object LinkRefresh {
             first?.takeIf { it.uri !in skip }
                 ?: pick2(latest, gone)
                 ?: preferredPick(atQuality.filter { it.uri != old && it.uri !in gone }, prefs)
+                // Nothing left at that resolution: up the chain (1080p, then higher), as every other pick does, rather
+                // than waiting on a resolution no source has (the owner's ask). The download keeps asking for its own
+                // resolution first on every later refresh ([wantedQuality]).
+                ?: preferredPick(allowed(latest).filter { it.uri != old && it.uri !in gone && batchable(it) && rankUp(it.quality, quality) }, prefs)
                 ?: if (wide) packPick(atQuality, old, gone, season, prefs) else null
         }) { hit -> if (!hit.direct) LinkCheck.RESUMABLE else LinkFetch.check(hit.uri, hit.headers, isPlaylist(hit)) }
     }
