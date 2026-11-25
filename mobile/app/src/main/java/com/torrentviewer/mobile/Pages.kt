@@ -2038,7 +2038,7 @@ fun ProfilesScreen(profiles: List<Profile>, onPick: (Profile) -> Unit, onCancel:
                 },
                 onCancel = { if (profiles.isEmpty()) onCancel?.invoke() else mode = ProfilesMode.Pick },
             )
-            is ProfilesMode.Pin -> PinPad(m.profile, onOk = { onPick(m.profile) }, onBack = { mode = ProfilesMode.Pick })
+            is ProfilesMode.Pin -> PinPad(m.profile, others = profiles.any { it.id != m.profile.id }, onOk = { onPick(m.profile) }, onBack = { mode = ProfilesMode.Pick })
         }
     }
 }
@@ -2174,8 +2174,13 @@ private fun Editor(profile: Profile?, canCancel: Boolean, onSave: (String, Strin
     }
 }
 
+/**
+ * A locked profile's PIN. [others]: another saved profile to pick instead, offered as Switch Profile; with none it's
+ * left off (the owner's choice: a lone profile has nowhere to switch to), the phone's back still reaching the list.
+ */
 @Composable
-private fun PinPad(profile: Profile, onOk: () -> Unit, onBack: () -> Unit) {
+private fun PinPad(profile: Profile, others: Boolean, onOk: () -> Unit, onBack: () -> Unit) {
+    BackHandler { onBack() }
     var pin by remember { mutableStateOf("") }
     var wrong by remember { mutableStateOf(false) }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2193,8 +2198,10 @@ private fun PinPad(profile: Profile, onOk: () -> Unit, onBack: () -> Unit) {
                     pin = ""
                 }
             }
-        }, "• • • •", Modifier.width(200.dp), secret = true, digits = true)
-        Spacer(Modifier.height(20.dp))
-        Button("Back", onBack)
+        }, "* * * *", Modifier.width(200.dp), secret = true, digits = true)
+        if (others) {
+            Spacer(Modifier.height(20.dp))
+            Button("Switch Profile", onBack, icon = L.drawable.lucide_ic_users)
+        }
     }
 }
