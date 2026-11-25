@@ -65,3 +65,23 @@ fun SaveSheet(page: String, title: String, poster: String?, headers: Map<String,
         empty = failed ?: "Nothing to save on this page.",
     )
 }
+
+/**
+ * A page to grab, from outside the Browser: another app Shared a link to WatchHub, or one was copied and WatchHub was
+ * opened. Shown as the format sheet over everything ([App]); yt-dlp reads what the page offers. [headers] is empty here
+ * (no app's login crosses to another app on Android) — public posts need none; a login-walled one is opened in the
+ * Browser, signed in there, instead.
+ */
+object PageGrab {
+    var page by mutableStateOf<String?>(null)
+    var name by mutableStateOf("")
+
+    fun grab(url: String, title: String = url) {
+        name = title
+        page = url
+    }
+
+    fun clear() {
+        page = null
+    }
+}

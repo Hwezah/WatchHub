@@ -409,13 +409,16 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             return@LaunchedEffect
         }
         if (!isTorrentSource(raw)) {
-            // A web page shared to WatchHub (Instagram, TikTok, a browser): opened in the Browser, where its video is
-            // grabbed. Nothing else http is ours to open from another app.
+            // A web page shared to WatchHub (Instagram, TikTok, a browser): a site yt-dlp knows gets its grab sheet
+            // straight away; any other page opens in the Browser, where its video is grabbed and a login can be made.
             if (raw.startsWith("http", ignoreCase = true)) {
-                Browser.newTab()
-                Browser.go(raw)
-                clearPages()
-                tab = Tab.BROWSER
+                if (Media.looksLikeSite(raw)) PageGrab.grab(raw)
+                else {
+                    Browser.newTab()
+                    Browser.go(raw)
+                    clearPages()
+                    tab = Tab.BROWSER
+                }
             }
             return@LaunchedEffect
         }
@@ -657,6 +660,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         }
 
         if (AddLink.open) AddLinkSheet { AddLink.open = false }
+        // A link Shared to WatchHub, or copied and opened here: its grab sheet, over everything, straight to the formats.
+        PageGrab.page?.let { url -> if (!Kids.on) SaveSheet(url, PageGrab.name.take(70), null, onDone = { PageGrab.clear() }) else PageGrab.clear() }
         if (FilesLock.asking != null && (isWide() || SettingsStore.value.value.navStyle != "pill")) {
             BottomSheet("Code", onDismiss = { FilesLock.asking = null }) { CodeRow(onOpen = choose) }
         }

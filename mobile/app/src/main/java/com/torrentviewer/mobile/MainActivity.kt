@@ -148,6 +148,24 @@ class MainActivity : AppCompatActivity() {
         com.torrentviewer.core.Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-")
         preferHighRefreshRate()
         com.torrentviewer.core.refreshWatched()
+        grabClipboardLink()
+    }
+
+    /** Set once a copied link is offered, so returning to WatchHub doesn't offer the same one again and again. */
+    private var lastClip: String? = null
+
+    /**
+     * Back in front with a fresh link on the clipboard (copied in another app, from a site yt-dlp knows): its grab sheet
+     * is offered straight away, as 1DM does. Android only lets an app read the clipboard while it's in front, so this is
+     * the moment to look — not while WatchHub was in the background. Only a site's own link, and each one only once.
+     */
+    private fun grabClipboardLink() {
+        val cb = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager ?: return
+        val text = runCatching { cb.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString() }.getOrNull().orEmpty()
+        val link = Regex("""https?://\S+""", RegexOption.IGNORE_CASE).find(text)?.value ?: return
+        if (link == lastClip || PageGrab.page != null || com.torrentviewer.core.Kids.on || !Media.looksLikeSite(link)) return
+        lastClip = link
+        PageGrab.grab(link)
     }
 
     override fun onPause() {
