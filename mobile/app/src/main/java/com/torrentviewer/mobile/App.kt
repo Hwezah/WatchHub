@@ -26,6 +26,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -615,6 +616,13 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             val glass = NavGlass.glass && tab != Tab.BROWSER
             Box(Modifier.fillMaxSize().nestedScroll(watchScroll)) {
                 Box(Modifier.fillMaxSize().then(if (glass) Modifier.hazeSource(haze) else Modifier)) { host(body) }
+                // The pin row has no X (the owner's choice): a tap anywhere outside the bar puts it away, keyboard and all.
+                if (FilesLock.asking != null) Box(
+                    Modifier.fillMaxSize().clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+                        FilesLock.dismiss()
+                        keyboard?.hide()
+                    },
+                )
                 AnimatedVisibility(
                     pillShown && OpenSheets.count == 0, Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),

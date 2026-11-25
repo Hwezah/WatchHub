@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -176,7 +177,8 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Lc(L.drawable.lucide_ic_lock, tint = Ink.muted, size = 24.dp)
+        // The lock and the shield each 36dp wide, either side, so the field between them sits in the very middle.
+        Lc(L.drawable.lucide_ic_lock, Modifier.padding(6.dp), tint = Ink.muted, size = 24.dp)
         Box(Modifier.weight(1f).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
             if (typed.isEmpty()) Text(if (byPassword) "Auth Password" else "Auth Pin", style = Type.label.copy(color = Ink.faint), textAlign = TextAlign.Center, maxLines = 1)
             if (byPassword) BasicTextField(
@@ -212,11 +214,11 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
                 cursorBrush = SolidColor(Ink.download),
             )
         }
-        // The pin forgotten: the password (when one is set).
+        // The pin forgotten: the password (when one is set), behind a shield with a keyhole, last on the row. No X: a tap
+        // outside puts the row away (the owner's choice).
         if (FilesLock.hasPassword()) Tap({ byPassword = !byPassword; typed = "" }, shape = CircleShape) {
-            Lc(if (byPassword) L.drawable.lucide_ic_hash else L.drawable.lucide_ic_shield, Modifier.padding(6.dp), tint = Ink.muted, size = 24.dp)
-        }
-        Tap({ FilesLock.asking = null }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 24.dp) }
+            Lc(if (byPassword) L.drawable.lucide_ic_hash else R.drawable.ic_shield_keyhole, Modifier.padding(6.dp), tint = Ink.muted, size = 24.dp)
+        } else androidx.compose.foundation.layout.Spacer(Modifier.size(36.dp))
     }
 }
 
