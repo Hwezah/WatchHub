@@ -164,6 +164,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
         items(live.asReversed().filter { it.job.uri !in held }, key = { "live-" + it.job.uri }) { row ->
             val running = row.state != DlState.PAUSED && row.state != DlState.FAILED
             SwipeRow(
+                backing = DL_CARD,
                 // Right: pause a running one, else resume (or retry a failed one). Left: take it off the list, with Undo.
                 onRight = { if (running) Downloads.pause(row.job.uri) else if (row.state == DlState.FAILED) Downloads.retry(row.job.uri, byHand = true) else Downloads.resume(row.job.uri) },
                 rightIcon = if (running) R.drawable.ic_pause_bars else L.drawable.lucide_ic_play,
@@ -212,13 +213,15 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
             }
             if (group.size == 1) {
                 val f = group[0]
-                // Right to play, left to reveal Bin / Delete (both held with Undo, via the Bin), as Grabber does.
+                // Right to play, left to reveal a card-shaped sheet with bare Bin | Delete (both held with Undo, via the
+                // Bin); Delete is a bin with an X (the owner's choice), the two split by a pipe.
                 SwipeRow(
-                    onRight = { play(f) }, rightIcon = L.drawable.lucide_ic_play, rightTint = Ink.good,
+                    onRight = { play(f) }, rightIcon = L.drawable.lucide_ic_play, rightTint = Ink.good, backing = DL_CARD,
                     leftReveal = { close ->
-                        Row(Modifier.fillMaxWidth().padding(start = 6.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Button("Bin", { close(); val e = Downloads.toBin(f); UndoHold.start("Moved \"${f.label}\" to the Bin", undo = { Downloads.restoreFromBin(e) }, commit = {}) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_trash_2, compact = true)
-                            Button("Delete", { close(); val e = Downloads.toBin(f); UndoHold.start("Deleted \"${f.label}\"", undo = { Downloads.restoreFromBin(e) }, commit = { Downloads.eraseBin(e) }) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_trash_2, compact = true, fill = Ink.danger)
+                        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                            SwipeChoice("Bin", L.drawable.lucide_ic_trash_2, Modifier.weight(1f)) { close(); val e = Downloads.toBin(f); UndoHold.start("Moved \"${f.label}\" to the Bin", undo = { Downloads.restoreFromBin(e) }, commit = {}) }
+                            SwipePipe()
+                            SwipeChoice("Delete", R.drawable.ic_trash_x, Modifier.weight(1f), tint = Ink.danger) { close(); val e = Downloads.toBin(f); UndoHold.start("Deleted \"${f.label}\"", undo = { Downloads.restoreFromBin(e) }, commit = { Downloads.eraseBin(e) }) }
                         }
                     },
                 ) {

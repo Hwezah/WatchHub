@@ -7,11 +7,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -23,14 +29,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Lc
+import com.torrentviewer.core.Type
 import kotlinx.coroutines.launch
 
 /**
@@ -49,6 +58,9 @@ fun SwipeRow(
     rightTint: Color = Ink.good,
     onRemove: (() -> Unit)? = null,
     revealWidth: Dp = 196.dp,
+    /** The card's shape and the gap below it, so the backing and the revealed sheet match the row's card exactly. */
+    backing: Shape = RoundedCornerShape(14.dp),
+    inset: Dp = 10.dp,
     leftReveal: (@Composable (close: () -> Unit) -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
@@ -65,18 +77,18 @@ fun SwipeRow(
     fun rightMax() = if (onRight != null) widthPx else 0f
 
     Box(modifier.fillMaxWidth().onSizeChanged { if (it.width > 0) widthPx = it.width.toFloat() }) {
-        // The right action's backing, at the left edge, brightening as the row is drawn right.
+        // The right action's backing — the card's own size and shape (the owner's choice), brightening as it's drawn right.
         if (onRight != null && rightIcon != null) {
             val a = (offset.value / (widthPx / 3f)).coerceIn(0f, 1f)
-            Box(Modifier.matchParentSize().clip(RoundedCornerShape(12.dp)).background(rightTint.copy(alpha = 0.18f * a)), contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.matchParentSize().padding(bottom = inset).clip(backing).background(rightTint.copy(alpha = 0.16f + 0.24f * a)), contentAlignment = Alignment.CenterStart) {
                 Lc(rightIcon, Modifier.padding(start = 24.dp), tint = rightTint, size = 24.dp)
             }
         }
-        // The left choices, behind the row's right end, fading in with the drag.
+        // The left choices as a card-shaped sheet behind the row's right end (the owner's choice), fading in with the drag.
         if (leftReveal != null) {
             val a = (-offset.value / revealPx).coerceIn(0f, 1f)
-            Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
-                Box(Modifier.width(revealWidth).graphicsLayer { alpha = a }) { leftReveal(::close) }
+            Box(Modifier.matchParentSize().padding(bottom = inset), contentAlignment = Alignment.CenterEnd) {
+                Box(Modifier.width(revealWidth).fillMaxHeight().clip(backing).background(Ink.surface2).graphicsLayer { alpha = a }) { leftReveal(::close) }
             }
         }
         // The row itself, moved by the drag; while it's open a tap on it just closes it.
@@ -105,4 +117,23 @@ fun SwipeRow(
             if (isOpen) Box(Modifier.matchParentSize().clickable(remember { MutableInteractionSource() }, indication = null) { close() })
         }
     }
+}
+
+/** A bare action inside a [SwipeRow]'s revealed sheet: an icon over a small label, no background (the owner's choice). */
+@Composable
+fun SwipeChoice(label: String, icon: Int, modifier: Modifier = Modifier, tint: Color = Ink.text, onClick: () -> Unit) {
+    Column(
+        modifier.fillMaxHeight().clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Lc(icon, tint = tint, size = 22.dp)
+        Text(label, Modifier.padding(top = 5.dp), style = Type.meta.copy(color = tint, fontWeight = FontWeight.Medium))
+    }
+}
+
+/** The thin pipe between two [SwipeChoice]s on a revealed sheet. */
+@Composable
+fun SwipePipe() {
+    Box(Modifier.width(1.5.dp).height(26.dp).clip(RoundedCornerShape(1.dp)).background(Ink.text.copy(alpha = 0.22f)))
 }
