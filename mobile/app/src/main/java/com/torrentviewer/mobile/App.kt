@@ -1,6 +1,7 @@
 package com.torrentviewer.mobile
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -579,6 +580,17 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     LaunchedEffect(tab) { focus.clearFocus(force = true) }
     // Settings → Lock → Immediately: going to another tab or page locks it again (the owner's choice).
     LaunchedEffect(tab, pages.size) { FilesLock.left(tab) }
+    // Incognito stays unseen outside the app too (the owner's choice): while an incognito tab is on screen, the window
+    // is marked secure — no screenshots, and the recents preview shows blank. Cleared the moment you leave it.
+    val secret = tab == Tab.BROWSER && pages.isEmpty() && Browser.tab.incognito
+    val host = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(secret) {
+        var c: Context? = host
+        while (c != null && c !is android.app.Activity) c = (c as? android.content.ContextWrapper)?.baseContext
+        val window = (c as? android.app.Activity)?.window ?: return@LaunchedEffect
+        if (secret) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+    }
 
     Box(Modifier.fillMaxSize()) {
         if (isWide()) {
