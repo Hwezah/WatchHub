@@ -741,8 +741,8 @@ object Downloads {
             else -> "mkv"
         }
         val dest = destOf(job, job.label, safe("${job.label} (partial).$ext"))
-        // Over several connections: every thread's section, in order, gaps left out (as 1DM merges). Over one, or a
-        // playlist, the file is already one unbroken run.
+        // Over several connections: every thread's section, each in its place ([copySections]). Over one, or a playlist,
+        // the file is already one unbroken run.
         val plan = File(work, "parts.json").takeIf { it.isFile && part.parentFile == work }?.let { runCatching { org.json.JSONObject(it.readText()) }.getOrNull() }
         val sections = plan?.let { o ->
             val starts = o.getJSONArray("starts")
@@ -757,8 +757,8 @@ object Downloads {
 
     /**
      * Force merge for a torrent ([savePartial]'s twin): each chosen, unsaved file of it — every episode of a pack — has
-     * every piece it has so far joined in order, gaps left out ("Name (partial).mkv"), as 1DM merges its threads'
-     * sections. The torrent carries on as it was. The files saved; empty when none had anything. Copies files: off the
+     * every piece it has so far, each in its place in the file ("Name (partial).mkv", [copySections]), as 1DM merges its
+     * threads' sections. The torrent carries on as it was. The files saved; empty when none had anything. Copies files: off the
      * main thread.
      */
     fun savePartialTorrent(uri: String): List<File> = runCatching {
@@ -788,14 +788,25 @@ object Downloads {
         }
     }.getOrDefault(emptyList())
 
-    /** [sections] of [src], one after another, into [dest]: a force merge's file. */
+    /**
+     * [sections] of [src] into [dest], each at the very place it has in the file, the gaps left empty: a force merge's
+     * file. Joined end to end (as first done), every byte after the first gap moved, and the video's own index (an MKV's
+     * cues, an MP4's chunk table) pointed at the wrong places: a seek landed past the end and the player jumped there
+     * (the owner caught it). Kept in place, a seek into what's saved lands right, and one into a gap carries on from the
+     * next saved part. The empty stretches cost little: the file is sparse where the phone's storage allows it.
+     */
     private fun copySections(src: File, sections: List<LongRange>, dest: File) {
         dest.parentFile?.mkdirs()
+        dest.delete()
         java.io.RandomAccessFile(src, "r").use { input ->
-            dest.outputStream().buffered(1 shl 16).use { out ->
+            java.io.RandomAccessFile(dest, "rw").use { out ->
+                val end = sections.maxOfOrNull { it.last + 1 }?.coerceAtMost(input.length()) ?: 0L
+                out.setLength(end)
                 val buf = ByteArray(1 shl 16)
                 for (r in sections) {
+                    if (r.first >= input.length()) continue
                     input.seek(r.first)
+                    out.seek(r.first)
                     var left = (r.last - r.first + 1).coerceAtMost(input.length() - r.first)
                     while (left > 0) {
                         val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
@@ -806,6 +817,8 @@ object Downloads {
                 }
             }
         }
+        // Gaps are where Media3 gives up; the other player steps over them to the next saved part. Opened there from the start.
+        com.torrentviewer.core.NeedsVlc.add(dest.name, dest.length())
     }
 
     /** The folder a link's download is kept in while it runs, for the options' Properties. */
