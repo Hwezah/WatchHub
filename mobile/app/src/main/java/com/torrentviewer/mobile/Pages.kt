@@ -2078,8 +2078,9 @@ private fun Picker(
 
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.Badge(icon: Int) {
-    Box(Modifier.align(Alignment.BottomEnd).padding(2.dp).size(26.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
-        Lc(icon, tint = Color.White, size = 14.dp)
+    // In the middle of the round avatar (the owner's choice): at a corner, the circle cut it off.
+    Box(Modifier.align(Alignment.Center).size(38.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+        Lc(icon, tint = Color.White, size = 18.dp)
     }
 }
 
