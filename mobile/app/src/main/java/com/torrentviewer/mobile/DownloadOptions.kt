@@ -221,36 +221,59 @@ suspend fun probeLink(url: String, headers: Map<String, String> = emptyMap()): L
 }
 
 /**
+ * One link the "Download file" sheet can check and save: the direct URL, a name, the headers to fetch it with, whether
+ * it's an HLS playlist, the subtitles that came with it, and a short [label] ("1080p · hubcloud") for when the sheet
+ * falls to it. [tag] carries whatever the caller needs back on save (the ready [DownloadJob], say).
+ */
+data class LinkChoice(
+    val url: String,
+    val name: String,
+    val headers: Map<String, String> = emptyMap(),
+    val playlist: Boolean = false,
+    val subs: List<com.torrentviewer.core.Sub> = emptyList(),
+    val label: String = "",
+    val tag: Any? = null,
+)
+
+/**
  * Before an internal download of a link, what it is and how to save it (the owner's ask, as Grabber's "Download file"):
  * the link and, asked of its server, its size, type and whether it resumes; the file's name and the page it came from
- * (Referer), both editable; the subtitles that came with it, the first English ticked; then Cancel, Check again, Add
- * (queued, paused) or Download. [onSave] gets the name, the Referer, whether to hold it paused, and the subtitles ticked.
+ * (Referer), both editable; then Cancel, Check again, Add (queued, paused) or Download.
+ *
+ * [choices] is the picked source first, then the other sources in line (the owner's ask): when a link answers with an
+ * error, "Try Next Source" swaps the next one in, re-checks it and fills the fields, and the viewer decides whether to
+ * Add or Download it — rather than being stuck with the one that failed. [onSave] gets the chosen link, the (edited)
+ * name and Referer, whether to hold it paused, and the subtitles ticked.
  */
 @Composable
 fun DownloadFileSheet(
-    url: String,
-    name: String,
-    headers: Map<String, String> = emptyMap(),
-    playlist: Boolean = false,
-    subs: List<com.torrentviewer.core.Sub> = emptyList(),
-    onSave: (name: String, referer: String, paused: Boolean, subs: List<com.torrentviewer.core.Sub>) -> Unit,
+    choices: List<LinkChoice>,
+    onSave: (choice: LinkChoice, name: String, referer: String, paused: Boolean, subs: List<com.torrentviewer.core.Sub>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
-    var fileName by remember { mutableStateOf(name) }
-    var referer by remember { mutableStateOf(headers.entries.firstOrNull { it.key.equals("referer", true) }?.value.orEmpty()) }
+    if (choices.isEmpty()) return
+    /** Which source in line is loaded now; "Try Next Source" steps it on. */
+    var idx by remember(choices) { mutableStateOf(0) }
+    val cur = choices.getOrElse(idx) { choices.first() }
+    val hasNext = idx < choices.lastIndex
+    // The name and Referer follow the loaded source, and are re-seeded whenever it changes (keyed on its URL, so they
+    // aren't reset by an unrelated recomposition that rebuilt the list).
+    var fileName by remember(cur.url) { mutableStateOf(cur.name) }
+    var referer by remember(cur.url) { mutableStateOf(cur.headers.entries.firstOrNull { it.key.equals("referer", true) }?.value.orEmpty()) }
     var info by remember { mutableStateOf<LinkInfo?>(null) }
     var asking by remember { mutableStateOf(0) }
     var checked by remember { mutableStateOf(false) }
     /** None ticked here: subtitles are saved from the source's own sheet (the owner kept this one minimal). */
     val ticked = emptyList<Int>()
-    LaunchedEffect(asking) {
+    // Re-checked each time the source changes or Check again is tapped.
+    LaunchedEffect(idx, asking) {
         checked = false
-        info = if (playlist) null else probeLink(url, headers)
+        info = if (cur.playlist) null else probeLink(cur.url, cur.headers)
         checked = true
     }
     fun save(paused: Boolean) {
-        onSave(fileName.trim().ifEmpty { name }, referer.trim(), paused, ticked.sorted().mapNotNull { subs.getOrNull(it) })
+        onSave(cur, fileName.trim().ifEmpty { cur.name }, referer.trim(), paused, ticked.sorted().mapNotNull { cur.subs.getOrNull(it) })
         onDismiss()
     }
     BottomSheet("", onDismiss) {
@@ -262,37 +285,48 @@ fun DownloadFileSheet(
                 ) { com.torrentviewer.core.Lc(L.drawable.lucide_ic_download, tint = Ink.download, size = 20.dp) }
                 Text("Download file", Modifier.weight(1f), style = Type.title.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
                 // Open its page here, copy the link, share it.
-                Tap({ Browser.newTab(); Browser.go(url); Nav.tab = Tab.BROWSER; onDismiss() }, shape = androidx.compose.foundation.shape.CircleShape) {
+                Tap({ Browser.newTab(); Browser.go(cur.url); Nav.tab = Tab.BROWSER; onDismiss() }, shape = androidx.compose.foundation.shape.CircleShape) {
                     com.torrentviewer.core.Lc(L.drawable.lucide_ic_globe, Modifier.padding(8.dp), tint = Ink.text, size = 22.dp)
                 }
-                Tap({ copyText(context, fileName, url); android.widget.Toast.makeText(context, "Link copied", android.widget.Toast.LENGTH_SHORT).show() }, shape = androidx.compose.foundation.shape.CircleShape) {
+                Tap({ copyText(context, fileName, cur.url); android.widget.Toast.makeText(context, "Link copied", android.widget.Toast.LENGTH_SHORT).show() }, shape = androidx.compose.foundation.shape.CircleShape) {
                     com.torrentviewer.core.Lc(L.drawable.lucide_ic_copy, Modifier.padding(8.dp), tint = Ink.text, size = 22.dp)
                 }
                 Tap({
-                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, url)
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, cur.url)
                     runCatching { context.startActivity(android.content.Intent.createChooser(send, "Share link").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 }, shape = androidx.compose.foundation.shape.CircleShape) {
                     com.torrentviewer.core.Lc(L.drawable.lucide_ic_share_2, Modifier.padding(8.dp), tint = Ink.text, size = 22.dp)
                 }
             }
-            Text(url, Modifier.padding(top = 10.dp), style = Type.meta.copy(color = Ink.text), maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            // Which source is loaded, when there's more than one to fall through.
+            if (choices.size > 1) Text(
+                "Source ${idx + 1} of ${choices.size}" + cur.label.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
+                Modifier.padding(top = 10.dp), style = Type.overline.copy(color = Ink.faint),
+            )
+            Text(cur.url, Modifier.padding(top = if (choices.size > 1) 2.dp else 10.dp), style = Type.meta.copy(color = Ink.text), maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            val failed = checked && info == null && !cur.playlist
             val about = when {
-                playlist -> "Video stream (HLS) · joined and saved as one file"
+                cur.playlist -> "Video stream (HLS) · joined and saved as one file"
                 !checked -> "Asking the server…"
-                info == null -> "The server didn't answer with a file — Check again, or try another link"
+                info == null -> "The server didn't answer with a file" + if (hasNext) " — try the next source, or Check again" else " — Check again, or try another link"
                 else -> listOfNotNull(
                     info!!.size.takeIf { it > 0 }?.let { bytes(it) },
                     info!!.type,
                     if (info!!.resumable) "resumable, ${Downloads.connections} connections" else "one connection, not resumable",
                 ).joinToString(" · ")
             }
-            Text(about, Modifier.padding(top = 6.dp, bottom = 12.dp), style = Type.meta.copy(color = Ink.faint))
+            Text(about, Modifier.padding(top = 6.dp, bottom = 12.dp), style = Type.meta.copy(color = if (failed) Ink.warn else Ink.faint))
             Field(fileName, { fileName = it }, "File name", Modifier.fillMaxWidth())
             Field(referer, { referer = it }, "Referer page (leave empty if not sure)", Modifier.padding(top = 10.dp).fillMaxWidth())
             androidx.compose.foundation.layout.Row(Modifier.padding(top = 16.dp).fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
                 Button("Cancel", onDismiss, Modifier.weight(1f), compact = true)
                 Button("Check again", { asking++ }, Modifier.weight(1f), icon = L.drawable.lucide_ic_rotate_cw, compact = true)
             }
+            // The next source in line, swapped in and re-checked: emphasised when this one failed (the owner's ask).
+            if (hasNext) Button(
+                "Try Next Source · ${idx + 2} of ${choices.size}", { idx++ }, Modifier.padding(top = 10.dp).fillMaxWidth(),
+                icon = L.drawable.lucide_ic_skip_forward, compact = true, fill = if (failed) Ink.warn else null,
+            )
             androidx.compose.foundation.layout.Row(Modifier.padding(top = 10.dp, bottom = 8.dp).fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
                 Button("Add", { save(paused = true) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_plus, compact = true)
                 Button("Download", { save(paused = false) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_download, compact = true, fill = Ink.download)
@@ -324,10 +358,10 @@ fun AddLinkSheet(onDismiss: () -> Unit) {
     next?.let { url ->
         val guess = url.substringBefore('?').substringAfterLast('/').let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }.ifBlank { "Download" }
         val hls = Regex("(?i)\\.m3u8($|\\?)").containsMatchIn(url)
-        DownloadFileSheet(url, guess, playlist = hls, onSave = { name, referer, paused, _ ->
+        DownloadFileSheet(listOf(LinkChoice(url = url, name = guess, playlist = hls)), onSave = { choice, name, referer, paused, _ ->
             val headers = if (referer.isNotEmpty()) mapOf("Referer" to referer) else emptyMap()
-            Downloads.addWeb(url, name, headers, hls)
-            if (paused) Downloads.pause(url)
+            Downloads.addWeb(choice.url, name, headers, choice.playlist)
+            if (paused) Downloads.pause(choice.url)
             android.widget.Toast.makeText(context, if (paused) "Added, paused — see Downloads" else "Downloading — see Downloads", android.widget.Toast.LENGTH_SHORT).show()
         }, onDismiss = onDismiss)
         return

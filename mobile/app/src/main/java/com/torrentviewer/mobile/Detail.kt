@@ -455,6 +455,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     Box(Modifier.fillMaxSize()) {
         if (wide) art?.let { Artwork(it, title.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.7f).fillMaxHeight(0.9f).then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false) }
 
+        androidx.compose.runtime.CompositionLocalProvider(LocalRowsScrolling provides list.isScrollInProgress) {
         LazyColumn(state = list, contentPadding = PaddingValues(bottom = NAV_CLEARANCE), modifier = Modifier.fillMaxSize()) {
             item(key = "head") {
                 // On any release here, or on a connected account from another device; a series shows it per episode.
@@ -724,6 +725,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 sources(title, episode, kept, shown, busy, quality, { quality = it }, Modifier.widthIn(max = 720.dp), hiddenFew = hiddenFew, onShowFew = { showFew = true }, hiddenLeft = hiddenLeft, onShowLeft = { showLeft = true }, language = searchLang()?.name, onDownload = { downloadFor = it to null }, onMore = { actions = it to null }, onReload = { reloadSources(episode) }) { hit -> if (com.torrentviewer.core.downloadOnly(hit)) downloadFor = hit to null else watch.stream(hit, title, among = kept.orEmpty()) }
             }
         }
+        }
         // Over the art, a round back button; once the page scrolls under it, a solid bar with the name.
         val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 420 } }
         StatusIconsOverArt(!wide && !scrolled)
@@ -749,12 +751,15 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     if (sheet) {
         val ep = episode
         BottomSheet(ep?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: "Sources", onDismiss = { sheet = false }) {
-            LazyColumn {
+            val epList = rememberLazyListState()
+            androidx.compose.runtime.CompositionLocalProvider(LocalRowsScrolling provides epList.isScrollInProgress) {
+            LazyColumn(state = epList) {
                 sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, hiddenLeft = hiddenLeft, onShowLeft = { showLeft = true }, language = searchLang()?.name, onDownload = { hit -> downloadFor = hit to ep }, onMore = { actions = it to ep }, onReload = { reloadSources(ep) }) { hit ->
                     sheet = false
                     if (com.torrentviewer.core.downloadOnly(hit)) downloadFor = hit to ep
                     else watch.stream(hit, title, ep?.let { episodeTag(it.season, it.episode) }, ep, among = kept.orEmpty())
                 }
+            }
             }
         }
     }
@@ -762,7 +767,9 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     if (downloadSheet) {
         val ep = episode
         BottomSheet(ep?.let { "Download ${episodeTag(it.season, it.episode)}: pick a release" } ?: "Download: pick a release", onDismiss = { downloadSheet = false }) {
-            LazyColumn {
+            val dlList = rememberLazyListState()
+            androidx.compose.runtime.CompositionLocalProvider(LocalRowsScrolling provides dlList.isScrollInProgress) {
+            LazyColumn(state = dlList) {
                 sources(title, ep, kept, shown, busy, quality, { quality = it }, Modifier, heading = false, hiddenFew = hiddenFew, onShowFew = { showFew = true }, hiddenLeft = hiddenLeft, onShowLeft = { showLeft = true }, language = searchLang()?.name, onDownload = { hit ->
                     downloadSheet = false
                     keep(hit, ep)
@@ -773,6 +780,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         keep(hit, ep)
                     }
                 }
+            }
             }
         }
     }
@@ -831,10 +839,23 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     }
     fileFor?.let { (hit, ep) ->
         val heading = ep?.let { "${title.title} · ${episodeTag(it.season, it.episode)}" } ?: title.title
-        val job = remember(hit.uri) { downloadJob(hit, title, ep) }
+        // The picked source first, then the other direct, saveable sources in the shown order: if a link answers with an
+        // error the sheet can fall to the next and the viewer picks Add or Download on whichever answers (the owner's ask).
+        val choices = remember(hit.uri, kept) {
+            (listOf(hit) + kept.orEmpty().filter { it.id != hit.id && it.direct && canSave(it) }).distinctBy { it.uri }.take(12).map { h ->
+                val j = downloadJob(h, title, ep)
+                LinkChoice(
+                    url = h.uri, name = j.label, headers = h.headers, playlist = isPlaylist(h),
+                    subs = com.torrentviewer.mobile.cs.CsStreams.subtitlesFor(h.uri),
+                    label = listOfNotNull(h.quality, runCatching { android.net.Uri.parse(h.uri).host?.removePrefix("www.") }.getOrNull()).joinToString(" · "),
+                    tag = j,
+                )
+            }
+        }
         DownloadFileSheet(
-            hit.uri, job.label, hit.headers, isPlaylist(hit), remember(hit.uri) { com.torrentviewer.mobile.cs.CsStreams.subtitlesFor(hit.uri) },
-            onSave = { name, referer, paused, subs ->
+            choices,
+            onSave = { choice, name, referer, paused, subs ->
+                val job = choice.tag as DownloadJob
                 val headers = if (referer.isEmpty()) job.headers.filterKeys { !it.equals("referer", true) } else job.headers.filterKeys { !it.equals("referer", true) } + ("Referer" to referer)
                 Downloads.add(job.copy(titleName = if (name != job.label) name else job.titleName, headers = headers, paused = paused))
                 watch.notes.tryEmit(if (paused) "Added, paused — see Downloads" else "Downloading $heading — see Downloads")
@@ -1158,6 +1179,13 @@ private const val HEAVY_MBPS = 40.0
 private const val TOO_HEAVY_MBPS = 80.0
 
 /**
+ * Whether the list a [Source] sits in is being flung or dragged right now: its name's marquee holds still while it is,
+ * so a scroll stays smooth (every visible row animating its name at once was the lag the owner felt). Fed by each list's
+ * own scroll state; false (animating) by default, for a row shown outside a scrolling list.
+ */
+val LocalRowsScrolling = androidx.compose.runtime.compositionLocalOf { false }
+
+/**
  * One release: what it is, how big, and how well it will stream — in words, not a seed count.
  * With [runtimeSeconds], a release too big to stream as it plays says what it needs.
  */
@@ -1186,11 +1214,15 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
             Column(Modifier.weight(1f)) {
                 // The whole release name, on one line that scrolls through it — the codec and group at the end are what tell releases apart.
                 // A short gap (28 dp) before it comes round again, not a third of the row.
+                // The name scrolls through itself at rest; while the list is being scrolled it holds still (an ellipsis),
+                // so a whole screen of rows isn't animating their names mid-scroll — the lag the owner felt.
+                val scrolling = LocalRowsScrolling.current
                 Text(
                     hit.name,
-                    Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, spacing = androidx.compose.foundation.MarqueeSpacing(28.dp), velocity = 40.dp),
+                    if (scrolling) Modifier else Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, spacing = androidx.compose.foundation.MarqueeSpacing(28.dp), velocity = 40.dp),
                     style = Type.label.copy(fontSize = 14.sp),
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     // A film's scope is "Episode" only by default — it says nothing there. Seeds are on the right, highlighted.
