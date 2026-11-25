@@ -1019,15 +1019,42 @@ object Downloads {
         val format = job.quality ?: "v:0"
         update(job.uri) { it.copy(state = DlState.RESOLVING, error = "Reading the page…", speed = 0) }
         val work = linkWork(job.uri)
-        val out = Media.run(app, page, format, job.headers, job.label, work) { pct, _ ->
-            update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null, files = listOf(DlFile(0, job.label, 1000, (pct * 10).toLong().coerceIn(0, 1000), false))) }
-            notifyProgress()
-        }
         val youtube = Regex("""(^|\.)(youtube\.com|youtu\.be)$""").containsMatchIn(runCatching { java.net.URL(page).host }.getOrDefault(""))
         val folder = when {
             format.startsWith("a:") -> if (youtube) "Audio" else "Browser/Audio"
             youtube -> "Video/YouTube"
             else -> "Browser/Video"
+        }
+        // The resolver first for a social site's video (the owner's choice): it fetches server-side, so no login and no
+        // VPN-IP wall reach the phone, and the direct URL it gives is downloaded fast over the app's own connections.
+        // Not for YouTube (its own path), nor audio (yt-dlp converts that). yt-dlp is the fallback when it can't.
+        val height = format.removePrefix("v:").toIntOrNull()
+        if (!youtube && !format.startsWith("a:") && Media.looksLikeSite(page)) {
+            val r = Resolve.resolve(page, height?.takeIf { it > 0 })
+            if (r != null) {
+                update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null) }
+                val got = runCatching {
+                    LinkFetch.download(r.url, r.headers, null, false, work, connections) { done, total, rate ->
+                        update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null, files = listOf(DlFile(0, job.label, maxOf(total, done), done, false)), speed = rate) }
+                        notifyProgress()
+                    }
+                }.getOrNull()
+                if (got != null && got.file.length() >= MIN_VIDEO_BYTES) {
+                    val dest = File(File(keepDir(), folder), safe(job.label) + "." + got.ext)
+                    dest.parentFile?.mkdirs()
+                    if (!got.file.renameTo(dest)) { got.file.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } } }
+                    work.deleteRecursively()
+                    writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, job.poster, job.label, null, job.kind)) + _finished.value.filter { it.path != dest.path })
+                    synchronized(lock) { _live.value = _live.value.filter { it.job.uri != job.uri }; writeQueue(jobs()) }
+                    return
+                }
+                // The resolver's file was a dud: fall through to yt-dlp, from a clean work folder.
+                work.deleteRecursively(); work.mkdirs()
+            }
+        }
+        val out = Media.run(app, page, format, job.headers, job.label, work) { pct, _ ->
+            update(job.uri) { it.copy(state = DlState.DOWNLOADING, error = null, files = listOf(DlFile(0, job.label, 1000, (pct * 10).toLong().coerceIn(0, 1000), false))) }
+            notifyProgress()
         }
         val dest = File(File(keepDir(), folder), safe(job.label) + "." + out.extension)
         dest.parentFile?.mkdirs()
@@ -1264,6 +1291,14 @@ object Downloads {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "link download failed: ${e.message}")
+                // A page's video the site only shows to a signed-in account (a private Instagram reel): no amount of
+                // retrying helps, so it stops and says to sign in once in the Browser, rather than looping (the owner
+                // caught the loop). Public posts never reach here.
+                if ((job.kind == MEDIA_KIND || job.kind == MEDIA_AUDIO) && Media.needsLogin(e.message)) {
+                    val site = runCatching { java.net.URL(job.uri.substringBeforeLast("#grab=")).host.orEmpty().removePrefix("www.") }.getOrDefault("the site")
+                    update(job.uri) { it.copy(state = DlState.FAILED, speed = 0, error = "Sign in to $site in the Browser once, then try again") }
+                    return
+                }
                 // An expired or unreachable link: ask the sources for a fresh one and carry on with it.
                 // Dropped connections that outlived the retries above count too: that link isn't going to work today.
                 val dead = e is java.io.IOException

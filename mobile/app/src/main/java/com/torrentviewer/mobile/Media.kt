@@ -131,12 +131,50 @@ object Media {
             .maxByOrNull { it.length() } ?: error("yt-dlp finished but no file was made")
     }
 
-    /** A YouTube page with the signed-in account's cookies, for videos shown only to signed-in accounts. */
+    /**
+     * The site's own sign-in reused, for a post it only shows to signed-in people (a private Instagram reel, an
+     * age-gated video): YouTube has its own kept session; every other site uses whatever the in-app Browser is signed
+     * into for that host ([browserCookiesFile]) — logged in there once, no separate login screen. None, and yt-dlp
+     * tries anonymously, which is all a public post needs.
+     */
     private fun signedIn(context: Context, url: String, req: YoutubeDLRequest) {
         val host = runCatching { Uri.parse(url).host.orEmpty().lowercase() }.getOrDefault("")
-        if ("youtube.com" !in host && host != "youtu.be") return
-        YouTubeAccount.init(context)
-        YouTubeAccount.cookiesFile()?.let { req.addOption("--cookies", it.absolutePath) }
+        if ("youtube.com" in host || host == "youtu.be") {
+            YouTubeAccount.init(context)
+            YouTubeAccount.cookiesFile()?.let { req.addOption("--cookies", it.absolutePath) }
+            return
+        }
+        browserCookiesFile(context, host)?.let { req.addOption("--cookies", it.absolutePath) }
+    }
+
+    /** A site's registrable domain for cookies: the last two labels of [host] ("www.instagram.com" → "instagram.com"). */
+    private fun cookieDomain(host: String): String = host.split('.').takeLast(2).joinToString(".")
+
+    /**
+     * The in-app Browser's cookies for [host], written as a yt-dlp cookies.txt in the cache — so a login made once in
+     * the Browser (Instagram, TikTok…) carries to the download, with no sign-in screen of its own. Null when the Browser
+     * holds none for that site (not signed in there). Rewritten each time: a renewed session reads signed out otherwise.
+     */
+    fun browserCookiesFile(context: Context, host: String): File? = runCatching {
+        val domain = cookieDomain(host).ifBlank { return null }
+        val cm = android.webkit.CookieManager.getInstance()
+        val raw = cm.getCookie("https://www.$domain") ?: cm.getCookie("https://$domain") ?: return null
+        val far = System.currentTimeMillis() / 1000 + 365L * 24 * 3600
+        val lines = raw.split(';').mapNotNull { kv ->
+            val k = kv.substringBefore('=').trim()
+            val v = kv.substringAfter('=', "").trim()
+            if (k.isEmpty()) null else ".$domain\tTRUE\t/\tTRUE\t$far\t$k\t$v"
+        }
+        if (lines.isEmpty()) return null
+        File(context.cacheDir, "site-cookies/$domain.txt").apply {
+            parentFile?.mkdirs()
+            writeText("# Netscape HTTP Cookie File\n" + lines.joinToString("\n") + "\n")
+        }.takeIf { it.length() > 0 }
+    }.getOrNull()
+
+    /** Whether yt-dlp failed because the site wants a signed-in session (it sent the login page). */
+    fun needsLogin(message: String?): Boolean = message.orEmpty().lowercase().let {
+        "login" in it || "log in" in it || "rate-limit" in it && "login" in it || "requested content is not available" in it || "sign in" in it || "empty media response" in it
     }
 
     /** yt-dlp's last ERROR line, without warnings, its [extractor] tag or the Python cause. */
