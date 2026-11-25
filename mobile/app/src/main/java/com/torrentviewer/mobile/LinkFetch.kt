@@ -143,7 +143,8 @@ object LinkFetch {
             out.delete()
             File(work, SINGLE_STATE).delete()
             withContext(Dispatchers.IO) { RandomAccessFile(out, "rw").use { it.setLength(size) } }
-            val parts = partsOf(size, connections)
+            // Planned for the first few connections; the rest split stretches as they join ([Run.take]).
+            val parts = partsOf(size, START_WITH)
             JSONObject().put("total", size).put("ext", kind).put("starts", org.json.JSONArray(parts.map { it.first }))
                 .put("ends", org.json.JSONArray(parts.map { it.second })).put("done", org.json.JSONArray(parts.map { 0L }))
                 .also { stateFile.writeText(it.toString()) }
@@ -152,92 +153,265 @@ object LinkFetch {
         val ext = plan.optString("ext", "mp4")
         val starts = plan.getJSONArray("starts").let { a -> LongArray(a.length()) { a.getLong(it) } }
         val ends = plan.getJSONArray("ends").let { a -> LongArray(a.length()) { a.getLong(it) } }
-        val done = plan.getJSONArray("done").let { a -> java.util.concurrent.atomic.AtomicLongArray(LongArray(a.length()) { a.getLong(it) }) }
-        val next = java.util.concurrent.atomic.AtomicInteger(0)
-        val meter = Meter((0 until done.length()).sumOf { done.get(it) })
-        var lastSave = 0L
-        fun save(force: Boolean = false) = synchronized(stateFile) {
-            val now = System.currentTimeMillis()
-            if (!force && now - lastSave < 2000) return@synchronized
-            lastSave = now
-            plan.put("done", org.json.JSONArray((0 until done.length()).map { done.get(it) }))
+        val dones = plan.getJSONArray("done").let { a -> LongArray(a.length()) { a.getLong(it) } }
+        val run = Run(url, headers, out, total, starts.indices.map { Seg(starts[it], ends[it], dones[it]) }.toMutableList(), connections, progress) { segs ->
+            plan.put("starts", org.json.JSONArray(segs.map { it.start })).put("ends", org.json.JSONArray(segs.map { it.end }))
+                .put("done", org.json.JSONArray(segs.map { it.done }))
             stateFile.writeText(plan.toString())
         }
-        fun take(): Int? {
-            while (true) {
-                val i = next.getAndIncrement()
-                if (i >= starts.size) return null
-                if (starts[i] + done.get(i) <= ends[i]) return i
-            }
-        }
-        try {
-            coroutineScope {
-                repeat(connections.coerceAtMost(starts.size)) {
-                    launch(Dispatchers.IO) {
-                        RandomAccessFile(out, "rw").use { raf ->
-                            while (true) {
-                                val i = take() ?: break
-                                fetchPart(url, headers, i, starts[i], ends[i], done, raf) { n ->
-                                    synchronized(meter) { meter.add(n) }?.let { rate -> progress.report(synchronized(meter) { meter.done }, total, rate) }
-                                    save()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } finally {
-            save(force = true)
-        }
-        if ((0 until done.length()).any { starts[it] + done.get(it) <= ends[it] }) throw LinkDownloadException("The download stopped early — try again")
+        run.go()
         stateFile.delete()
         progress.report(total, total, 0)
         return Result(out, ext)
     }
 
-    /** One part, from where it got to, tried again on a dropped connection or a busy server. */
-    private suspend fun fetchPart(url: String, headers: Map<String, String>, i: Int, start: Long, end: Long, done: java.util.concurrent.atomic.AtomicLongArray, raf: RandomAccessFile, onBytes: (Long) -> Unit) {
-        var failures = 0
-        while (start + done.get(i) <= end) {
-            coroutineContext.ensureActive()
-            val from = start + done.get(i)
+    /** One stretch of the file: from [start] to [end] (inclusive; shortened when another connection takes its back half), [done] bytes in. */
+    private class Seg(val start: Long, var end: Long, var done: Long) {
+        var busy = false
+        val pos get() = start + done
+        val remaining get() = end - pos + 1
+        val finished get() = pos > end
+    }
+
+    /** A connection open now, for the stall watch: when it last got a byte, and how fast it's going. */
+    private class Live(val conn: HttpURLConnection) {
+        @Volatile var last = System.currentTimeMillis()
+        @Volatile var bytes = 0L
+        @Volatile var mark = 0L
+        @Volatile var speed = 0L
+        @Volatile var kicked = false
+        val born = System.currentTimeMillis()
+    }
+
+    /** The server turned one connection away ([code]): retired while others work, else waited on and tried again. */
+    private class RefusedException(val code: Int, val retryAfter: Int?) : IOException("refused ($code)")
+
+    /** Dropped by the stall watch: straight back on a new connection, not counted as a failure. */
+    private class StallException : IOException("Connection stalled")
+
+    /**
+     * One file over many range connections, as Grabber does it (the owner's own downloader, which got files WatchHub
+     * failed on, and faster):
+     * - ramp-up: [START_WITH] connections, more every few seconds while the total speed keeps rising, up to [max] —
+     *   64 at once looked like an attack to hosts, which dropped them, and the download went looking for another source;
+     * - a refused connection (429, 503, a picky CDN's 403) retires and the rest carry on; no more are added after one;
+     * - work stealing: a connection with nothing left takes the back half of the biggest stretch still going;
+     * - stall watch: a connection silent for [STALL_MS], or crawling far below the others, is dropped and reconnects.
+     * Progress goes to [save] every couple of seconds, in parts.json's form, so a pause carries on stretch by stretch.
+     */
+    private class Run(
+        val url: String, val headers: Map<String, String>, val out: File, val total: Long, val segs: MutableList<Seg>, val max: Int,
+        val progress: Progress, val save: (List<Seg>) -> Unit,
+    ) {
+        val lock = Any()
+        val lives = java.util.concurrent.ConcurrentHashMap.newKeySet<Live>()
+        val alive = java.util.concurrent.atomic.AtomicInteger()
+        val got = java.util.concurrent.atomic.AtomicLong(segs.sumOf { it.done })
+        @Volatile var refused = false
+        val meter = Meter(got.get())
+        var lastSave = 0L
+
+        fun keep(force: Boolean = false) = synchronized(lock) {
+            val now = System.currentTimeMillis()
+            if (!force && now - lastSave < 2000) return@synchronized
+            lastSave = now
+            runCatching { save(segs.sortedBy { it.start }.map { Seg(it.start, it.end, it.done) }) }
+        }
+
+        suspend fun go() {
+            synchronized(lock) { segs.forEach { it.busy = false } }
             try {
-                val conn = open(url, headers, "bytes=$from-$end")
-                try {
-                    val code = conn.responseCode
-                    if (code in EXPIRED) throw LinkExpiredException("The link has expired (the server answered $code)")
-                    // Too many connections for this host: wait, and the part is asked for again.
-                    if (code == 429 || code == 503) throw IOException("busy ($code)")
-                    if (code != 206) throw LinkDownloadException("The server stopped sending parts ($code)")
-                    conn.inputStream.use { input ->
-                        val buf = ByteArray(64 * 1024)
-                        var at = from
-                        while (at <= end) {
-                            coroutineContext.ensureActive()
-                            val n = input.read(buf, 0, minOf(buf.size.toLong(), end - at + 1).toInt())
-                            if (n < 0) break
-                            raf.seek(at)
-                            raf.write(buf, 0, n)
-                            at += n
-                            done.addAndGet(i, n.toLong())
-                            onBytes(n.toLong())
+                coroutineScope {
+                    val watch = launch { watchdog() }
+                    try {
+                        coroutineScope {
+                            val first = minOf(max, START_WITH)
+                            repeat(first) { spawn(this) }
+                            launch { rampUp(this@coroutineScope, first) }
                         }
+                    } finally {
+                        watch.cancel()
                     }
-                    failures = 0
+                }
+            } finally {
+                keep(force = true)
+            }
+            if (synchronized(lock) { segs.any { !it.finished } }) throw LinkDownloadException("The download stopped early — try again")
+        }
+
+        fun spawn(scope: kotlinx.coroutines.CoroutineScope) {
+            alive.incrementAndGet()
+            scope.launch(Dispatchers.IO) {
+                try {
+                    RandomAccessFile(out, "rw").use { raf -> worker(raf) }
                 } finally {
-                    conn.disconnect()
+                    alive.decrementAndGet()
                 }
-            } catch (e: LinkDownloadException) {
-                throw e
+            }
+        }
+
+        /** More connections in steps while the total speed keeps climbing; it stops when it levels off or a host refuses. */
+        suspend fun rampUp(scope: kotlinx.coroutines.CoroutineScope, first: Int) {
+            var running = first
+            var lastRate = 0L
+            var flat = 0
+            var before = got.get()
+            while (running < max) {
+                delay(RAMP_MS)
+                if (refused || alive.get() == 0) return
+                val nothingToSplit = synchronized(lock) { segs.all { it.finished || it.busy && it.remaining < MIN_SPLIT * 2 } }
+                if (nothingToSplit) return
+                val now = got.get()
+                val rate = (now - before) * 1000 / RAMP_MS
+                before = now
+                if (lastRate > 0 && rate < lastRate * 11 / 10) { if (++flat >= 2) return } else flat = 0
+                lastRate = rate
+                val add = minOf(max - running, maxOf(2, running / 2))
+                repeat(add) { spawn(scope) }
+                running += add
+            }
+        }
+
+        /** Every second: a connection silent too long, or crawling at a tenth of the typical speed, is dropped. */
+        suspend fun watchdog() {
+            while (true) {
+                delay(1000)
+                val now = System.currentTimeMillis()
+                lives.forEach { l -> l.speed = l.bytes - l.mark; l.mark = l.bytes }
+                val speeds = lives.filter { now - it.born > 6_000 }.map { it.speed }.sorted()
+                val typical = if (speeds.size >= 4) speeds[speeds.size / 2] else 0L
+                lives.forEach { l ->
+                    val silent = now - l.last > STALL_MS
+                    val crawling = typical > 64 * 1024 && now - l.born > 10_000 && l.speed < typical / 10
+                    if ((silent || crawling) && !l.kicked) {
+                        l.kicked = true
+                        runCatching { l.conn.disconnect() }
+                    }
+                }
+            }
+        }
+
+        /** The next stretch for a free connection: one nobody is on, else the back half of the biggest still going. */
+        fun take(): Seg? = synchronized(lock) {
+            segs.firstOrNull { !it.busy && !it.finished }?.let { it.busy = true; return it }
+            val big = segs.filter { it.busy && !it.finished }.maxByOrNull { it.remaining } ?: return null
+            if (big.remaining < MIN_SPLIT * 2) return null
+            val mid = big.pos + big.remaining / 2
+            val part = Seg(mid, big.end, 0).also { it.busy = true }
+            big.end = mid - 1
+            segs += part
+            part
+        }
+
+        suspend fun worker(raf: RandomAccessFile) {
+            while (true) {
+                val seg = take() ?: return
+                var failures = 0
+                var stalls = 0
+                while (!synchronized(lock) { seg.finished }) {
+                    coroutineContext.ensureActive()
+                    try {
+                        val before = synchronized(lock) { seg.done }
+                        fetch(seg, raf)
+                        if (synchronized(lock) { seg.done } > before) failures = 0
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: RefusedException) {
+                        refused = true
+                        // Others still working: this connection gives its stretch back and closes; they take it up.
+                        val others = synchronized(lock) {
+                            seg.busy = false
+                            alive.get() > 1
+                        }
+                        if (others) return
+                        synchronized(lock) { seg.busy = true }
+                        if (++failures > MAX_RETRIES) throw when {
+                            e.code in EXPIRED -> LinkExpiredException("The link has expired (the server answered ${e.code})")
+                            e.code == 429 || e.code == 503 -> BusyException(e.code, e.retryAfter)
+                            else -> LinkDownloadException("The server answered ${e.code}")
+                        }
+                        // The link itself gone (not just "too many"): no use waiting out ten tries alone.
+                        if (e.code in EXPIRED && failures >= 3) throw LinkExpiredException("The link has expired (the server answered ${e.code})")
+                        delay(e.retryAfter?.let { it * 1000L }?.coerceAtMost(60_000) ?: backoff(failures))
+                    } catch (e: StallException) {
+                        if (++stalls <= 30) continue
+                        if (++failures > MAX_RETRIES) throw LinkDownloadException("A part kept stalling")
+                        delay(backoff(failures))
+                    } catch (e: LinkDownloadException) {
+                        throw e
+                    } catch (e: IOException) {
+                        if (++failures > MAX_RETRIES) throw LinkDownloadException("A part kept failing: ${e.message}")
+                        delay(backoff(failures))
+                    }
+                }
+                synchronized(lock) { seg.busy = false }
+            }
+        }
+
+        fun backoff(n: Int) = minOf(30_000L, 500L shl minOf(n, 6))
+
+        /** [seg] from where it got to, over one connection, up to its end (which may move in while it runs). */
+        suspend fun fetch(seg: Seg, raf: RandomAccessFile) {
+            val (from, to) = synchronized(lock) { seg.pos to seg.end }
+            if (from > to) return
+            val conn = open(url, headers, "bytes=$from-$to")
+            val live = Live(conn)
+            lives += live
+            try {
+                val code = conn.responseCode
+                if (code == 429 || code == 503 || code in 400..499) throw RefusedException(code, conn.getHeaderField("Retry-After")?.trim()?.toIntOrNull())
+                if (code != 206) {
+                    if (code in 200..299) throw LinkDownloadException("The server stopped allowing parts (answered $code)")
+                    throw IOException("The server answered $code")
+                }
+                val size = conn.getHeaderField("Content-Range")?.substringAfter('/')?.trim()?.toLongOrNull()
+                if (size != null && size != total) throw LinkDownloadException("The file changed on the server")
+                conn.inputStream.use { input ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        // Paused or cancelled: stops between reads.
+                        coroutineContext.ensureActive()
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        live.last = System.currentTimeMillis()
+                        live.bytes += n
+                        // Only up to the stretch's end: another connection may have taken its back half meanwhile.
+                        val (at, take) = synchronized(lock) { seg.pos to minOf(n.toLong(), seg.remaining).toInt().coerceAtLeast(0) }
+                        if (take > 0) {
+                            raf.seek(at)
+                            raf.write(buf, 0, take)
+                            synchronized(lock) { seg.done += take }
+                            got.addAndGet(take.toLong())
+                            synchronized(meter) { meter.add(take.toLong()) }?.let { rate -> progress.report(got.get(), total, rate) }
+                            keep()
+                        }
+                        if (take < n) break
+                    }
+                }
             } catch (e: IOException) {
-                if (++failures > TRIES * 3) {
-                    val code = e.message?.let { Regex("""busy \((\d+)\)""").find(it) }?.groupValues?.get(1)?.toIntOrNull()
-                    throw if (code != null) BusyException(code, null) else LinkDownloadException("A part kept failing: ${e.message}")
-                }
-                delay(1000L * failures.coerceAtMost(8))
+                if (live.kicked && e !is RefusedException && e !is LinkDownloadException) throw StallException()
+                throw e
+            } finally {
+                lives -= live
+                runCatching { conn.disconnect() }
             }
         }
     }
+
+    /** Connections a link starts with ([Run]); more join while they make it faster. */
+    private const val START_WITH = 4
+
+    /** How often the ramp-up looks at the speed and adds connections. */
+    private const val RAMP_MS = 2500L
+
+    /** A connection that has sent nothing for this long is dropped and reconnected. */
+    private const val STALL_MS = 8_000L
+
+    /** A stretch is never split into halves smaller than this. */
+    private const val MIN_SPLIT = 1024L * 1024
+
+    /** Tries per stretch before the link counts as failing. */
+    private const val MAX_RETRIES = 10
 
     /**
      * Whether an old link still leads to the video, asked before a paused or waiting download carries on with
