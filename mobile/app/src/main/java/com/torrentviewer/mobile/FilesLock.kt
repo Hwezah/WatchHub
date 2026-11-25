@@ -182,7 +182,8 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
     // A very faint strip behind the lock, the field and the X, so the row reads as one (the owner's choice).
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).clip(PILL).background(Ink.text.copy(alpha = 0.05f))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            // A notch taller (the owner's choice).
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The lock and the shield each 36dp wide, either side, so the field between them sits in the very middle.
