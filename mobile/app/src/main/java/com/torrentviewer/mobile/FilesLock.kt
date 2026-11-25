@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
@@ -169,8 +170,13 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
     var byPassword by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(byPassword) { runCatching { focus.requestFocus() } }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Lc(L.drawable.lucide_ic_lock, tint = Ink.muted, size = 20.dp)
+    // A very faint strip behind the lock, the field and the X, so the row reads as one (the owner's choice).
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).clip(PILL).background(Ink.text.copy(alpha = 0.05f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Lc(L.drawable.lucide_ic_lock, tint = Ink.muted, size = 24.dp)
         Box(Modifier.weight(1f).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
             if (typed.isEmpty()) Text(if (byPassword) "Auth Password" else "Auth Pin", style = Type.label.copy(color = Ink.faint), textAlign = TextAlign.Center, maxLines = 1)
             if (byPassword) BasicTextField(
@@ -208,9 +214,9 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
         }
         // The pin forgotten: the password (when one is set).
         if (FilesLock.hasPassword()) Tap({ byPassword = !byPassword; typed = "" }, shape = CircleShape) {
-            Lc(if (byPassword) L.drawable.lucide_ic_hash else L.drawable.lucide_ic_key_round, Modifier.padding(6.dp), tint = Ink.muted, size = 20.dp)
+            Lc(if (byPassword) L.drawable.lucide_ic_hash else L.drawable.lucide_ic_shield, Modifier.padding(6.dp), tint = Ink.muted, size = 24.dp)
         }
-        Tap({ FilesLock.asking = null }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 20.dp) }
+        Tap({ FilesLock.asking = null }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 24.dp) }
     }
 }
 
