@@ -595,10 +595,13 @@ fun BottomSheet(
                     else Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         leading?.invoke()
                         // One line, never wrapped: a long title scrolls slowly across (the owner's choice). Alone in its row on
-                        // an upright phone, in the middle; beside a Reload, from the start.
+                        // an upright phone, in the middle. Beside a Reload, from the start, cut short with "…" and a clear gap
+                        // before it (the owner's choice: scrolling, it ran right up to the button).
                         val alone = trailing == null && leading == null && isPortraitPhone()
                         Text(
-                            title, Modifier.weight(1f).basicMarquee(), style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 1,
+                            title, Modifier.weight(1f).then(if (trailing != null) Modifier.padding(end = 16.dp) else Modifier.basicMarquee()),
+                            style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 1,
+                            overflow = if (trailing != null) TextOverflow.Ellipsis else TextOverflow.Clip,
                             textAlign = if (alone) TextAlign.Center else TextAlign.Start,
                         )
                         trailing?.invoke()
