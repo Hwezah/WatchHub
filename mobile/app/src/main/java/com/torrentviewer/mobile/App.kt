@@ -599,7 +599,10 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                     ): androidx.compose.ui.geometry.Offset {
                         if (revealNow) {
                             // Down the page (the finger going up): away. Back up it, or drawn down at its top: here.
-                            if (consumed.y < -2f) pillShown = false
+                            // YouTube: any scroll, down the list as well, brings the bar back (the owner's choice); the
+                            // Browser keeps it away on the way down, over what's being read.
+                            if (tabNow == Tab.YOUTUBE && kotlin.math.abs(consumed.y) > 2f) pillShown = true
+                            else if (consumed.y < -2f) pillShown = false
                             else if (consumed.y > 2f || available.y > 8f) pillShown = true
                         } else if (kotlin.math.abs(consumed.y) > 2f) {
                             pillShown = false
