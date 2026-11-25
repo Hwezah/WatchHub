@@ -164,7 +164,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
         items(live.asReversed().filter { it.job.uri !in held }, key = { "live-" + it.job.uri }) { row ->
             val running = row.state != DlState.PAUSED && row.state != DlState.FAILED
             SwipeRow(
-                backing = DL_CARD,
+                backing = DL_CARD, inset = 8.dp,
                 // Right: pause a running one, else resume (or retry a failed one). Left: take it off the list, with Undo.
                 onRight = { if (running) Downloads.pause(row.job.uri) else if (row.state == DlState.FAILED) Downloads.retry(row.job.uri, byHand = true) else Downloads.resume(row.job.uri) },
                 rightIcon = if (running) R.drawable.ic_pause_bars else L.drawable.lucide_ic_play,
@@ -216,7 +216,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 // Right to play, left to reveal a card-shaped sheet with bare Bin | Delete (both held with Undo, via the
                 // Bin); Delete is a bin with an X (the owner's choice), the two split by a pipe.
                 SwipeRow(
-                    onRight = { play(f) }, rightIcon = L.drawable.lucide_ic_play, rightTint = Ink.good, backing = DL_CARD,
+                    onRight = { play(f) }, rightIcon = L.drawable.lucide_ic_play, rightTint = Ink.good, backing = DL_CARD, inset = 8.dp,
                     leftReveal = { close ->
                         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                             SwipeChoice("Bin", L.drawable.lucide_ic_trash_2, Modifier.weight(1f)) { close(); val e = Downloads.toBin(f); UndoHold.start("Moved \"${f.label}\" to the Bin", undo = { Downloads.restoreFromBin(e) }, commit = {}) }
@@ -322,7 +322,7 @@ private fun FilmBadge() {
 @Composable
 private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -> Unit, onDelete: () -> Unit, onStory: (() -> Unit)? = null) {
     val card = poster
-    Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 10.dp), if (card) DL_CARD else RoundedCornerShape(5.dp), onLongClick = onDelete) {
+    Tap(onPlay, Modifier.fillMaxWidth().padding(bottom = 8.dp), if (card) DL_CARD else RoundedCornerShape(5.dp), onLongClick = onDelete) {
         Row(
             (if (card) Modifier.frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp) else Modifier),
             verticalAlignment = Alignment.CenterVertically,
@@ -345,7 +345,7 @@ private fun FinishedRow(f: Finished, name: String, poster: Boolean, onPlay: () -
 private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onStory: (Finished) -> Unit = {}, onDelete: (Finished) -> Unit) {
     val first = episodes.first()
     var open by rememberSaveable(first.imdb ?: first.label) { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(DL_CARD).frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(DL_CARD).frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = 6.dp, top = 8.dp, bottom = 8.dp)) {
         Tap({ open = !open }, Modifier.fillMaxWidth(), RoundedCornerShape(5.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FilmBadge()
@@ -376,7 +376,6 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     val pct = (row.ratio * 100).toInt()
     val pack = row.files.size > 1
     val wanted = row.files.filter { it.wanted }
-    val savedCount = wanted.count { it.saved }
     var open by rememberSaveable(row.job.uri) { mutableStateOf(false) }
     /** Seasons unfolded in a multi-season pack; the one downloading now starts open. */
     var openSeasons by remember(row.job.uri) {
@@ -401,7 +400,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
     var headPx by remember { mutableIntStateOf(0) }
     // Grabber's look (the owner's choice): a well-rounded card, a film badge where the poster was.
     Column(
-        Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 10.dp).clip(DL_CARD).background(CARD_FACE)
+        Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 8.dp).clip(DL_CARD).background(CARD_FACE)
             .drawWithCache {
                 // Each strip's edge: a hairline in the fill's shade, so empty strips still read as strips.
                 val edge = 1.dp.toPx()
@@ -423,7 +422,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             .grain()
             // The card itself, tapped: every action for this download (the owner's ask, as 1DM's list).
             .clickable(onClick = onOptions)
-            .padding(start = 16.dp, end = CARD - 2.dp, top = 10.dp, bottom = 10.dp),
+            // With the right-hand icons pulled up in line with the text, the card has room for a little less above and below.
+            .padding(start = 16.dp, end = CARD - 2.dp, top = 8.dp, bottom = 8.dp),
     ) {
         Row(Modifier.onSizeChanged { headPx = it.height }, verticalAlignment = Alignment.CenterVertically) {
             FilmBadge()
@@ -455,7 +455,6 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                     style = Type.meta.copy(fontSize = 12.sp, color = if (row.state == DlState.FAILED) Ink.danger else Ink.muted),
                     maxLines = 1,
                 )
-                if (pack) Text("$savedCount of ${wanted.size} episodes saved", style = Type.meta.copy(fontSize = 12.sp, color = Ink.faint), maxLines = 1)
             }
             // At the far right: what the file is ("720p | MKV | x265"), split by pipes, to judge a size that looks wrong
             // for its resolution — and under it the buttons (the owner's choice).
@@ -475,27 +474,27 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                 when {
-                    row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
+                    row.state == DlState.PAUSED -> Tap(onResume, shape = CircleShape) { Lc(L.drawable.lucide_ic_play, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), tint = Ink.text, size = 20.dp) }
                     // Failed: ↻ asks the sources again for the next fresh link at this resolution.
-                    row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) }
+                    row.state == DlState.FAILED -> Tap(onRetry, shape = CircleShape) { ReloadArrow(false, Ink.download, 20.dp, Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) }
                     // Queued behind the others: nothing is happening to it yet, so no spinner — it can be paused like a running one.
                     row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") == true ->
-                        Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
+                        Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), tint = Ink.text, size = 20.dp) }
                     // Looking for a fresh link: a small spinner where the button was.
-                    row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
+                    row.state == DlState.RESOLVING && row.job.link -> Box(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) { com.torrentviewer.core.Spinner(size = 20.dp) }
                     row.state == DlState.WIFI -> Unit
-                    else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.text, size = 20.dp) }
+                    else -> Tap(onPause, shape = CircleShape) { Lc(R.drawable.ic_pause_bars, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), tint = Ink.text, size = 20.dp) }
                 }
                 // A source that looks wrong — a link or a torrent — swapped for a different one, by hand (not while a link is being looked for).
                 // A torrent stuck finding peers can be swapped too.
                 if (Downloads.canSwap(row.job) && !(row.job.link && row.state == DlState.RESOLVING && row.error?.startsWith("Waiting for its turn") != true)) {
-                    Tap(onSwap, shape = CircleShape) { Lc(L.drawable.lucide_ic_shuffle, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 20.dp) }
+                    Tap(onSwap, shape = CircleShape) { Lc(L.drawable.lucide_ic_shuffle, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), tint = Ink.muted, size = 20.dp) }
                 }
                 // Inside the card's padding (the owner's choice: a notch of room from the edge).
-                Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 0.dp), tint = Ink.muted, size = 22.dp) }
+                Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), tint = Ink.muted, size = 22.dp) }
                 // A pack's episodes fold under the card from here (the owner's choice), right of the ✕.
                 if (pack) Tap({ open = !open }, shape = CircleShape) {
-                    Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(start = 6.dp, end = 2.dp, top = 6.dp, bottom = 0.dp), tint = Ink.muted, size = 28.dp)
+                    Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(horizontal = 4.dp, vertical = 2.dp), tint = Ink.muted, size = 24.dp)
                 }
                 }
             }
