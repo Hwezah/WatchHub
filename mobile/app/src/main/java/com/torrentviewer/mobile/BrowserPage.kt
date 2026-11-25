@@ -232,28 +232,23 @@ fun BrowserScreen() {
             }
         }
     }) {
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            Browser.note?.let { PathText(it, Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint)) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // In incognito, a new tab is incognito too (the owner's choice).
-                Button("New Tab", { Browser.newTab(incognito = Browser.tab.incognito); menu = false }, Modifier.weight(1f).height(42.dp), icon = if (Browser.tab.incognito) L.drawable.lucide_ic_venetian_mask else L.drawable.lucide_ic_plus, compact = true)
-                Button("Close Tab", { Browser.close(Browser.current); menu = false }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_x, compact = true)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button("Bookmarks", { menu = false; places = "bookmarks" }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_bookmark, compact = true)
-                Button("History", { menu = false; places = "history" }, Modifier.weight(1f).height(42.dp), icon = L.drawable.lucide_ic_history, compact = true)
-            }
+        // The menu's choices as rows, not buttons (the owner's choice); redirect-blocking is a toggle.
+        Column(Modifier.padding(bottom = 16.dp)) {
+            Browser.note?.let { PathText(it, Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp), style = Type.meta.copy(color = Ink.faint)) }
+            // In incognito, a new tab is incognito too (the owner's choice).
+            SheetAction(if (Browser.tab.incognito) "New Incognito Tab" else "New Tab", { Browser.newTab(incognito = Browser.tab.incognito); menu = false }, icon = if (Browser.tab.incognito) L.drawable.lucide_ic_venetian_mask else L.drawable.lucide_ic_plus)
+            SheetAction("Close Tab", { Browser.close(Browser.current); menu = false }, icon = L.drawable.lucide_ic_x)
+            SheetAction("Bookmarks", { menu = false; places = "bookmarks" }, icon = L.drawable.lucide_ic_bookmark)
+            SheetAction("History", { menu = false; places = "history" }, icon = L.drawable.lucide_ic_history)
             if (Browser.url.isNotBlank()) {
                 val here = Browser.siteOf(android.net.Uri.parse(Browser.url).host)
                 val allowed = here in Browser.allowJumps
-                Spacer(Modifier.height(8.dp))
-                Button(if (allowed) "Stop Redirects On $here" else "Allow Redirects On $here", {
-                    if (allowed) Browser.allowJumps.remove(here) else Browser.allowJumps.add(here)
-                    menu = false
-                }, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_shield, compact = true)
-                Spacer(Modifier.height(8.dp))
-                Button("Grab This Page's Video", { menu = false; Browser.offerPage() }, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_download, fill = Ink.download)
+                SheetToggle(
+                    "Block redirects on $here", !allowed,
+                    { block -> if (block) Browser.allowJumps.remove(here) else Browser.allowJumps.add(here) },
+                    icon = L.drawable.lucide_ic_shield, hint = "Stop this site jumping you to another",
+                )
+                SheetAction("Grab this page's video", { menu = false; Browser.offerPage() }, icon = L.drawable.lucide_ic_download, tint = Ink.download)
             }
         }
     }

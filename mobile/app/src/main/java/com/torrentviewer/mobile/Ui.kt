@@ -518,6 +518,68 @@ fun <T> Sheet(
     }
 }
 
+/**
+ * One tappable action row inside a sheet — an icon, a label and an optional line under it — in the same look as a
+ * [Sheet] option (the owner's choice: sheets list their actions as rows, not buttons). [tint] colours the icon and
+ * label (a green download, a red delete); [trailing] puts something at the end (a chevron, a count).
+ */
+@Composable
+fun SheetAction(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    @androidx.annotation.DrawableRes icon: Int? = null,
+    hint: String? = null,
+    tint: Color? = null,
+    enabled: Boolean = true,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Tap(onClick, modifier.fillMaxWidth(), RoundedCornerShape(0.dp)) { pressed ->
+        Row(
+            Modifier.background(if (pressed) Ink.text.copy(alpha = 0.08f) else Color.Transparent).padding(horizontal = 20.dp, vertical = 13.dp).then(if (enabled) Modifier else Modifier.graphicsLayer { alpha = 0.4f }),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { if (icon != null) Lc(icon, tint = tint ?: Ink.muted, size = 20.dp) }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, style = Type.label.copy(color = tint ?: Ink.text, fontWeight = FontWeight.Medium), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                hint?.let { Text(it, style = Type.meta.copy(color = Ink.faint), maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            }
+            trailing?.let { Spacer(Modifier.width(10.dp)); it() }
+        }
+    }
+}
+
+/**
+ * A sheet/settings row whose action is on/off: an icon, a label (and an optional line under it) on the left, a [Toggle]
+ * on the right, the whole row tappable (the owner's choice: an on/off choice is a toggle, not a button). Same look as
+ * [SheetAction].
+ */
+@Composable
+fun SheetToggle(
+    label: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    @androidx.annotation.DrawableRes icon: Int? = null,
+    hint: String? = null,
+) {
+    Row(
+        modifier.fillMaxWidth().toggleable(checked, remember { MutableInteractionSource() }, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange)
+            .padding(horizontal = 20.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { if (icon != null) Lc(icon, tint = Ink.muted, size = 20.dp) }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = Type.label.copy(color = Ink.text, fontWeight = FontWeight.Medium), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            hint?.let { Text(it, style = Type.meta.copy(color = Ink.faint), maxLines = 2, overflow = TextOverflow.Ellipsis) }
+        }
+        Spacer(Modifier.width(10.dp))
+        Toggle(checked, onChange)
+    }
+}
+
 /** The frame every sheet shares: scrim, rounded top, a grab handle and a heading. */
 @Composable
 fun BottomSheet(

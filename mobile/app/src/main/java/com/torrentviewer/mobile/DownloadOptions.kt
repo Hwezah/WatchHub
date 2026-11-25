@@ -9,6 +9,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -277,8 +278,9 @@ fun DownloadFileSheet(
         onDismiss()
     }
     BottomSheet("", onDismiss) {
-        androidx.compose.foundation.layout.Column(Modifier.androidxScroll().padding(horizontal = 20.dp)) {
-            androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        androidx.compose.foundation.layout.Column(Modifier.androidxScroll()) {
+            val edge = Modifier.padding(horizontal = 20.dp)
+            androidx.compose.foundation.layout.Row(edge, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 androidx.compose.foundation.layout.Box(
                     Modifier.padding(end = 12.dp).androidxDisc(),
                     contentAlignment = androidx.compose.ui.Alignment.Center,
@@ -301,36 +303,36 @@ fun DownloadFileSheet(
             // Which source is loaded, when there's more than one to fall through.
             if (choices.size > 1) Text(
                 "Source ${idx + 1} of ${choices.size}" + cur.label.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
-                Modifier.padding(top = 10.dp), style = Type.overline.copy(color = Ink.faint),
+                edge.padding(top = 10.dp), style = Type.overline.copy(color = Ink.faint),
             )
-            Text(cur.url, Modifier.padding(top = if (choices.size > 1) 2.dp else 10.dp), style = Type.meta.copy(color = Ink.text), maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(cur.url, edge.padding(top = if (choices.size > 1) 2.dp else 10.dp), style = Type.meta.copy(color = Ink.text), maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             val failed = checked && info == null && !cur.playlist
             val about = when {
                 cur.playlist -> "Video stream (HLS) · joined and saved as one file"
                 !checked -> "Asking the server…"
-                info == null -> "The server didn't answer with a file" + if (hasNext) " — try the next source, or Check again" else " — Check again, or try another link"
+                info == null -> "The server didn't answer with a file" + if (hasNext) " — try the next source, or check again" else " — check again, or try another link"
                 else -> listOfNotNull(
                     info!!.size.takeIf { it > 0 }?.let { bytes(it) },
                     info!!.type,
                     if (info!!.resumable) "resumable, ${Downloads.connections} connections" else "one connection, not resumable",
                 ).joinToString(" · ")
             }
-            Text(about, Modifier.padding(top = 6.dp, bottom = 12.dp), style = Type.meta.copy(color = if (failed) Ink.warn else Ink.faint))
-            Field(fileName, { fileName = it }, "File name", Modifier.fillMaxWidth())
-            Field(referer, { referer = it }, "Referer page (leave empty if not sure)", Modifier.padding(top = 10.dp).fillMaxWidth())
-            androidx.compose.foundation.layout.Row(Modifier.padding(top = 16.dp).fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
-                Button("Cancel", onDismiss, Modifier.weight(1f), compact = true)
-                Button("Check again", { asking++ }, Modifier.weight(1f), icon = L.drawable.lucide_ic_rotate_cw, compact = true)
-            }
-            // The next source in line, swapped in and re-checked: emphasised when this one failed (the owner's ask).
-            if (hasNext) Button(
-                "Try Next Source · ${idx + 2} of ${choices.size}", { idx++ }, Modifier.padding(top = 10.dp).fillMaxWidth(),
-                icon = L.drawable.lucide_ic_skip_forward, compact = true, fill = if (failed) Ink.warn else null,
+            Text(about, edge.padding(top = 6.dp, bottom = 12.dp), style = Type.meta.copy(color = if (failed) Ink.warn else Ink.faint))
+            Field(fileName, { fileName = it }, "File name", edge.fillMaxWidth())
+            Field(referer, { referer = it }, "Referer page (leave empty if not sure)", edge.padding(top = 10.dp).fillMaxWidth())
+            androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+            // The actions as rows, not buttons (the owner's choice): Download, Add paused, the next source when this one
+            // fails, Check again, and Cancel.
+            SheetAction("Download", { save(paused = false) }, icon = L.drawable.lucide_ic_download, hint = "Save it to this phone now", tint = Ink.download)
+            SheetAction("Add, paused", { save(paused = true) }, icon = L.drawable.lucide_ic_plus, hint = "Queue it, held paused")
+            if (hasNext) SheetAction(
+                "Try the next source · ${idx + 2} of ${choices.size}", { idx++ }, icon = L.drawable.lucide_ic_skip_forward,
+                hint = if (failed) "This link didn't answer — check the next one" else "Check another source for this",
+                tint = if (failed) Ink.warn else null,
             )
-            androidx.compose.foundation.layout.Row(Modifier.padding(top = 10.dp, bottom = 8.dp).fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
-                Button("Add", { save(paused = true) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_plus, compact = true)
-                Button("Download", { save(paused = false) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_download, compact = true, fill = Ink.download)
-            }
+            SheetAction("Check again", { asking++ }, icon = L.drawable.lucide_ic_rotate_cw, hint = "Ask this link's server once more")
+            SheetAction("Cancel", onDismiss, icon = L.drawable.lucide_ic_x)
+            androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
         }
     }
 }
