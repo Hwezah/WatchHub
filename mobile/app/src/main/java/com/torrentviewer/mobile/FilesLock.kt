@@ -58,6 +58,12 @@ object FilesLock {
     /** What opens once the code is right, beside [asking]'s tab: the "On this phone" list. */
     var then: (() -> Unit)? = null
 
+    /** The pin pad put away without opening anything: its page went off screen. */
+    fun dismiss() {
+        asking = null
+        then = null
+    }
+
     /** Asks for the code before [tab], and [after] once it's right. */
     fun ask(tab: Tab, after: (() -> Unit)? = null) {
         then = after

@@ -647,8 +647,14 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
     // Leaving Downloads for the Wishlist locks it again, as leaving the tab does (the owner's choice).
     LaunchedEffect(section) { if (section != LibrarySection.DOWNLOADS) FilesLock.relock() }
     if (section == LibrarySection.DOWNLOADS && FilesLock.needed()) {
-        // Behind the code (Settings → Lock): asked for straight away, and again from the button if dismissed.
-        LaunchedEffect(Unit) { FilesLock.ask(Tab.LIBRARY) {} }
+        // Behind the code (Settings → Lock): asked for straight away, and again from the button if dismissed — but only
+        // while the Library is the page on screen. The tabs stay composed behind each other, so asking regardless popped
+        // the pin pad (and its keyboard) over every other tab each time the lock closed again (the owner caught it).
+        val shown = LocalShown.current
+        LaunchedEffect(shown) {
+            if (shown) FilesLock.ask(Tab.LIBRARY) {}
+            else if (FilesLock.asking == Tab.LIBRARY) FilesLock.dismiss()
+        }
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             Heading("Library") { AddLinkPlus() }
             LibraryTabs(section, downloading.isNotEmpty()) { section = it }

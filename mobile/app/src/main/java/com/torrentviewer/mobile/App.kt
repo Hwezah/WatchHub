@@ -541,7 +541,11 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         keyboard?.hide()
         // Library and Files behind the code (Settings → Lock): its row opens on top of the tab bar first.
         if (FilesLock.locks(t)) FilesLock.ask(t)
-        else if (t == tab) clearPages() else tab = t
+        else {
+            // A pin pad left open for Files goes with the move elsewhere: it isn't carried onto the next tab.
+            FilesLock.dismiss()
+            if (t == tab) clearPages() else tab = t
+        }
     }
     /** The tab bar's ＋: a link copied elsewhere, to download. */
     // Locked again whenever the app goes to the background.
