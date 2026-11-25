@@ -68,10 +68,27 @@ fun wantedQuality(job: DownloadJob, preferred: String): String? = job.wanted ?: 
  * a worse copy. Unknown on either side counts, as the preferred pick treats it.
  */
 fun rankUp(q: String?, wanted: String?): Boolean {
-    fun n(x: String?) = x?.let { Regex("(\\d{3,4})p").find(it.lowercase())?.groupValues?.get(1)?.toIntOrNull() ?: if ("4k" in it.lowercase() || "2160" in it) 2160 else null }
-    val a = n(q) ?: return true
-    val w = n(wanted) ?: return true
+    val a = heightOf(q) ?: return true
+    val w = heightOf(wanted) ?: return true
     return a >= w
+}
+
+/**
+ * A rescue with nothing left at [wanted]: the next resolution up that has anything (1080p before 1440p before 4K),
+ * and in it, the owner's order — the preferred [format] (MKV) first, then the codec that packs the most into the least,
+ * AV1, then x265, then x264, then one that doesn't say — and the lightest of those that isn't suspiciously small.
+ */
+fun upChainPick(hits: List<Hit>, wanted: String?, format: String): Hit? {
+    val w = heightOf(wanted) ?: return null
+    val above = hits.mapNotNull { h -> heightOf(h.quality)?.takeIf { it > w }?.let { h to it } }
+    val step = above.minOfOrNull { it.second } ?: return null
+    fun codecRank(h: Hit) = when (traitsOf(h).codec) { "AV1" -> 0; "x265" -> 1; "x264" -> 2; else -> 3 }
+    return above.filter { it.second == step }.map { it.first }.sortedWith(
+        compareBy<Hit> { if (rightFormat(it, format)) 0 else 1 }
+            .thenBy { codecRank(it) }
+            .thenBy { if (it.size > 0 && it.size < reasonableFloor(it.quality, it.kind)) 1 else 0 }
+            .thenBy { if (it.size > 0) it.size else Long.MAX_VALUE },
+    ).firstOrNull()
 }
 
 /** A fresh link may be up to this many times the size of the one it replaces, when anything that size is found. */
@@ -165,7 +182,7 @@ object LinkRefresh {
                 // Nothing left at that resolution: up the chain (1080p, then higher), as every other pick does, rather
                 // than waiting on a resolution no source has (the owner's ask). The download keeps asking for its own
                 // resolution first on every later refresh ([wantedQuality]).
-                ?: preferredPick(allowed(latest).filter { it.uri != old && it.uri !in gone && batchable(it) && rankUp(it.quality, quality) }, prefs)
+                ?: upChainPick(allowed(latest).filter { it.uri != old && it.uri !in gone && batchable(it) }, quality, prefs.format)
                 ?: if (wide) packPick(atQuality, old, gone, season, prefs) else null
         }) { hit -> if (!hit.direct) LinkCheck.RESUMABLE else LinkFetch.check(hit.uri, hit.headers, isPlaylist(hit)) }
     }

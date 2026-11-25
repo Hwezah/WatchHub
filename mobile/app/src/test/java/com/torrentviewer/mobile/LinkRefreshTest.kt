@@ -128,4 +128,22 @@ class LinkRefreshTest {
         org.junit.Assert.assertFalse(rankUp("480p", "720p"))
         org.junit.Assert.assertTrue(rankUp(null, "720p"))
     }
+
+    @Test fun upTheChainAv1ThenX265ThenX264LightestFirst() {
+        val mb = 1024L * 1024
+        val hits = listOf(
+            link("Film.2160p.x265.mkv", "A", "2160p", "https://a/4k", 900 * mb),
+            link("Film.1080p.x264.mkv", "A", "1080p", "https://a/264", 700 * mb),
+            link("Film.1080p.x265.mkv", "A", "1080p", "https://a/265big", 1200 * mb),
+            link("Film.1080p.x265.mkv", "B", "1080p", "https://b/265", 900 * mb),
+            link("Film.1080p.AV1.mkv", "C", "1080p", "https://c/av1", 1000 * mb),
+            link("Film.480p.x264.mkv", "A", "480p", "https://a/480", 200 * mb),
+        )
+        // 1080p before 4K, AV1 before x265 before x264.
+        assertEquals("https://c/av1", upChainPick(hits, "720p", "MKV")!!.uri)
+        // Without the AV1: the lighter x265.
+        assertEquals("https://b/265", upChainPick(hits.filter { it.uri != "https://c/av1" }, "720p", "MKV")!!.uri)
+        // Never down: nothing above 2160p.
+        assertNull(upChainPick(hits, "2160p", "MKV"))
+    }
 }
