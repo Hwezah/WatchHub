@@ -137,7 +137,9 @@ object CrashGuard {
             }
             out.toByteArray()
         } ?: return null
-        val lines = if (native) com.torrentviewer.core.readableRuns(bytes, limit = 40) else com.torrentviewer.core.anrMainThread(String(bytes))
+        // A native crash read for the thread that crashed and its frames; its loose strings only when it can't be read so.
+        val lines = if (native) com.torrentviewer.core.readTombstone(bytes) ?: com.torrentviewer.core.readableRuns(bytes, limit = 40)
+        else com.torrentviewer.core.anrMainThread(String(bytes))
         lines.joinToString("\n") { "  $it" }.takeIf { it.isNotBlank() }
     }.getOrNull()
 }

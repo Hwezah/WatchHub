@@ -59,3 +59,83 @@ fun anrMainThread(dump: String, lines: Int = 30): List<String> {
     val start = all.indexOfFirst { it.startsWith("\"main\"") }.coerceAtLeast(0)
     return all.drop(start).take(lines)
 }
+
+/**
+ * A native crash's record (Android's tombstone, a protobuf) read properly: the signal and its cause, the abort message,
+ * then the thread that crashed — named — with its frames, library and function, which is what says whose code it was.
+ * [readableRuns] only pulled strings out, every thread's mixed in map order, and the crashing one could be cut off
+ * past its limit (the owner's report showed two bystanders). Null when [bytes] isn't one; at most [frames] frames.
+ */
+fun readTombstone(bytes: ByteArray, frames: Int = 24): List<String>? = runCatching {
+    val top = protoFields(bytes)
+    val tid = top.firstOrNull { it.no == 6 }?.number ?: return null
+    val out = ArrayList<String>()
+    top.firstOrNull { it.no == 10 }?.bytes?.let { s ->
+        val f = protoFields(s)
+        val name = f.firstOrNull { it.no == 2 }?.text
+        val code = f.firstOrNull { it.no == 4 }?.text
+        val at = f.firstOrNull { it.no == 9 }?.number
+        if (name != null) out += listOfNotNull(name, code, at?.let { "at 0x%x".format(it) }).joinToString(" · ")
+    }
+    top.filter { it.no == 15 }.mapNotNull { c -> protoFields(c.bytes ?: return@mapNotNull null).firstOrNull { it.no == 1 }?.text }.forEach { out += it }
+    top.firstOrNull { it.no == 14 }?.text?.takeIf { it.isNotBlank() }?.let { out += "Abort: $it" }
+    // The threads map: entries of key (1, the thread id) and value (2, the thread).
+    val threads = top.filter { it.no == 16 }.mapNotNull { e ->
+        val f = protoFields(e.bytes ?: return@mapNotNull null)
+        val id = f.firstOrNull { it.no == 1 }?.number ?: return@mapNotNull null
+        id to (f.firstOrNull { it.no == 2 }?.bytes ?: return@mapNotNull null)
+    }
+    val crashed = threads.firstOrNull { it.first == tid }?.second ?: return out.takeIf { it.isNotEmpty() }
+    val t = protoFields(crashed)
+    out += "Crashed in thread \"${t.firstOrNull { it.no == 2 }?.text.orEmpty()}\" ($tid):"
+    t.filter { it.no == 4 }.take(frames).forEachIndexed { i, fr ->
+        val f = protoFields(fr.bytes ?: return@forEachIndexed)
+        val fn = f.firstOrNull { it.no == 4 }?.text.orEmpty()
+        val off = f.firstOrNull { it.no == 5 }?.number ?: 0
+        val file = f.firstOrNull { it.no == 6 }?.text.orEmpty().substringAfterLast('/')
+        out += "#%02d %s%s".format(i, file.ifEmpty { "?" }, if (fn.isNotEmpty()) "  $fn+$off" else "")
+    }
+    // Who else was doing what, by name only: a crash in a shared thread can still point at the work beside it.
+    val others = threads.filter { it.first != tid }.mapNotNull { protoFields(it.second).firstOrNull { f -> f.no == 2 }?.text }.distinct()
+    if (others.isNotEmpty()) out += "Other threads: " + others.take(30).joinToString(", ")
+    out
+}.getOrNull()?.takeIf { it.isNotEmpty() }
+
+/** One protobuf field: its number, and a varint ([number]) or length-delimited ([bytes]) value. */
+private class ProtoField(val no: Int, val number: Long?, val bytes: ByteArray?) {
+    val text: String? get() = bytes?.let { String(it, Charsets.UTF_8) }
+}
+
+/** [b]'s fields at one level, in order; fixed-width ones skipped. Throws on a malformed message. */
+private fun protoFields(b: ByteArray): List<ProtoField> {
+    val out = ArrayList<ProtoField>()
+    var i = 0
+    fun varint(): Long {
+        var shift = 0
+        var v = 0L
+        while (true) {
+            require(i < b.size && shift < 64)
+            val c = b[i++].toInt() and 0xFF
+            v = v or ((c and 0x7F).toLong() shl shift)
+            if (c and 0x80 == 0) return v
+            shift += 7
+        }
+    }
+    while (i < b.size) {
+        val key = varint()
+        val no = (key ushr 3).toInt()
+        when ((key and 7).toInt()) {
+            0 -> out += ProtoField(no, varint(), null)
+            1 -> { require(i + 8 <= b.size); i += 8 }
+            2 -> {
+                val n = varint().toInt()
+                require(n >= 0 && i + n <= b.size)
+                out += ProtoField(no, null, b.copyOfRange(i, i + n))
+                i += n
+            }
+            5 -> { require(i + 4 <= b.size); i += 4 }
+            else -> throw IllegalArgumentException("wire type")
+        }
+    }
+    return out
+}
