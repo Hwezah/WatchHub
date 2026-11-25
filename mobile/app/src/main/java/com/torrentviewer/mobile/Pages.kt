@@ -2170,10 +2170,12 @@ private fun Editor(profile: Profile?, canCancel: Boolean, onSave: (String, Strin
             // A profile not saved yet has no id to keep a connection under.
             if (profile != null && Stremio.available) Box(Modifier.fillMaxWidth().padding(top = 24.dp)) { StremioSection(profile) }
         }
-        Button("Save", { onSave(name, icon, colour, kids) }, Modifier.fillMaxWidth().padding(top = 20.dp), icon = L.drawable.lucide_ic_check, primary = true)
-        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (canCancel) Button("Cancel", onCancel)
-            if (profile != null) Button("Delete profile", onDelete, icon = L.drawable.lucide_ic_trash_2)
+        // Save, Cancel and Delete on one row (the owner's choice); the delete is just the bin and "Profile" — no "Delete"
+        // word, the bin says it.
+        Row(Modifier.fillMaxWidth().padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button("Save", { onSave(name, icon, colour, kids) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_check, primary = true, compact = true)
+            if (canCancel) Button("Cancel", onCancel, Modifier.weight(1f), compact = true)
+            if (profile != null) Button("Profile", onDelete, Modifier.weight(1f), icon = L.drawable.lucide_ic_trash_2, compact = true)
         }
     }
 }
