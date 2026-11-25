@@ -441,7 +441,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                     Modifier.padding(top = 2.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold),
                 )
                 Text(pack.release, Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Button(
+                BareButton(
                     if (external) "Send the Pack" else "Download the Pack",
                     {
                         if (external) {
@@ -452,7 +452,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                         }
                         onDismiss()
                     },
-                    Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_layers, fill = Ink.download,
+                    Modifier.padding(top = 10.dp).fillMaxWidth(), L.drawable.lucide_ic_layers,
                 )
             }
             if (showPlan) plan.forEach { (ep, hit) ->
@@ -542,7 +542,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                 "Long tap for share and download options!",
                 Modifier.fillMaxWidth().padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            if (scan.done) Solo(Modifier.padding(top = 14.dp, bottom = 6.dp)) { m -> Chip("Ask Every Source Again", false, onClick = { SeasonBatch.begin(title, season, again = true) }, m, tall = true) }
+            if (scan.done) BareButton("Ask Every Source Again", { SeasonBatch.begin(title, season, again = true) }, Modifier.padding(top = 10.dp, bottom = 6.dp).fillMaxWidth(), L.drawable.lucide_ic_rotate_cw)
         }
     }
     if (choosing) DownloaderSheet(ExternalDownloaders.sendProbe(), many = true, onPick = { chosen = it }, onDismiss = { choosing = false })
@@ -570,5 +570,19 @@ fun FilterRow(name: String, options: List<Pair<String, Int>>, chosen: String?, l
     BarChoices(listOf("Any") + options.map { (value, n) -> "${label(value)} · $n" }, values.indexOf(chosen).takeIf { it >= 0 }, spread = spread) { i ->
         val value = values[i]
         onPick(if (value != null && value == chosen) null else value)
+    }
+}
+
+
+/** A button with no fill (the owner's choice for the pack and Ask Every Source Again): an icon and words, centred, that dim while pressed. */
+@Composable
+private fun BareButton(label: String, onClick: () -> Unit, modifier: Modifier, @androidx.annotation.DrawableRes icon: Int) {
+    Tap(onClick, modifier, PILL) { pressed ->
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 11.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Lc(icon, tint = Ink.download.copy(alpha = if (pressed) 0.6f else 1f), size = 22.dp)
+            Text(label, Modifier.padding(start = 10.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.text.copy(alpha = if (pressed) 0.6f else 1f)))
+        }
     }
 }

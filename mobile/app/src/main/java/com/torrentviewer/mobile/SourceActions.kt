@@ -369,10 +369,10 @@ fun DownloadChoice(
 private fun ChoiceTile(icon: Int, title: String, excerpt: String, tint: androidx.compose.ui.graphics.Color = Ink.text, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(9.dp), onLongClick = onLongClick) { pressed ->
         Row(
-            Modifier.fillMaxWidth().background(Ink.text.copy(alpha = if (pressed) 0.12f else 0.06f)).padding(CARD - 2.dp),
-            verticalAlignment = Alignment.Top,
+            Modifier.fillMaxWidth().background(Ink.text.copy(alpha = if (pressed) 0.12f else 0.06f)).padding(horizontal = CARD + 4.dp, vertical = CARD - 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Lc(icon, Modifier.padding(top = 2.dp), tint = tint, size = 22.dp)
+            Lc(icon, tint = tint, size = 22.dp)
             Column(Modifier.padding(start = 12.dp)) {
                 Text(title, style = Type.body.copy(fontWeight = FontWeight.SemiBold))
                 Text(excerpt, Modifier.padding(top = 3.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp))
