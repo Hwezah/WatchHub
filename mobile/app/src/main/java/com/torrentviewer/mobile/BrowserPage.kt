@@ -103,7 +103,8 @@ fun BrowserScreen() {
                     keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, onFocus = { typing = it },
                     onSubmit = { Browser.go(input); focus.clearFocus() },
                 )
-                if (input.isNotEmpty()) BarIcon(L.drawable.lucide_ic_x) { input = "" }
+                // The clear X, bigger in every box (the owner's choice).
+                if (input.isNotEmpty()) BarIcon(L.drawable.lucide_ic_x, 24.dp) { input = "" }
                 // What this page has that can be downloaded, with a count.
                 Tap({ picking = true }, Modifier.size(width = 44.dp, height = 46.dp), CircleShape) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -345,9 +346,9 @@ fun BrowserScreen() {
 
 /** A small icon button in the bar and the lists. */
 @Composable
-private fun BarIcon(icon: Int, onClick: () -> Unit) {
+private fun BarIcon(icon: Int, size: androidx.compose.ui.unit.Dp = 20.dp, onClick: () -> Unit) {
     Tap(onClick, Modifier.size(42.dp), CircleShape) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(icon, tint = Ink.text, size = 20.dp) }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(icon, tint = Ink.text, size = size) }
     }
 }
 

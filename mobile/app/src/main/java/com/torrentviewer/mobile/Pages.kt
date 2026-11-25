@@ -447,7 +447,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                     trailing = {
                         when {
                             busy -> Spinner(size = 20.dp)
-                            query.isNotEmpty() -> Tap({ query = "" }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(4.dp), tint = Ink.muted, size = 18.dp) }
+                            query.isNotEmpty() -> Tap({ query = "" }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(4.dp), tint = Ink.muted, size = 24.dp) }
                         }
                     },
                 )

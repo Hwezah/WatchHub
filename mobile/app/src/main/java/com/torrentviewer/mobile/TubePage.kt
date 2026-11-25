@@ -253,7 +253,7 @@ private fun TubeHeader(typed: String, onTyped: (String) -> Unit, onSubmit: () ->
     ) {
         Tap(onSubmit, shape = CircleShape) { Lc(R.drawable.ic_search_thin, Modifier.padding(8.dp), tint = Ink.text, size = 28.dp) }
         BareInput(typed, onTyped, "Search YouTube", Modifier.weight(1f).padding(horizontal = 6.dp), onSubmit = onSubmit)
-        if (typed.isNotEmpty()) Tap({ onTyped("") }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 18.dp) }
+        if (typed.isNotEmpty()) Tap({ onTyped("") }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(6.dp), tint = Ink.muted, size = 24.dp) }
         // Signed in: the account's picture; else the thin sign-in mark. Either opens You.
         val account by YouTubeAccount.account.collectAsState()
         val photo = account?.photo
