@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
@@ -85,6 +86,17 @@ fun UpdateCard(watch: Watch, modifier: Modifier = Modifier) {
                 scaleY = 0.98f + 0.02f * v
             }
             .background(face).grain()
+            // A thin green strip along the bottom edge, filling as the update downloads: the spinner alone said nothing
+            // of how far it had got (the owner's ask).
+            .drawWithContent {
+                drawContent()
+                val p = progress
+                if (p != null && !isReady && !isFailed) {
+                    val h = 2.dp.toPx()
+                    drawRect(Ink.download.copy(alpha = 0.18f), androidx.compose.ui.geometry.Offset(0f, size.height - h), androidx.compose.ui.geometry.Size(size.width, h))
+                    drawRect(Ink.download, androidx.compose.ui.geometry.Offset(0f, size.height - h), androidx.compose.ui.geometry.Size(size.width * p.coerceIn(0f, 1f), h))
+                }
+            }
             .statusBarsPadding()
             .padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
