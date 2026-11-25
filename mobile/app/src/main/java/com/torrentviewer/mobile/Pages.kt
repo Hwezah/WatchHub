@@ -2038,7 +2038,7 @@ fun ProfilesScreen(profiles: List<Profile>, onPick: (Profile) -> Unit, onCancel:
                 },
                 onCancel = { if (profiles.isEmpty()) onCancel?.invoke() else mode = ProfilesMode.Pick },
             )
-            is ProfilesMode.Pin -> PinPad(m.profile, others = profiles.any { it.id != m.profile.id }, onOk = { onPick(m.profile) }, onBack = { mode = ProfilesMode.Pick })
+            is ProfilesMode.Pin -> PinPad(m.profile, onOk = { onPick(m.profile) }, onBack = { mode = ProfilesMode.Pick })
         }
     }
 }
@@ -2065,12 +2065,12 @@ private fun Picker(
             }
             if (!managing) Tile("Guest", onGuest) { Avatar(GUEST, 96.dp) }
             if (!managing && profiles.size < 6) Tile("Add profile", onAdd) {
-                Box(Modifier.size(96.dp).background(Ink.surface, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_plus, tint = Ink.muted, size = 36.dp) }
+                Box(Modifier.size(96.dp).background(Ink.surface, CircleShape), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_plus, tint = Ink.muted, size = 36.dp) }
             }
         }
         Spacer(Modifier.height(36.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (profiles.isNotEmpty()) Button(if (managing) "Done" else "Manage", onManage, icon = if (managing) L.drawable.lucide_ic_check else L.drawable.lucide_ic_pencil)
+            if (profiles.isNotEmpty()) Button(if (managing) "Done" else "Manage", onManage, Modifier.width(180.dp), icon = if (managing) L.drawable.lucide_ic_check else L.drawable.lucide_ic_pencil)
             if (onCancel != null && !managing) Button("Back", onCancel)
         }
     }
@@ -2078,7 +2078,7 @@ private fun Picker(
 
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.Badge(icon: Int) {
-    Box(Modifier.align(Alignment.BottomEnd).padding(6.dp).size(26.dp).clip(RoundedCornerShape(5.dp)).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+    Box(Modifier.align(Alignment.BottomEnd).padding(2.dp).size(26.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
         Lc(icon, tint = Color.White, size = 14.dp)
     }
 }
@@ -2086,7 +2086,7 @@ private fun androidx.compose.foundation.layout.BoxScope.Badge(icon: Int) {
 @Composable
 private fun Tile(name: String, onClick: () -> Unit, face: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(100.dp)) {
-        Tap(onClick, shape = RoundedCornerShape(8.dp)) { Box { face() } }
+        Tap(onClick, shape = CircleShape) { Box { face() } }
         Text(name, Modifier.padding(top = 10.dp), style = Type.label.copy(color = Ink.muted), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -2175,11 +2175,11 @@ private fun Editor(profile: Profile?, canCancel: Boolean, onSave: (String, Strin
 }
 
 /**
- * A locked profile's PIN. [others]: another saved profile to pick instead, offered as Switch Profile; with none it's
- * left off (the owner's choice: a lone profile has nowhere to switch to), the phone's back still reaching the list.
+ * A locked profile's PIN, and nothing else on the page (the owner's choice): the phone's back returns to Who's
+ * watching, where Guest opens without one.
  */
 @Composable
-private fun PinPad(profile: Profile, others: Boolean, onOk: () -> Unit, onBack: () -> Unit) {
+private fun PinPad(profile: Profile, onOk: () -> Unit, onBack: () -> Unit) {
     BackHandler { onBack() }
     var pin by remember { mutableStateOf("") }
     var wrong by remember { mutableStateOf(false) }
@@ -2199,9 +2199,5 @@ private fun PinPad(profile: Profile, others: Boolean, onOk: () -> Unit, onBack: 
                 }
             }
         }, "* * * *", Modifier.width(200.dp), secret = true, digits = true)
-        if (others) {
-            Spacer(Modifier.height(20.dp))
-            Button("Switch Profile", onBack, icon = L.drawable.lucide_ic_users)
-        }
     }
 }

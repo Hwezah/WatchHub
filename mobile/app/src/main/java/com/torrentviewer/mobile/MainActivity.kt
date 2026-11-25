@@ -111,9 +111,12 @@ class MainActivity : AppCompatActivity() {
         // Known before the first frame, so an upright phone doesn't open with the wider margins.
         resources.configuration.let { Room.tight = it.orientation == Configuration.ORIENTATION_PORTRAIT && it.smallestScreenWidthDp < 600 }
         setContent {
+            // Round avatars all through the phone app (the owner's choice); the TV keeps its squares.
+            androidx.compose.runtime.CompositionLocalProvider(com.torrentviewer.core.LocalAvatarShape provides { androidx.compose.foundation.shape.CircleShape }) {
             androidx.compose.foundation.layout.Box {
                 App(Services.watch, incoming)
                 com.torrentviewer.core.Splash(skip = incoming.value != null)
+            }
             }
         }
         preferHighRefreshRate()
