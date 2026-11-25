@@ -198,6 +198,8 @@ fun Button(
      * app's grain — red with white words when [primary], near-white with black words otherwise — no gradient glow, no rim.
      */
     glass: Boolean = false,
+    /** A notch taller than the usual button, for a hero action like Play (the owner's choice). */
+    tall: Boolean = false,
 ) {
     val filled = on == true
     val disc by animateFloatAsState(if (filled) 1f else 0f, if (filled) spring(dampingRatio = 0.55f, stiffness = 420f) else tween(180), label = "disc")
@@ -244,7 +246,7 @@ fun Button(
                     fill != null -> Modifier.background(lerp(fill, Color.Black, if (pressed) 0.56f else 0.46f)).grain()
                     else -> Modifier.background(bg)
                 })
-                    .height(if (thin) 34.dp else 44.dp).padding(horizontal = if (thin) 14.dp else 20.dp),
+                    .height(if (thin) 34.dp else if (tall) 50.dp else 44.dp).padding(horizontal = if (thin) 14.dp else 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {

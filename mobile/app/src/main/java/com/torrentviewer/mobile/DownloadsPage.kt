@@ -307,12 +307,12 @@ private val DL_CARD = RoundedCornerShape(14.dp)
 
 
 
-/** A download card's badge in place of a poster: a film strip on a faint red disc, as Grabber shows its files. */
+/** A download card's badge in place of a poster: a film strip (or the batch layers for a pack) in the accent. */
 @Composable
-private fun FilmBadge() {
+private fun FilmBadge(icon: Int = L.drawable.lucide_ic_film) {
     // A bare icon in the accent, no disc behind it (the owner's choice), a notch bigger.
     Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-        Lc(L.drawable.lucide_ic_film, tint = Ink.accent, size = 26.dp)
+        Lc(icon, tint = Ink.accent, size = 26.dp)
     }
 }
 
@@ -346,7 +346,8 @@ private fun ShowGroup(episodes: List<Finished>, onPlay: (Finished) -> Unit, onSt
     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(DL_CARD).frosted(DL_CARD, CARD_FACE).padding(start = 16.dp, end = 6.dp, top = 8.dp, bottom = 8.dp)) {
         Tap({ open = !open }, Modifier.fillMaxWidth(), RoundedCornerShape(5.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                FilmBadge()
+                // A show's saved episodes are a batch: the layers badge (the owner's choice).
+                FilmBadge(L.drawable.lucide_ic_layers)
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(first.label.substringBefore(" · "), Modifier.basicMarquee(), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
                     Text("${episodes.size} episodes  ·  ${bytes(episodes.sumOf { it.size })}", Modifier.padding(top = 2.dp), style = Type.meta.copy(fontSize = 12.sp))
@@ -424,7 +425,8 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
             .padding(start = 16.dp, end = CARD - 2.dp, top = 8.dp, bottom = 8.dp),
     ) {
         Row(Modifier.onSizeChanged { headPx = it.height }, verticalAlignment = Alignment.CenterVertically) {
-            FilmBadge()
+            // A pack (several files) gets the batch layers in place of the film strip (the owner's choice).
+            FilmBadge(if (pack) L.drawable.lucide_ic_layers else L.drawable.lucide_ic_film)
             // Beside the badge, centred on it (the owner's choice): the name and how it's going.
             Column(Modifier.weight(1f).padding(start = 12.dp, end = 12.dp)) {
                 // One line; a name too long for it scrolls slowly across (the owner's choice), a short one stays still.

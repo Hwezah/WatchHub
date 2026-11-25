@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -72,22 +73,22 @@ fun SwipeRow(
     fun rightMax() = if (onRight != null) widthPx else 0f
 
     Box(modifier.fillMaxWidth().onSizeChanged { if (it.width > 0) widthPx = it.width.toFloat() }) {
-        // The right action's backing — the card's own size and shape, brightening as it's drawn right, the icon at the left.
-        if (onRight != null && rightIcon != null) {
-            val a = (offset.value / (widthPx / 3f)).coerceIn(0f, 1f)
-            Box(Modifier.matchParentSize().padding(bottom = inset).clip(backing).background(rightTint.copy(alpha = 0.16f + 0.24f * a)), contentAlignment = Alignment.CenterStart) {
-                Lc(rightIcon, Modifier.padding(start = 24.dp), tint = rightTint, size = 24.dp)
+        // The right action's backing — the card's own size and shape, shown only on a rightward swipe so it never
+        // bleeds onto the left. Solid [rightTint] at its outer (left) edge, fading inward to clear; the icon white on it.
+        if (onRight != null && rightIcon != null && offset.value > 0f) {
+            Box(Modifier.matchParentSize().padding(bottom = inset).clip(backing).background(Brush.horizontalGradient(0f to rightTint, 0.72f to Color.Transparent)), contentAlignment = Alignment.CenterStart) {
+                Lc(rightIcon, Modifier.padding(start = 24.dp), tint = Color.White, size = 24.dp)
             }
         }
-        // The left action's backing — full width, no rounding (the owner's choice: endless to the left). Its icon, at the
-        // right where the row uncovers it, is the tap target: the delete runs on the tap, not the swipe.
-        if (onLeft != null && leftIcon != null) {
-            val a = (-offset.value / revealPx).coerceIn(0f, 1f)
-            Box(Modifier.matchParentSize().padding(bottom = inset).background(leftTint.copy(alpha = 0.16f + 0.5f * a)), contentAlignment = Alignment.CenterEnd) {
+        // The left action's backing — the mirror: the card's size and shape, shown only on a leftward swipe, solid
+        // [leftTint] at its outer (right) edge fading inward. Its icon, where the row uncovers it, is the tap target: the
+        // delete runs on the tap, not the swipe.
+        if (onLeft != null && leftIcon != null && offset.value < 0f) {
+            Box(Modifier.matchParentSize().padding(bottom = inset).clip(backing).background(Brush.horizontalGradient(0.28f to Color.Transparent, 1f to leftTint)), contentAlignment = Alignment.CenterEnd) {
                 Box(
                     Modifier.width(revealWidth).fillMaxHeight().clickable(remember { MutableInteractionSource() }, indication = null, enabled = isOpen) { onLeft(); close() },
                     contentAlignment = Alignment.CenterEnd,
-                ) { Lc(leftIcon, Modifier.padding(end = 24.dp), tint = leftTint, size = 24.dp) }
+                ) { Lc(leftIcon, Modifier.padding(end = 24.dp), tint = Color.White, size = 24.dp) }
             }
         }
         // The row itself, moved by the drag; while it's open a tap on it closes it.
