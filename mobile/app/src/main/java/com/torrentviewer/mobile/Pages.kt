@@ -655,11 +655,14 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
             if (shown) FilesLock.ask(Tab.LIBRARY) {}
             else if (FilesLock.asking == Tab.LIBRARY) FilesLock.dismiss()
         }
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-            Heading("Library") { AddLinkPlus() }
-            LibraryTabs(section, downloading.isNotEmpty()) { section = it }
-            Text("Downloads are locked.", Modifier.padding(top = 24.dp, bottom = 14.dp), style = Type.body.copy(color = Ink.muted))
-            Button("Unlock", { FilesLock.ask(Tab.LIBRARY) {} }, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_lock)
+        // The same lock as everywhere (the owner's design): in the middle of the screen, the whole page a tap to unlock;
+        // the heading and the Wishlist tab above it still answer.
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().tapToUnlock(Tab.LIBRARY), contentAlignment = Alignment.Center) { LockPrompt("Downloads are locked.") }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Heading("Library") { AddLinkPlus() }
+                LibraryTabs(section, downloading.isNotEmpty()) { section = it }
+            }
         }
         return
     }

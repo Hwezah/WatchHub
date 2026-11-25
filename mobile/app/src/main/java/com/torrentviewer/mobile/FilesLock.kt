@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -72,7 +73,12 @@ object FilesLock {
     fun ask(tab: Tab, after: (() -> Unit)? = null) {
         then = after
         asking = tab
+        asks++
     }
+
+    /** Each ask, counted: the pin row puts the keyboard up again even when it was already open ([CodeRow]). */
+    var asks by mutableStateOf(0)
+        private set
 
     private const val TIMEOUT = "files-lock-timeout"
 
@@ -180,7 +186,15 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
     /** The pin forgotten: the password instead. */
     var byPassword by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(byPassword) { runCatching { focus.requestFocus() } }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // The dial pad up at once, every time it's asked for (the owner caught it often not coming): focus alone, at the
+    // row's first frame, came before the field was placed and left the keyboard down. A moment after, focus, and the
+    // keyboard asked for outright.
+    LaunchedEffect(byPassword, FilesLock.asks) {
+        kotlinx.coroutines.delay(120)
+        runCatching { focus.requestFocus() }
+        keyboard?.show()
+    }
     // A very faint strip behind the lock, the field and the X, so the row reads as one (the owner's choice).
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).clip(PILL).background(Ink.text.copy(alpha = 0.05f))
@@ -356,8 +370,28 @@ fun LockSettings(say: (String) -> Unit) {
 
 
 /**
+ * What a locked page shows, wherever the lock appears (the owner's design): a green lock, [said] ("Downloads are locked.") and
+ * "Tap to unlock", centred, on nothing — no button, no fill. [modifier] places it; the caller makes its area tappable.
+ */
+@Composable
+fun LockPrompt(said: String, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Lc(L.drawable.lucide_ic_lock, tint = Ink.good, size = 40.dp)
+        Text(said, Modifier.padding(top = 16.dp), style = Type.body.copy(color = Ink.text), textAlign = TextAlign.Center)
+        Text("Tap to unlock", Modifier.padding(top = 4.dp), style = Type.meta.copy(color = Ink.faint), textAlign = TextAlign.Center)
+    }
+}
+
+/** A whole area that asks for the code when tapped anywhere, with no ripple or fill. */
+fun Modifier.tapToUnlock(tab: Tab): Modifier = composedTap { FilesLock.ask(tab) {} }
+
+private fun Modifier.composedTap(onTap: () -> Unit): Modifier = this.then(
+    Modifier.pointerInput(Unit) { detectTapGestures { onTap() } },
+)
+
+/**
  * A locked tab's page (the Browser, the owner's choice): behind the code however it's reached — the tab bar, or a link
- * sent to it from elsewhere — asked for while it's on screen, with an Unlock button if the row is dismissed.
+ * sent to it from elsewhere — asked for while it's on screen; a tap anywhere asks again if the row was put away.
  */
 @Composable
 fun LockedPage(tab: Tab, what: String) {
@@ -366,15 +400,11 @@ fun LockedPage(tab: Tab, what: String) {
         if (shown) FilesLock.ask(tab) {}
         else if (FilesLock.asking == tab) FilesLock.dismiss()
     }
-    // Opaque, over whatever is under it, and taking every touch: nothing of the locked page shows or answers.
-    androidx.compose.foundation.layout.Column(
+    // Opaque over the page under it, and taking every touch: nothing of the locked page shows or answers.
+    Box(
         Modifier.fillMaxSize().background(Ink.bg)
             .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } }
-            .padding(horizontal = 16.dp).padding(top = 120.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Lc(L.drawable.lucide_ic_lock, tint = Ink.muted, size = 36.dp)
-        Text("$what is locked.", Modifier.padding(top = 14.dp, bottom = 14.dp), style = Type.body.copy(color = Ink.muted))
-        Button("Unlock", { FilesLock.ask(tab) {} }, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_lock)
-    }
+            .tapToUnlock(tab),
+        contentAlignment = Alignment.Center,
+    ) { LockPrompt("$what is locked.") }
 }
