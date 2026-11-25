@@ -498,7 +498,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                                     Tab.SETTINGS -> SettingsScreen(watch, me, onSwitchProfile = { switching = true })
                                     Tab.FILES -> FilesScreen(watch)
                                     Tab.YOUTUBE -> TubeScreen(watch)
-                                    Tab.BROWSER -> BrowserScreen()
+                                    // Behind the code too (the owner's choice): however the tab is reached, a link sent to it included.
+                                    Tab.BROWSER -> if (FilesLock.needed()) LockedPage(Tab.BROWSER, "The Browser") else BrowserScreen()
                                 }
                             }
                         }
@@ -559,7 +560,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     // Any other way the tab changes (a link, a notification): the same.
     LaunchedEffect(tab) { focus.clearFocus(force = true) }
     // Settings → Lock → Immediately: going to another tab or page locks it again (the owner's choice).
-    LaunchedEffect(tab, pages.size) { FilesLock.left() }
+    LaunchedEffect(tab, pages.size) { FilesLock.left(tab) }
 
     Box(Modifier.fillMaxSize()) {
         if (isWide()) {

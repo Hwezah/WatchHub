@@ -46,7 +46,7 @@ object FilesLock {
      * The tabs behind the code. The Library itself opens: what's on the phone, under its "On this phone" chevron, is
      * what asks (the owner's choice), so it isn't asked for twice.
      */
-    val LOCKED = setOf(Tab.FILES)  // the Library's Downloads half asks on its own page
+    val LOCKED = setOf(Tab.FILES, Tab.BROWSER)  // and the Browser (the owner's choice); the Library's Downloads half asks on its own page
 
     /** Unlocked: by the code or the password, at [unlockedAt]; how long that lasts is [timeout]. */
     var unlocked by mutableStateOf(false)
@@ -97,7 +97,15 @@ object FilesLock {
     fun needed() = code() != null && !open()
 
     /** Another page or tab: locked again at once when the timeout is [IMMEDIATELY] (the owner's choice). */
-    fun left() = relock()
+    fun left(tab: Tab? = null) {
+        // The tab the code was just typed for, opening: that's arriving, not leaving.
+        if (tab != null && tab == arriving) { arriving = null; return }
+        arriving = null
+        relock()
+    }
+
+    /** The tab a right code is opening ([passed]): its own arrival doesn't lock it again. */
+    private var arriving: Tab? = null
 
     /**
      * Locked again: any move away from Downloads or Files — another tab, Settings, Search, a page opened — asks for the
@@ -122,7 +130,7 @@ object FilesLock {
         val after = then
         asking = null
         then = null
-        if (after != null) after() else tab?.let(onOpen)
+        if (after != null) after() else tab?.let { arriving = it; onOpen(it) }
     }
 
     private fun opened() {
@@ -265,7 +273,7 @@ fun LockSettings(say: (String) -> Unit) {
     }
 
     if (!on) {
-        Note("Lock your saved downloads and Files behind a four-digit pin. The Auth Password opens them if you forget the pin.")
+        Note("Lock your downloads, Files and the Browser behind a four-digit pin. The Auth Password opens them if you forget the pin.")
         PinField(pin, { pin = it }, "Pin (four digits)")
         PinField(again, { again = it }, "The pin again")
         Field(pass, { pass = it }, "Auth Password", gap, secret = true)
@@ -288,10 +296,10 @@ fun LockSettings(say: (String) -> Unit) {
     }
     when (step) {
         null -> {
-            Note("On. Downloads and Files ask for the pin" + if (FilesLock.hasPassword()) "; the Auth Password opens them too." else ". No Auth Password yet: set one in case you forget the pin.")
+            Note("On. Downloads, Files and the Browser ask for the pin" + if (FilesLock.hasPassword()) "; the Auth Password opens them too." else ". No Auth Password yet: set one in case you forget the pin.")
             Text("Lock Again", Modifier.padding(top = 8.dp), style = Type.label.copy(color = Ink.text))
             Text(
-                "Going to another page always locks Downloads and Files again. This is for the app sent to the background.",
+                "Going to another page always locks Downloads, Files and the Browser again. This is for the app sent to the background.",
                 Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint),
             )
             BarChoices(FilesLock.TIMEOUTS.map { it.second }, FilesLock.TIMEOUTS.indexOfFirst { it.first == FilesLock.timeout }.takeIf { it >= 0 }, Modifier.padding(top = 4.dp)) {
@@ -328,7 +336,7 @@ fun LockSettings(say: (String) -> Unit) {
             }
         }
         "off" -> {
-            Note("Turn Off Lock: saved downloads and Files will open for anyone.")
+            Note("Turn Off Lock: downloads, Files and the Browser will open for anyone.")
             Field(current, { current = it }, "Current pin or Auth Password", gap, secret = true)
             CancelSave("Turn Off") {
                 if (!knows()) say("That isn't the current pin or Auth Password") else {
@@ -340,5 +348,27 @@ fun LockSettings(say: (String) -> Unit) {
                 }
             }
         }
+    }
+}
+
+
+/**
+ * A locked tab's page (the Browser, the owner's choice): behind the code however it's reached — the tab bar, or a link
+ * sent to it from elsewhere — asked for while it's on screen, with an Unlock button if the row is dismissed.
+ */
+@Composable
+fun LockedPage(tab: Tab, what: String) {
+    val shown = LocalShown.current
+    LaunchedEffect(shown) {
+        if (shown) FilesLock.ask(tab) {}
+        else if (FilesLock.asking == tab) FilesLock.dismiss()
+    }
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 120.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Lc(L.drawable.lucide_ic_lock, tint = Ink.muted, size = 36.dp)
+        Text("$what is locked.", Modifier.padding(top = 14.dp, bottom = 14.dp), style = Type.body.copy(color = Ink.muted))
+        Button("Unlock", { FilesLock.ask(tab) {} }, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_lock)
     }
 }
