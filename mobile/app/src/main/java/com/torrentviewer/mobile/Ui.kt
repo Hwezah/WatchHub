@@ -432,7 +432,12 @@ fun Field(
         // A PIN sits in the middle of its box, placeholder and dots alike.
         val align = if (digits) TextAlign.Center else TextAlign.Start
         Box(Modifier.weight(1f), contentAlignment = if (digits) Alignment.Center else Alignment.CenterStart) {
-            if (value.isEmpty()) Text(placeholder, style = Type.label.copy(color = Ink.faint, fontSize = 16.sp, textAlign = align), maxLines = 1)
+            // An asterisk sits up at the letters' top, so "* * * *" is nudged down to the box's middle (the owner caught it).
+            val stars = placeholder.isNotBlank() && placeholder.all { it == '*' || it == ' ' }
+            if (value.isEmpty()) Text(
+                placeholder, if (stars) Modifier.offset(y = 4.dp) else Modifier,
+                style = Type.label.copy(color = Ink.faint, fontSize = if (stars) 18.sp else 16.sp, textAlign = align), maxLines = 1,
+            )
             BasicTextField(
                 value = value,
                 onValueChange = onValue,
