@@ -676,6 +676,9 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             }
         }
 
+        // The Undo strip for a held delete, over everything, just above the nav (the owner's ask, as Grabber's).
+        UndoStrip(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (tab == Tab.BROWSER) 16.dp else 92.dp))
+
         if (AddLink.open) AddLinkSheet { AddLink.open = false }
         // A link Shared to WatchHub, or copied and opened here: its grab sheet, over everything, straight to the formats.
         PageGrab.page?.let { url -> if (!Kids.on) SaveSheet(url, PageGrab.name.take(70), null, onDone = { PageGrab.clear() }) else PageGrab.clear() }

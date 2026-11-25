@@ -1020,14 +1020,16 @@ fun BareInput(
     )
     Box(modifier, contentAlignment = Alignment.CenterStart) {
         if (value.isEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!focused) Box(Modifier.width(2.dp).height(22.dp).graphicsLayer { alpha = on }.background(Ink.download))
+            // A taller cursor (the owner's choice, as Grabber's), so it reads clearly in the address bar.
+            if (!focused) Box(Modifier.width(2.dp).height(26.dp).graphicsLayer { alpha = on }.background(Ink.download))
             Text(placeholder, Modifier.padding(start = if (focused) 2.dp else 6.dp), style = Type.label.copy(color = Ink.faint, fontSize = 16.sp), maxLines = 1)
         }
         BasicTextField(
             value = value,
             onValueChange = onValue,
             singleLine = true,
-            textStyle = Type.label.copy(fontSize = 16.sp),
+            // The live cursor follows the line height: a taller line makes a taller cursor (the owner's choice), centred.
+            textStyle = Type.label.copy(fontSize = 16.sp, lineHeight = 28.sp, lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center, androidx.compose.ui.text.style.LineHeightStyle.Trim.None)),
             cursorBrush = SolidColor(Ink.download),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
             keyboardActions = KeyboardActions(onAny = { onSubmit() }),

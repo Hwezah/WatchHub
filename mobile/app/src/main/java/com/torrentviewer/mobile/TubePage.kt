@@ -432,10 +432,21 @@ private fun TubeDownloads(watch: Watch) {
     }
     deleting?.let { f ->
         Sheet(
-            title = "Delete ${f.label}?",
-            options = listOf(Option(true, "Delete from this phone", bytes(f.size), icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep It", icon = L.drawable.lucide_ic_check)),
+            title = f.label,
+            // Both go to the Bin first and are held with Undo, so a slip loses nothing (the owner's ask, as Grabber's).
+            options = listOf(
+                Option("bin", "Move to Bin", "Keep it in the Bin to restore later", icon = L.drawable.lucide_ic_trash_2),
+                Option("delete", "Delete permanently", bytes(f.size), icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
+                Option("keep", "Keep it", icon = L.drawable.lucide_ic_check),
+            ),
             selected = null,
-            onPick = { if (it) Downloads.delete(f); deleting = null },
+            onPick = {
+                when (it) {
+                    "bin" -> { val e = Downloads.toBin(f); UndoHold.start("Moved \"${f.label}\" to the Bin", undo = { Downloads.restoreFromBin(e) }, commit = {}) }
+                    "delete" -> { val e = Downloads.toBin(f); UndoHold.start("Deleted \"${f.label}\"", undo = { Downloads.restoreFromBin(e) }, commit = { Downloads.eraseBin(e) }) }
+                }
+                deleting = null
+            },
             onDismiss = { deleting = null },
         )
     }

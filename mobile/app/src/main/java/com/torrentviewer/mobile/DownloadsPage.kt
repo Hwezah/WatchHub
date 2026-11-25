@@ -122,6 +122,8 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     /** Open, and not locked since: the lock timing out or (Immediately) another page shuts it again. */
     val savedShown = showSaved  // the whole page is behind the lock now
     var deleting by remember { mutableStateOf<Finished?>(null) }
+    var binOpen by remember { mutableStateOf(false) }
+    val binItems by Downloads.bin.collectAsState()
     /** A film's or episode's ⓘ tapped: its story. */
     var story by remember { mutableStateOf<Finished?>(null) }
     var deletingAll by remember { mutableStateOf(false) }
@@ -174,6 +176,10 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
             Tap({ showSaved = !showSaved }, Modifier.fillMaxWidth(), RoundedCornerShape(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f).padding(start = 14.dp)) { Label("On this phone  ·  ${bytes(finished.sumOf { it.size })}") }
+                    // The Bin, when it holds anything: restore or erase deleted files (the owner's ask, as Grabber's).
+                    if (binItems.isNotEmpty()) Tap({ binOpen = true }, shape = CircleShape) {
+                        Lc(L.drawable.lucide_ic_trash_2, Modifier.padding(6.dp), tint = Ink.muted, size = 22.dp)
+                    }
                     Lc(if (savedShown) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(end = 14.dp), tint = Ink.muted, size = 28.dp)
                 }
             }
@@ -235,26 +241,31 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
         DownloadOptionsSheet(now, onCancel = { options = null; cancelling = now }, onSwap = { options = null; swapping = now }, onDismiss = { options = null })
     }
     val context = androidx.compose.ui.platform.LocalContext.current
-    // A saved file's choices (its bin, or held): send it to another app, delete it, or keep it.
+    // A saved file's choices: share it, move it to the Bin (recoverable), delete it for good, or keep it. Both deletes
+    // are held for a few seconds with an Undo strip, and the file goes to the Bin first either way, so nothing is lost by
+    // a slip (the owner's ask, as Grabber's).
     deleting?.let { f ->
         Sheet(
             title = f.label,
             options = listOf(
                 Option("share", "Share", "Send the file to another app", icon = L.drawable.lucide_ic_share_2),
-                Option("delete", "Delete from this phone", bytes(f.size), icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
+                Option("bin", "Move to Bin", "Keep it in the Bin to restore later", icon = L.drawable.lucide_ic_trash_2),
+                Option("delete", "Delete permanently", bytes(f.size), icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
                 Option("keep", "Keep it", icon = L.drawable.lucide_ic_check),
             ),
             selected = null,
             onPick = {
                 when (it) {
                     "share" -> shareFile(context, f.file, f.label)
-                    "delete" -> Downloads.delete(f)
+                    "bin" -> { val e = Downloads.toBin(f); UndoHold.start("Moved \"${f.label}\" to the Bin", undo = { Downloads.restoreFromBin(e) }, commit = {}) }
+                    "delete" -> { val e = Downloads.toBin(f); UndoHold.start("Deleted \"${f.label}\"", undo = { Downloads.restoreFromBin(e) }, commit = { Downloads.eraseBin(e) }) }
                 }
                 deleting = null
             },
             onDismiss = { deleting = null },
         )
     }
+    if (binOpen) BinSheet { binOpen = false }
 }
 
 /** Every download card's shape: well rounded, as Grabber's list is (the owner's choice). */

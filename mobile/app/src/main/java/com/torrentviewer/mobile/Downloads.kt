@@ -557,6 +557,117 @@ object Downloads {
         }).toString())
     }
 
+    /* ----------------------------------------------------------------- the Bin (hold-to-undo deletes, as Grabber's) */
+
+    /** A hidden folder at the top of the download folder; its dot name keeps it out of the Files app and the Library list. */
+    const val BIN_DIR = ".Bin"
+    private const val BIN_KEY = "download-bin"
+    private const val BIN_DAYS = 30L
+
+    /** A file in the Bin: where it sits now, what it was, and where it came from — so it can be put back or shown. */
+    data class BinItem(
+        val binPath: String, val name: String, val from: String, val size: Long, val at: Long,
+        val poster: String?, val titleName: String?, val imdb: String?, val kind: String?,
+    ) {
+        val file get() = File(binPath)
+        val label get() = titleName ?: name
+    }
+
+    private val _bin = MutableStateFlow<List<BinItem>>(emptyList())
+    /** What's in the Bin, newest first; the Bin sheet shows it. */
+    val bin: StateFlow<List<BinItem>> = _bin
+
+    private fun binDir(): File = File(keepDir(), BIN_DIR).apply { mkdirs() }
+
+    private fun readBin(): List<BinItem> = runCatching {
+        JSONArray(Kv.global(BIN_KEY) ?: "[]").objects().mapNotNull { o ->
+            val p = o.str("binPath") ?: return@mapNotNull null
+            BinItem(p, o.optString("name"), o.str("from") ?: p, o.optLong("size"), o.optLong("at"), o.str("poster"), o.str("titleName"), o.str("imdb"), o.str("kind"))
+        }
+    }.getOrDefault(emptyList())
+
+    private fun writeBin(list: List<BinItem>) {
+        _bin.value = list
+        Kv.setGlobal(BIN_KEY, JSONArray(list.map {
+            JSONObject().put("binPath", it.binPath).put("name", it.name).put("from", it.from).put("size", it.size).put("at", it.at)
+                .put("poster", it.poster).put("titleName", it.titleName).put("imdb", it.imdb).put("kind", it.kind)
+        }).toString())
+    }
+
+    /** Empty folders a removed file leaves behind, up to the layout's own ([GRABBER_FOLDERS] or the root): gone. */
+    private fun pruneEmpty(from: File?) {
+        val keep = GRABBER_FOLDERS.map { it.substringAfterLast('/') }.toSet() + GRABBER_ROOT + "Watchly"
+        var dir = from
+        while (dir != null && dir.name !in keep && dir.name != BIN_DIR && dir.listFiles().isNullOrEmpty()) {
+            dir.delete(); dir = dir.parentFile
+        }
+    }
+
+    /** A free name under [dest]'s folder: "name.ext", else "name (2).ext", so a restore never clobbers another file. */
+    private fun freeName(dest: File): File {
+        if (!dest.exists()) return dest
+        val dot = dest.name.lastIndexOf('.')
+        val stem = if (dot > 0) dest.name.substring(0, dot) else dest.name
+        val ext = if (dot > 0) dest.name.substring(dot) else ""
+        var n = 2
+        while (true) { val f = File(dest.parentFile, "$stem ($n)$ext"); if (!f.exists()) return f; n++ }
+    }
+
+    /**
+     * [f] moved into the Bin and taken off the saved list (the owner's ask, as Grabber's Bin): instant, no copy, and it
+     * can be put back by Undo or from the Bin. The file isn't erased — [eraseBin] does that, when the viewer says so or 30
+     * days pass. Returns the Bin item, for Undo.
+     */
+    fun toBin(f: Finished): BinItem {
+        val sub = File(binDir(), System.currentTimeMillis().toString()).apply { mkdirs() }
+        val dest = File(sub, f.file.name)
+        val moved = runCatching { f.file.renameTo(dest) }.getOrDefault(false) ||
+            runCatching { f.file.copyTo(dest, overwrite = true); f.file.delete(); true }.getOrDefault(false)
+        val item = BinItem(if (moved) dest.path else f.path, f.name, f.path, f.size, System.currentTimeMillis(), f.poster, f.titleName, f.imdb, f.kind)
+        writeBin(listOf(item) + readBin().filter { it.binPath != item.binPath })
+        History.drop(f.file.path, Services.engine)
+        writeFinished(_finished.value.filter { it.path != f.path })
+        if (moved) pruneEmpty(f.file.parentFile)
+        return item
+    }
+
+    /** A Bin item put back where it came from (a free name if something's there now), and onto the saved list again. */
+    fun restoreFromBin(item: BinItem) {
+        val src = File(item.binPath)
+        val dest = freeName(File(item.from))
+        dest.parentFile?.mkdirs()
+        val ok = src.exists() && (runCatching { src.renameTo(dest) }.getOrDefault(false) ||
+            runCatching { src.copyTo(dest, overwrite = false); src.delete(); true }.getOrDefault(false))
+        writeBin(readBin().filter { it.binPath != item.binPath })
+        if (ok) {
+            writeFinished(listOf(Finished(dest.name, dest.length(), System.currentTimeMillis(), dest.path, item.poster, item.titleName, item.imdb, item.kind)) + _finished.value.filter { it.path != dest.path })
+            runCatching { src.parentFile?.takeIf { it.name != BIN_DIR && it.listFiles().isNullOrEmpty() }?.delete() }
+        }
+    }
+
+    /** A Bin item erased for good (its file and its slot in the Bin). */
+    fun eraseBin(item: BinItem) {
+        val f = File(item.binPath)
+        runCatching { f.delete() }
+        runCatching { f.parentFile?.takeIf { it.name != BIN_DIR && it.listFiles().isNullOrEmpty() }?.delete() }
+        writeBin(readBin().filter { it.binPath != item.binPath })
+    }
+
+    /** The whole Bin emptied. */
+    fun emptyBin() {
+        readBin().forEach { runCatching { File(it.binPath).delete() } }
+        runCatching { binDir().listFiles()?.forEach { it.deleteRecursively() } }
+        writeBin(emptyList())
+    }
+
+    /** Older than 30 days (or already gone) in the Bin: cleared at launch, so it never grows without end. */
+    private fun purgeBin() {
+        val cut = System.currentTimeMillis() - BIN_DAYS * 24 * 3600 * 1000
+        val (old, kept) = readBin().partition { it.at < cut || !File(it.binPath).exists() }
+        old.forEach { runCatching { File(it.binPath).delete(); File(it.binPath).parentFile?.takeIf { p -> p.name != BIN_DIR && p.listFiles().isNullOrEmpty() }?.delete() } }
+        if (old.isNotEmpty()) writeBin(kept) else _bin.value = kept
+    }
+
     /* ----------------------------------------------------------------- API */
 
     fun init(context: Context) {
@@ -568,6 +679,9 @@ object Downloads {
         val (kept, junk) = readFinished().filter { it.file.exists() }.partition { it.file.length() >= MIN_VIDEO_BYTES }
         junk.forEach { runCatching { it.file.delete() } }
         if (junk.isNotEmpty()) writeFinished(kept) else _finished.value = kept
+        // The Bin: what's in it now, and a clear-out of anything older than 30 days (off the main thread — it touches files).
+        _bin.value = readBin()
+        scope.launch(Dispatchers.IO) { runCatching { purgeBin() } }
         loadMemory()
         val queue = readQueue()
         _live.value = queue.map { LiveDownload(it, if (it.paused) DlState.PAUSED else DlState.RESOLVING) }
