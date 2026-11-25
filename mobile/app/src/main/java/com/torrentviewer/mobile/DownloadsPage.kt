@@ -127,6 +127,8 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     /** A film's or episode's ⓘ tapped: its story. */
     var story by remember { mutableStateOf<Finished?>(null) }
     var deletingAll by remember { mutableStateOf(false) }
+    /** Downloads swiped off the list, held so Undo can bring them back before they're really stopped. */
+    val held = remember { androidx.compose.runtime.mutableStateListOf<String>() }
 
     LazyColumn(state = rememberLazyListState(), modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE)) {
         // Inside the Library, its heading and tabs; opened on its own, a heading with a close.
@@ -147,6 +149,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
         }
         if (live.isNotEmpty()) item {
             Label("Downloading")
+            Text("Swipe a row — right to pause or resume, left to remove", Modifier.padding(top = 2.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint))
             // All of them at once: pause, carry on, or stop and delete (asked first).
             SpreadRow(Modifier.padding(bottom = 12.dp)) {
                 Chip("Pause All", false, onClick = { live.forEach { if (it.state != DlState.PAUSED && it.state != DlState.FAILED) Downloads.pause(it.job.uri) } }, icon = R.drawable.ic_pause_bars, compact = true)
@@ -156,19 +159,32 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 Chip("Delete All", false, onClick = { deletingAll = true }, icon = L.drawable.lucide_ic_trash_2, compact = true)
             }
         }
-        // Newest first (the owner's choice): a download just sent turns up at the top.
-        items(live.asReversed(), key = { "live-" + it.job.uri }) { row ->
-            ActiveRow(
-                row,
-                onPause = { Downloads.pause(row.job.uri) },
-                onResume = { Downloads.resume(row.job.uri) },
-                onRetry = { Downloads.retry(row.job.uri, byHand = true) },
-                onCancel = { cancelling = row },
-                onSwap = { swapping = row },
-                onWanted = { index, on -> Downloads.setWanted(row.job.uri, index, on) },
-                onOrder = { Downloads.setOrder(row.job.uri, it) },
-                onOptions = { options = row },
-            )
+        // Newest first (the owner's choice): a download just sent turns up at the top. Swiped-off rows are hidden until
+        // the hold runs ([held]).
+        items(live.asReversed().filter { it.job.uri !in held }, key = { "live-" + it.job.uri }) { row ->
+            val running = row.state != DlState.PAUSED && row.state != DlState.FAILED
+            SwipeRow(
+                // Right: pause a running one, else resume (or retry a failed one). Left: take it off the list, with Undo.
+                onRight = { if (running) Downloads.pause(row.job.uri) else if (row.state == DlState.FAILED) Downloads.retry(row.job.uri, byHand = true) else Downloads.resume(row.job.uri) },
+                rightIcon = if (running) R.drawable.ic_pause_bars else L.drawable.lucide_ic_play,
+                rightTint = if (running) Ink.warn else Ink.good,
+                onRemove = {
+                    held.add(row.job.uri)
+                    UndoHold.start("Removed ${row.job.label}", undo = { held.remove(row.job.uri) }, commit = { Downloads.cancel(row.job.uri); held.remove(row.job.uri) })
+                },
+            ) {
+                ActiveRow(
+                    row,
+                    onPause = { Downloads.pause(row.job.uri) },
+                    onResume = { Downloads.resume(row.job.uri) },
+                    onRetry = { Downloads.retry(row.job.uri, byHand = true) },
+                    onCancel = { cancelling = row },
+                    onSwap = { swapping = row },
+                    onWanted = { index, on -> Downloads.setWanted(row.job.uri, index, on) },
+                    onOrder = { Downloads.setOrder(row.job.uri, it) },
+                    onOptions = { options = row },
+                )
+            }
         }
         // What's on the phone, folded away until its chevron opens it (the owner's choice).
         if (finished.isNotEmpty()) item {
@@ -184,6 +200,9 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 }
             }
         }
+        if (savedShown && finished.isNotEmpty()) item {
+            Text("Swipe a file — right to play, left for Bin or Delete", Modifier.padding(start = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint))
+        }
         // A show's episodes fold under one card; the most recently finished show first.
         val shows = if (!savedShown) emptyList() else finished.groupBy { it.imdb ?: it.label.substringBefore(" · ") }.values.sortedByDescending { g -> g.maxOf { it.at } }
         items(shows, key = { "done-" + it.first().path }) { group ->
@@ -191,8 +210,21 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
                 val from = f.imdb?.let { Title(it, f.kind ?: "movie", f.label.substringBefore(" · "), poster = f.poster) }
                 watch.playFile(f.path, f.label, from, f.poster)
             }
-            if (group.size == 1) FinishedRow(group[0], group[0].label, poster = true, { play(group[0]) }, { deleting = group[0] }, onStory = storyOf(group[0]) { story = it })
-            else ShowGroup(group.sortedBy { it.label }, play, onStory = { story = it }) { deleting = it }
+            if (group.size == 1) {
+                val f = group[0]
+                // Right to play, left to reveal Bin / Delete (both held with Undo, via the Bin), as Grabber does.
+                SwipeRow(
+                    onRight = { play(f) }, rightIcon = L.drawable.lucide_ic_play, rightTint = Ink.good,
+                    leftReveal = { close ->
+                        Row(Modifier.fillMaxWidth().padding(start = 6.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Button("Bin", { close(); val e = Downloads.toBin(f); UndoHold.start("Moved \"${f.label}\" to the Bin", undo = { Downloads.restoreFromBin(e) }, commit = {}) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_trash_2, compact = true)
+                            Button("Delete", { close(); val e = Downloads.toBin(f); UndoHold.start("Deleted \"${f.label}\"", undo = { Downloads.restoreFromBin(e) }, commit = { Downloads.eraseBin(e) }) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_trash_2, compact = true, fill = Ink.danger)
+                        }
+                    },
+                ) {
+                    FinishedRow(f, f.label, poster = true, { play(f) }, { deleting = f }, onStory = storyOf(f) { story = it })
+                }
+            } else ShowGroup(group.sortedBy { it.label }, play, onStory = { story = it }) { deleting = it }
         }
     }
 
