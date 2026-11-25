@@ -499,7 +499,12 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                                     Tab.FILES -> FilesScreen(watch)
                                     Tab.YOUTUBE -> TubeScreen(watch)
                                     // Behind the code too (the owner's choice): however the tab is reached, a link sent to it included.
-                                    Tab.BROWSER -> if (FilesLock.needed()) LockedPage(Tab.BROWSER, "The Browser") else BrowserScreen()
+                                    Tab.BROWSER -> Box(Modifier.fillMaxSize()) {
+                                        // The page stays where it is under the lock, only covered: taken off the screen and
+                                        // put back on unlock, a WebView came back blank (the owner caught it).
+                                        BrowserScreen()
+                                        if (FilesLock.needed()) LockedPage(Tab.BROWSER, "The Browser")
+                                    }
                                 }
                             }
                         }

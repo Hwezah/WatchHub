@@ -20,6 +20,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
@@ -364,8 +366,11 @@ fun LockedPage(tab: Tab, what: String) {
         if (shown) FilesLock.ask(tab) {}
         else if (FilesLock.asking == tab) FilesLock.dismiss()
     }
+    // Opaque, over whatever is under it, and taking every touch: nothing of the locked page shows or answers.
     androidx.compose.foundation.layout.Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 120.dp),
+        Modifier.fillMaxSize().background(Ink.bg)
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } }
+            .padding(horizontal = 16.dp).padding(top = 120.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Lc(L.drawable.lucide_ic_lock, tint = Ink.muted, size = 36.dp)
