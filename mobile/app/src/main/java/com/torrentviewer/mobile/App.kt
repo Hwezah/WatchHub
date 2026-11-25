@@ -408,7 +408,17 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             sendAll = uri.getQueryParameter("all") == "1"
             return@LaunchedEffect
         }
-        if (!isTorrentSource(raw)) return@LaunchedEffect
+        if (!isTorrentSource(raw)) {
+            // A web page shared to WatchHub (Instagram, TikTok, a browser): opened in the Browser, where its video is
+            // grabbed. Nothing else http is ours to open from another app.
+            if (raw.startsWith("http", ignoreCase = true)) {
+                Browser.newTab()
+                Browser.go(raw)
+                clearPages()
+                tab = Tab.BROWSER
+            }
+            return@LaunchedEffect
+        }
         // Asked first: stream it now, or keep it with the app's own torrent downloader.
         captured = raw
     }

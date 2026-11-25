@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         // The page before the first frame, so a light theme never opens on a flash of dark.
         val systemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         applyTheme(darkFor(SettingsStore.value.value.themeMode, systemDark))
-        incoming.value = intent?.data
+        incoming.value = intent?.let(::uriFrom)
         // Known before the first frame, so an upright phone doesn't open with the wider margins.
         resources.configuration.let { Room.tight = it.orientation == Configuration.ORIENTATION_PORTRAIT && it.smallestScreenWidthDp < 600 }
         setContent {
@@ -124,7 +124,20 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        incoming.value = intent.data
+        incoming.value = uriFrom(intent)
+    }
+
+    /**
+     * What an intent is pointing at: a VIEW's own data (a link opened, a torrent), or — when another app Shared to
+     * WatchHub (Instagram, TikTok, the system share sheet) — the first web or magnet link in its EXTRA_TEXT. The share
+     * text is often "Look at this https://…", so the link is picked out of it rather than taken whole.
+     */
+    private fun uriFrom(intent: Intent): Uri? {
+        intent.data?.let { return it }
+        if (intent.action != Intent.ACTION_SEND) return null
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
+        val link = Regex("""(https?://|magnet:)\S+""", RegexOption.IGNORE_CASE).find(text)?.value ?: return null
+        return runCatching { Uri.parse(link) }.getOrNull()
     }
 
     override fun onResume() {

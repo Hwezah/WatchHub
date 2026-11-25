@@ -90,6 +90,13 @@
                 <data android:scheme="file" />
                 <data android:mimeType="application/x-bittorrent" />
             </intent-filter>
+            <!-- Shared to WatchHub from another app (Instagram, TikTok, a browser): the link in the shared text opens
+                 in the Browser, where its video is grabbed — the same place Grabber appears in the share sheet. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <meta-data
