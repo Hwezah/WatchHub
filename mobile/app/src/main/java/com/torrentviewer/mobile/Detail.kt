@@ -659,7 +659,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                     Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                         // The stacked layers say "all of them" (a whole season), a notch smaller than the words (the owner's choice).
                                         Lc(L.drawable.lucide_ic_layers, tint = Ink.download, size = 20.dp)
-                                        Text("  Batch!", style = Type.title.copy(fontWeight = FontWeight.Bold, color = Ink.text.copy(alpha = 0.85f)))
+                                        Text("  Get Batch!", style = Type.title.copy(fontWeight = FontWeight.Bold, color = Ink.text.copy(alpha = 0.85f)))
                                     }
                                 }
                             }
