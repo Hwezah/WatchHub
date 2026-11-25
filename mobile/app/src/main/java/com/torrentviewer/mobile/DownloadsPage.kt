@@ -165,14 +165,16 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
             val running = row.state != DlState.PAUSED && row.state != DlState.FAILED
             SwipeRow(
                 backing = DL_CARD, inset = 8.dp,
-                // Right: pause a running one, else resume (or retry a failed one). Left: take it off the list, with Undo.
+                // Right (runs on the swipe): pause a running one, else resume (or retry a failed one). Left holds open to a
+                // red ✕ that, when tapped, takes it off the list — hidden at once, held so Undo can bring it back.
                 onRight = { if (running) Downloads.pause(row.job.uri) else if (row.state == DlState.FAILED) Downloads.retry(row.job.uri, byHand = true) else Downloads.resume(row.job.uri) },
                 rightIcon = if (running) R.drawable.ic_pause_bars else L.drawable.lucide_ic_play,
                 rightTint = if (running) Ink.warn else Ink.good,
-                onRemove = {
+                onLeft = {
                     held.add(row.job.uri)
                     UndoHold.start("Removed ${row.job.label}", undo = { held.remove(row.job.uri) }, commit = { Downloads.cancel(row.job.uri); held.remove(row.job.uri) })
                 },
+                leftIcon = L.drawable.lucide_ic_x, leftTint = Ink.danger,
             ) {
                 ActiveRow(
                     row,
@@ -213,17 +215,13 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
             }
             if (group.size == 1) {
                 val f = group[0]
-                // Right to play, left to reveal a card-shaped sheet with bare Bin | Delete (both held with Undo, via the
-                // Bin); Delete is a bin with an X (the owner's choice), the two split by a pipe.
+                // Right to play (runs on the swipe); left holds open to reveal a red delete (the bin-with-an-X), which
+                // runs only when tapped — moved to the Bin, held with Undo. The Bin itself lives on the heading above.
                 SwipeRow(
-                    onRight = { play(f) }, rightIcon = L.drawable.lucide_ic_play, rightTint = Ink.good, backing = DL_CARD, inset = 8.dp,
-                    leftReveal = { close ->
-                        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                            SwipeChoice("Bin", L.drawable.lucide_ic_trash_2, Modifier.weight(1f)) { close(); val e = Downloads.toBin(f); UndoHold.start("Moved \"${f.label}\" to the Bin", undo = { Downloads.restoreFromBin(e) }, commit = {}) }
-                            SwipePipe()
-                            SwipeChoice("Delete", R.drawable.ic_trash_x, Modifier.weight(1f), tint = Ink.danger) { close(); val e = Downloads.toBin(f); UndoHold.start("Deleted \"${f.label}\"", undo = { Downloads.restoreFromBin(e) }, commit = { Downloads.eraseBin(e) }) }
-                        }
-                    },
+                    onRight = { play(f) }, rightIcon = L.drawable.lucide_ic_play, rightTint = Ink.good,
+                    onLeft = { val e = Downloads.toBin(f); UndoHold.start("Deleted \"${f.label}\"", undo = { Downloads.restoreFromBin(e) }, commit = { Downloads.eraseBin(e) }) },
+                    leftIcon = R.drawable.ic_trash_x, leftTint = Ink.danger,
+                    backing = DL_CARD, inset = 8.dp,
                 ) {
                     FinishedRow(f, f.label, poster = true, { play(f) }, { deleting = f }, onStory = storyOf(f) { story = it })
                 }
