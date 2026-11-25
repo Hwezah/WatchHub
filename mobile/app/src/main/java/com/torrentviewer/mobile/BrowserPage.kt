@@ -1,6 +1,7 @@
 package com.torrentviewer.mobile
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -79,11 +80,23 @@ fun BrowserScreen() {
     BackHandler(shown && Browser.fullScreen) { Browser.exitFull?.invoke() }
     val site = Browser.url.isNotBlank() && Media.looksLikeSite(Browser.url)
 
+    // Full immersion: the address bar slides away as the page is read down and comes back on the way up (the owner's
+    // choice), reusing the same up/down signals the bottom tab bar follows. It's always there while typing an address,
+    // on a blank tab, and the moment a new page opens, so it's never lost.
+    val startDown = remember { Browser.goingDown }
+    val startUp = remember { Browser.goingUp }
+    var barShown by remember { mutableStateOf(true) }
+    LaunchedEffect(Browser.goingDown) { if (Browser.goingDown != startDown) barShown = false }
+    LaunchedEffect(Browser.goingUp) { if (Browser.goingUp != startUp) barShown = true }
+    LaunchedEffect(Browser.url, Browser.current) { barShown = true }
+    val showBar = barShown || typing || Browser.url.isBlank()
+
     Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            AnimatedVisibility(visible = showBar) {
             Row(
                 // One container for the whole bar, barely rounded, as Tube's; the address has no box, only its green cursor.
-                Modifier.statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 8.dp).fillMaxWidth().height(58.dp)
+                Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 8.dp).fillMaxWidth().height(58.dp)
                     .frosted(RoundedCornerShape(14.dp)).padding(start = 6.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -118,6 +131,7 @@ fun BrowserScreen() {
                 Tap({ menu = true }, Modifier.size(width = 32.dp, height = 46.dp), CircleShape) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_ellipsis_vertical, tint = Ink.text, size = 22.dp) }
                 }
+            }
             }
             Box(Modifier.fillMaxWidth().height(2.dp)) {
                 if (Browser.loading) Box(Modifier.fillMaxWidth(Browser.progress / 100f).height(2.dp).background(Ink.accent))

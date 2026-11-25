@@ -77,6 +77,7 @@ object Media {
         val req = YoutubeDLRequest(url).addOption("--no-playlist").addOption("--no-update")
         headers.forEach { (k, v) -> req.addOption("--add-header", "$k:$v") }
         signedIn(context, url, req)
+        tuneForSite(url, req, headers)
         val v = try {
             YoutubeDL.getInstance().getInfo(req)
         } catch (e: Exception) {
@@ -102,6 +103,7 @@ object Media {
             .addOption("-o", File(work, "$base.%(ext)s").absolutePath)
         headers.forEach { (k, v) -> req.addOption("--add-header", "$k:$v") }
         signedIn(context, url, req)
+        tuneForSite(url, req, headers)
         if (format.startsWith("a:")) {
             req.addOption("-f", "ba/b").addOption("-x").addOption("--audio-format", format.removePrefix("a:")).addOption("--audio-quality", "0")
         } else {
@@ -145,6 +147,20 @@ object Media {
             return
         }
         browserCookiesFile(context, host)?.let { req.addOption("--cookies", it.absolutePath) }
+    }
+
+    /** A desktop Chrome identity: Instagram and Facebook serve a public post's video to a browser but bounce the bare
+     * yt-dlp agent straight to a login page, so a social page with no User-Agent of its own is given this one. */
+    private const val DESKTOP_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+
+    /**
+     * Per-site tweaks that lift a public post's success without a sign-in. Instagram/Facebook: a real browser User-Agent
+     * (unless the page already sent one), since the bare downloader agent is shown the login wall even for public reels.
+     */
+    private fun tuneForSite(url: String, req: YoutubeDLRequest, headers: Map<String, String>) {
+        val hasUa = headers.keys.any { it.equals("User-Agent", true) }
+        if (looksLikeSite(url) && !hasUa) req.addOption("--user-agent", DESKTOP_UA)
     }
 
     /** A site's registrable domain for cookies: the last two labels of [host] ("www.instagram.com" → "instagram.com"). */
