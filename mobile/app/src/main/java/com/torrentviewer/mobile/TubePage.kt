@@ -323,7 +323,7 @@ private fun HomeFeed(onOpen: (TubeVideo) -> Unit, onMenu: (TubeVideo) -> Unit, o
         // Signed in, but the account's own feed didn't come: said (with why), not hidden behind other videos.
         shownProblem?.let { p ->
             item {
-                Text(
+                PathText(
                     p, Modifier.fillMaxWidth().padding(bottom = 12.dp), style = Type.meta.copy(color = Ink.danger), maxLines = 3,
                     textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
                 )

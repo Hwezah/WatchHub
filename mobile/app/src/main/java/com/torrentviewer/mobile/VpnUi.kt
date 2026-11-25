@@ -126,7 +126,7 @@ fun VpnSettings(say: (String) -> Unit) {
             }
         }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_copy, compact = true)
         if (has) Button("Remove Config", { Vpn.forget(); has = false; say("VPN config removed") }, Modifier.padding(top = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_trash_2, compact = true)
-        Text(
+        PathText(
             "Use a WireGuard config (.conf) from your VPN's website: Mullvad (Account → WireGuard configuration), " +
                 "Proton VPN (Downloads → WireGuard configuration), Windscribe or IVPN. It stays encrypted on this phone.",
             Modifier.padding(top = 12.dp), style = Type.meta.copy(color = Ink.faint),

@@ -926,7 +926,7 @@ private fun Toast(watch: Watch) {
             ) {
                 Lc(L.drawable.lucide_ic_circle_alert, tint = Ink.accent, size = 20.dp)
                 Spacer(Modifier.width(12.dp))
-                Text(note.orEmpty(), style = Type.label)
+                PathText(note.orEmpty(), style = Type.label)
             }
         }
     }

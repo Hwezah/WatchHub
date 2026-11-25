@@ -38,7 +38,7 @@ object CrashGuard {
                 fromPlugin(error, context) -> {
                     Log.e("CrashGuard", "a plugin failed on the main thread; carrying on", error)
                     runCatching { log.writeText(log.readText().replaceFirst("The app closed.", "A plugin failed; the app carried on.")) }
-                    runCatching { android.widget.Toast.makeText(context, "A plugin failed — see Settings → Last crash report", android.widget.Toast.LENGTH_LONG).show() }
+                    runCatching { android.widget.Toast.makeText(context, "A plugin failed — see Settings › Last crash report", android.widget.Toast.LENGTH_LONG).show() }
                     while (true) {
                         try {
                             Looper.loop()

@@ -102,6 +102,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.takeOrElse
 import com.torrentviewer.core.Artwork
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.accentGlow
@@ -1096,3 +1097,42 @@ fun BackTitle(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, 
  * margin, above the system's own bar), whether or not the bar is showing at the time (the owner's choice).
  */
 val NAV_CLEARANCE = 180.dp
+
+/**
+ * Text whose "→" — a way through the app, "Settings → Leave out" — is drawn as Lucide's chevron at the words' size and
+ * colour, in place of the font's arrow (the owner's choice: the arrow looked gimmicky). Plain [Text] otherwise.
+ */
+@Composable
+fun PathText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: androidx.compose.ui.text.TextStyle = Type.body,
+    textAlign: TextAlign? = null,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+) {
+    if ('→' !in text) return Text(text, modifier, style = style, textAlign = textAlign, maxLines = maxLines, overflow = overflow)
+    val parts = text.split('→')
+    val built = androidx.compose.ui.text.buildAnnotatedString {
+        parts.forEachIndexed { i, part ->
+            val piece = (if (i > 0) part.trimStart() else part).let { if (i < parts.lastIndex) it.trimEnd() else it }
+            if (i > 0) appendInlineContent(CHEVRON, "›")
+            append(piece)
+        }
+    }
+    val size = style.fontSize.takeIf { it.isSp } ?: 14.sp
+    val tint = style.color.takeOrElse { Ink.text }
+    val inline = mapOf(
+        CHEVRON to androidx.compose.foundation.text.InlineTextContent(
+            androidx.compose.ui.text.Placeholder(size * 1.3f, size, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
+        ) {
+            androidx.compose.material3.Icon(
+                androidx.compose.ui.res.painterResource(L.drawable.lucide_ic_chevron_right), null,
+                Modifier.fillMaxSize().padding(horizontal = 1.dp), tint = tint,
+            )
+        },
+    )
+    Text(built, modifier, style = style, textAlign = textAlign, maxLines = maxLines, overflow = overflow, inlineContent = inline)
+}
+
+private const val CHEVRON = "chevron"

@@ -994,7 +994,7 @@ private fun LazyListScope.sources(
             }
             // What Leave out took away, and a tap to show it for this title.
             if (hiddenLeft > 0 && onShowLeft != null) Box(Modifier.fillMaxWidth().padding(bottom = 6.dp), contentAlignment = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart) {
-                Text(
+                PathText(
                     "$hiddenLeft left out by Settings → Leave out · Show",
                     Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onShowLeft).padding(horizontal = 6.dp, vertical = 4.dp),
                     style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold),

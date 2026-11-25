@@ -259,7 +259,7 @@ private fun Action(icon: Int, label: String, hint: String? = null, onClick: () -
             Lc(icon, tint = if (icon == L.drawable.lucide_ic_download) Ink.download else Ink.muted, size = 20.dp)
             Column(Modifier.padding(start = 16.dp)) {
                 Text(label, style = Type.body.copy(fontWeight = FontWeight.SemiBold))
-                hint?.let { Text(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp)) }
+                hint?.let { PathText(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp)) }
             }
         }
     }
@@ -360,7 +360,7 @@ fun DownloadChoice(
                 L.drawable.lucide_ic_external_link, "External Downloader",
                 "$externalNote · hold for more", onLongClick = { choosing = true },
             ) { onExternal(Downloader.Default) }
-            disclaimer?.let { Text(it, Modifier.padding(top = 12.dp), style = Type.meta.copy(color = Ink.download, fontWeight = FontWeight.Medium)) }
+            disclaimer?.let { PathText(it, Modifier.padding(top = 12.dp), style = Type.meta.copy(color = Ink.download, fontWeight = FontWeight.Medium)) }
         }
     }
 }

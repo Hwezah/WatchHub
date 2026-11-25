@@ -200,7 +200,7 @@ fun BrowserScreen() {
         }
     }) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            Browser.note?.let { Text(it, Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint)) }
+            Browser.note?.let { PathText(it, Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint)) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // In incognito, a new tab is incognito too (the owner's choice).
                 Button("New Tab", { Browser.newTab(incognito = Browser.tab.incognito); menu = false }, Modifier.weight(1f).height(42.dp), icon = if (Browser.tab.incognito) L.drawable.lucide_ic_venetian_mask else L.drawable.lucide_ic_plus, compact = true)

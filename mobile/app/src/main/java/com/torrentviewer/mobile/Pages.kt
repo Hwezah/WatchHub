@@ -491,7 +491,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                 // What AI search can do, said once where a search starts: centred on an upright phone.
                 if (!torrents && !Kids.on && query.isBlank()) {
                     val portrait = isPortraitPhone()
-                    Text(
+                    PathText(
                         "Can't remember the name? Describe it — “a man relives the same day over and over” — and AI suggests titles." +
                             if (aiReady) "" else " Set it up in Settings → AI Search.",
                         Modifier.fillMaxWidth().padding(top = 18.dp, start = if (portrait) 12.dp else 0.dp, end = if (portrait) 12.dp else 0.dp),
@@ -523,7 +523,7 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
         if (aiShown) {
             aiNote?.let { note ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(
+                    PathText(
                         note, Modifier.fillMaxWidth().padding(bottom = 8.dp), style = Type.meta.copy(color = Ink.muted),
                         textAlign = if (isPortraitPhone()) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
                     )
