@@ -657,8 +657,10 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                         keyboard?.hide()
                     },
                 )
+                // Never in the Browser (the owner's choice): the page runs full screen there, chrome-free, for a proper
+                // browsing feel — its own top bar is all the chrome it needs, and Back leaves the tab (→ Home).
                 AnimatedVisibility(
-                    pillShown && OpenSheets.count == 0, Modifier.align(Alignment.BottomCenter),
+                    pillShown && OpenSheets.count == 0 && tab != Tab.BROWSER, Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
                 ) { PillBar(tab, choose, haze = haze.takeIf { glass }) }
                 // A Tube video dropped down keeps playing here, above the bar; a tap opens it again in Tube.
@@ -667,7 +669,8 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
         } else {
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) { host(body) }
-                TabBar(tab, choose)
+                // The fixed bar, too, stands down in the Browser: the page browses full screen (the owner's choice).
+                if (tab != Tab.BROWSER) TabBar(tab, choose)
             }
         }
 

@@ -2,6 +2,10 @@ package com.torrentviewer.mobile
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -92,99 +96,113 @@ fun BrowserScreen() {
     val showBar = barShown || typing || Browser.url.isBlank()
 
     Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            AnimatedVisibility(visible = showBar) {
-            Row(
-                // One container for the whole bar, barely rounded, as Tube's; the address has no box, only its green cursor.
-                Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 8.dp).fillMaxWidth().height(58.dp)
-                    .frosted(RoundedCornerShape(14.dp)).padding(start = 6.dp, end = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Tabs: a squircle with how many are open.
-                Tap({ tabsOpen = true }, Modifier.size(42.dp), RoundedCornerShape(8.dp)) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        // Incognito: the mask in place of the count, so it's plain which kind of tab this is.
-                        if (Browser.tab.incognito) Lc(L.drawable.lucide_ic_venetian_mask, tint = Ink.accent, size = 26.dp)
-                        else Box(Modifier.size(28.dp).border(1.6.dp, Ink.text, RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
-                            Text("${Browser.tabs.size}", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.Bold))
+        // The page fills the whole screen and keeps a steady size; the bar floats over its top and slides away, so
+        // hiding it never resizes the WebView. Resizing it fed scroll events back and flickered the bottom tab bar
+        // (the owner caught the two bars fighting) — now the page never moves and the two bars follow one signal in step.
+        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+            // The current tab's page, swapped in when the tab changes.
+            // Pulled down at the top of a page, it loads again (the owner's choice): the page sits in a frame inside the
+            // platform's pull-to-refresh, which asks the page itself whether it can still scroll up.
+            val green = Ink.download.toArgb()
+            val face = Ink.surface.toArgb()
+            AndroidView(
+                factory = { ctx ->
+                    androidx.swiperefreshlayout.widget.SwipeRefreshLayout(ctx).apply {
+                        addView(android.widget.FrameLayout(ctx).apply { tag = "page" }, android.view.ViewGroup.LayoutParams(-1, -1))
+                        setColorSchemeColors(green)
+                        setProgressBackgroundColorSchemeColor(face)
+                        setOnChildScrollUpCallback { _, _ -> Browser.tab.web?.canScrollVertically(-1) ?: false }
+                        setOnRefreshListener {
+                            Browser.reload()
+                            postDelayed({ isRefreshing = false }, 900)
                         }
                     }
-                }
-                Spacer(Modifier.width(8.dp))
-                BareInput(
-                    input, { input = it }, "Search or type an address", Modifier.weight(1f).padding(horizontal = 4.dp),
-                    keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, onFocus = { typing = it },
-                    onSubmit = { Browser.go(input); focus.clearFocus() },
+                },
+                update = { pull ->
+                    val frame = pull.findViewWithTag<android.widget.FrameLayout>("page") ?: return@AndroidView
+                    Browser.rebuilt // a crashed page's tab gets its new view here
+                    val w = Browser.view(frame.context, Browser.tab)
+                    if (w.parent !== frame) {
+                        (w.parent as? android.view.ViewGroup)?.removeView(w)
+                        frame.removeAllViews()
+                        frame.addView(w, android.view.ViewGroup.LayoutParams(-1, -1))
+                    }
+                },
+                // Always the full screen, never resized: the bar floats over the page's top when shown and slides clear
+                // when hidden, so the page's size never changes — the resize was what fed scroll events back and made the
+                // bars fight. The top ~76 dp sits under the bar while it's shown, as a phone browser's content does.
+                modifier = Modifier.fillMaxSize(),
+            )
+            // Nothing open yet: the bare frosted page and one line; bookmarks live in ⋮ → Bookmarks only (the owner's choice).
+            if (Browser.url.isEmpty()) Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
+                EmptyNote(
+                    if (Browser.tab.incognito) "Incognito. Pages you visit here aren't kept in history" +
+                        if (Browser.trulyPrivate) ", and their cookies and sign-ins are forgotten when you close the last incognito tab." else ". This phone's WebView can't keep sign-ins apart: they're shared with your other tabs."
+                    else "Search or type an address above. Videos a page plays show up under the green download mark.",
+                    Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
                 )
-                // The clear X, bigger in every box (the owner's choice).
-                if (input.isNotEmpty()) BarIcon(L.drawable.lucide_ic_x, 24.dp) { input = "" }
-                // What this page has that can be downloaded, with a count.
-                Tap({ picking = true }, Modifier.size(width = 44.dp, height = 46.dp), CircleShape) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Lc(L.drawable.lucide_ic_download, tint = if (Browser.found.isNotEmpty() || site) Ink.download else Ink.text, size = 22.dp)
-                        if (Browser.found.isNotEmpty()) Box(
-                            Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 2.dp).size(17.dp).clip(CircleShape).background(Ink.download),
-                            contentAlignment = Alignment.Center,
-                        ) { Text("${Browser.found.size.coerceAtMost(99)}", style = Type.meta.copy(fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)) }
-                    }
-                }
-                Tap({ menu = true }, Modifier.size(width = 32.dp, height = 46.dp), CircleShape) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_ellipsis_vertical, tint = Ink.text, size = 22.dp) }
-                }
             }
-            }
-            Box(Modifier.fillMaxWidth().height(2.dp)) {
-                if (Browser.loading) Box(Modifier.fillMaxWidth(Browser.progress / 100f).height(2.dp).background(Ink.accent))
-            }
-            // A jump to another site was stopped: say where, with a way through.
-            Browser.tab.stopped?.let { to ->
-                Row(Modifier.fillMaxWidth().frosted(RoundedCornerShape(0.dp)).padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Stopped a jump to ${android.net.Uri.parse(to).host.orEmpty().removePrefix("www.")}", Modifier.weight(1f), style = Type.meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Tap({ Browser.openStopped() }, Modifier.height(40.dp), RoundedCornerShape(6.dp)) {
-                        Box(Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) { Text("Open Anyway", style = Type.meta.copy(color = Ink.accent, fontWeight = FontWeight.SemiBold)) }
-                    }
-                    BarIcon(L.drawable.lucide_ic_x) { Browser.tab.stopped = null }
-                }
-            }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                // The current tab's page, swapped in when the tab changes.
-                // Pulled down at the top of a page, it loads again (the owner's choice): the page sits in a frame inside the
-                // platform's pull-to-refresh, which asks the page itself whether it can still scroll up.
-                val green = Ink.download.toArgb()
-                val face = Ink.surface.toArgb()
-                AndroidView(
-                    factory = { ctx ->
-                        androidx.swiperefreshlayout.widget.SwipeRefreshLayout(ctx).apply {
-                            addView(android.widget.FrameLayout(ctx).apply { tag = "page" }, android.view.ViewGroup.LayoutParams(-1, -1))
-                            setColorSchemeColors(green)
-                            setProgressBackgroundColorSchemeColor(face)
-                            setOnChildScrollUpCallback { _, _ -> Browser.tab.web?.canScrollVertically(-1) ?: false }
-                            setOnRefreshListener {
-                                Browser.reload()
-                                postDelayed({ isRefreshing = false }, 900)
+        }
+
+        // The top chrome over the page — the address bar, its load line, a stopped-jump note — aligned to the top and
+        // slid up out of the way as the page is read down, back on the way up, in step with the bottom bar.
+        AnimatedVisibility(
+            visible = showBar,
+            modifier = Modifier.align(Alignment.TopCenter),
+            enter = slideInVertically { -it } + fadeIn(),
+            exit = slideOutVertically { -it } + fadeOut(),
+        ) {
+            Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+                Row(
+                    // One container for the whole bar, barely rounded, as Tube's; the address has no box, only its green cursor.
+                    Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 8.dp).fillMaxWidth().height(58.dp)
+                        .frosted(RoundedCornerShape(14.dp)).padding(start = 6.dp, end = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Tabs: a squircle with how many are open.
+                    Tap({ tabsOpen = true }, Modifier.size(42.dp), RoundedCornerShape(8.dp)) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            // Incognito: the mask in place of the count, so it's plain which kind of tab this is.
+                            if (Browser.tab.incognito) Lc(L.drawable.lucide_ic_venetian_mask, tint = Ink.accent, size = 26.dp)
+                            else Box(Modifier.size(28.dp).border(1.6.dp, Ink.text, RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
+                                Text("${Browser.tabs.size}", style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.Bold))
                             }
                         }
-                    },
-                    update = { pull ->
-                        val frame = pull.findViewWithTag<android.widget.FrameLayout>("page") ?: return@AndroidView
-                        Browser.rebuilt // a crashed page's tab gets its new view here
-                        val w = Browser.view(frame.context, Browser.tab)
-                        if (w.parent !== frame) {
-                            (w.parent as? android.view.ViewGroup)?.removeView(w)
-                            frame.removeAllViews()
-                            frame.addView(w, android.view.ViewGroup.LayoutParams(-1, -1))
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
-                // Nothing open yet: the bare frosted page and one line; bookmarks live in ⋮ → Bookmarks only (the owner's choice).
-                if (Browser.url.isEmpty()) Box(Modifier.fillMaxSize().background(Ink.bg).grain()) {
-                    EmptyNote(
-                        if (Browser.tab.incognito) "Incognito. Pages you visit here aren't kept in history" +
-                            if (Browser.trulyPrivate) ", and their cookies and sign-ins are forgotten when you close the last incognito tab." else ". This phone's WebView can't keep sign-ins apart: they're shared with your other tabs."
-                        else "Search or type an address above. Videos a page plays show up under the green download mark.",
-                        Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    BareInput(
+                        input, { input = it }, "Search or type an address", Modifier.weight(1f).padding(horizontal = 4.dp),
+                        keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, onFocus = { typing = it },
+                        onSubmit = { Browser.go(input); focus.clearFocus() },
                     )
+                    // The clear X, bigger in every box (the owner's choice).
+                    if (input.isNotEmpty()) BarIcon(L.drawable.lucide_ic_x, 24.dp) { input = "" }
+                    // What this page has that can be downloaded, with a count.
+                    Tap({ picking = true }, Modifier.size(width = 44.dp, height = 46.dp), CircleShape) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Lc(L.drawable.lucide_ic_download, tint = if (Browser.found.isNotEmpty() || site) Ink.download else Ink.text, size = 22.dp)
+                            if (Browser.found.isNotEmpty()) Box(
+                                Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 2.dp).size(17.dp).clip(CircleShape).background(Ink.download),
+                                contentAlignment = Alignment.Center,
+                            ) { Text("${Browser.found.size.coerceAtMost(99)}", style = Type.meta.copy(fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)) }
+                        }
+                    }
+                    Tap({ menu = true }, Modifier.size(width = 32.dp, height = 46.dp), CircleShape) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_ellipsis_vertical, tint = Ink.text, size = 22.dp) }
+                    }
+                }
+                Box(Modifier.fillMaxWidth().height(2.dp)) {
+                    if (Browser.loading) Box(Modifier.fillMaxWidth(Browser.progress / 100f).height(2.dp).background(Ink.accent))
+                }
+                // A jump to another site was stopped: say where, with a way through.
+                Browser.tab.stopped?.let { to ->
+                    Row(Modifier.fillMaxWidth().frosted(RoundedCornerShape(0.dp)).padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Stopped a jump to ${android.net.Uri.parse(to).host.orEmpty().removePrefix("www.")}", Modifier.weight(1f), style = Type.meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Tap({ Browser.openStopped() }, Modifier.height(40.dp), RoundedCornerShape(6.dp)) {
+                            Box(Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) { Text("Open Anyway", style = Type.meta.copy(color = Ink.accent, fontWeight = FontWeight.SemiBold)) }
+                        }
+                        BarIcon(L.drawable.lucide_ic_x) { Browser.tab.stopped = null }
+                    }
                 }
             }
         }
