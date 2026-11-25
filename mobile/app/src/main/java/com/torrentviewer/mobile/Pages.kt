@@ -644,6 +644,19 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
         if (downloading.size > seenDownloads) section = LibrarySection.DOWNLOADS
         seenDownloads = downloading.size
     }
+    // Leaving Downloads for the Wishlist locks it again, as leaving the tab does (the owner's choice).
+    LaunchedEffect(section) { if (section != LibrarySection.DOWNLOADS) FilesLock.relock() }
+    if (section == LibrarySection.DOWNLOADS && FilesLock.needed()) {
+        // Behind the code (Settings → Lock): asked for straight away, and again from the button if dismissed.
+        LaunchedEffect(Unit) { FilesLock.ask(Tab.LIBRARY) {} }
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            Heading("Library") { AddLinkPlus() }
+            LibraryTabs(section, downloading.isNotEmpty()) { section = it }
+            Text("Downloads are locked.", Modifier.padding(top = 24.dp, bottom = 14.dp), style = Type.body.copy(color = Ink.muted))
+            Button("Unlock", { FilesLock.ask(Tab.LIBRARY) {} }, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_lock)
+        }
+        return
+    }
     if (section == LibrarySection.DOWNLOADS) {
         DownloadsScreen(watch, onBack = null) {
             Heading("Library") { AddLinkPlus() }
@@ -986,9 +999,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 else -> "Library, My List and resume points belong to this profile."
             },
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // The avatar and Switch profile on one grey strip, at its two ends (the owner's choice).
+            Row(
+                Modifier.fillMaxWidth().clip(PILL).background(Ink.surface).padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
                 Avatar(me, 44.dp)
-                Spacer(Modifier.width(14.dp))
                 Button(if (profiles.isEmpty()) "Add profiles" else "Switch profile", onSwitchProfile, icon = L.drawable.lucide_ic_users)
             }
         }
@@ -1006,12 +1022,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 val unlocked = !locked || current == me.pin
                 if (locked) {
                     Text("Current PIN", Modifier.padding(bottom = 6.dp), style = Type.overline)
-                    Field(current, { current = it.filter(Char::isDigit).take(4) }, "• • • •", Modifier.widthIn(max = 200.dp).fillMaxWidth(), secret = true, digits = true)
+                    Field(current, { current = it.filter(Char::isDigit).take(4) }, "* * * *", Modifier.fillMaxWidth(), secret = true, digits = true)
                     Text("New PIN", Modifier.padding(top = 14.dp, bottom = 6.dp), style = Type.overline)
                 }
                 // The digits and Set side by side; Remove on its own line, so nothing is cut short on a narrow phone.
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Field(pin, { pin = it.filter(Char::isDigit).take(4) }, "– – – –", Modifier.weight(1f).widthIn(max = 200.dp), secret = true, digits = true)
+                    Field(pin, { pin = it.filter(Char::isDigit).take(4) }, "* * * *", Modifier.weight(1f), secret = true, digits = true)
                     Spacer(Modifier.width(10.dp))
                     Button(if (locked) "Change PIN" else "Set PIN", {
                         when {
@@ -1024,7 +1040,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                                 watch.notes.tryEmit("PIN set for ${me.name}")
                             }
                         }
-                    }, icon = L.drawable.lucide_ic_lock)
+                    }, Modifier.weight(1f), icon = L.drawable.lucide_ic_lock)
                 }
                 if (locked) Button("Remove PIN", {
                     if (unlocked) {
@@ -1032,7 +1048,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         current = ""
                         watch.notes.tryEmit("PIN removed")
                     } else watch.notes.tryEmit(if (current.length < 4) "Enter the current PIN to remove it" else "That's not the PIN")
-                }, Modifier.padding(top = 10.dp), icon = L.drawable.lucide_ic_lock_open)
+                }, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_lock_open)
             }
         }
 

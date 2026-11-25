@@ -44,7 +44,7 @@ object FilesLock {
      * The tabs behind the code. The Library itself opens: what's on the phone, under its "On this phone" chevron, is
      * what asks (the owner's choice), so it isn't asked for twice.
      */
-    val LOCKED = setOf(Tab.FILES)
+    val LOCKED = setOf(Tab.FILES)  // the Library's Downloads half asks on its own page
 
     /** Unlocked: by the code or the password, at [unlockedAt]; how long that lasts is [timeout]. */
     var unlocked by mutableStateOf(false)
@@ -89,8 +89,14 @@ object FilesLock {
     fun needed() = code() != null && !open()
 
     /** Another page or tab: locked again at once when the timeout is [IMMEDIATELY] (the owner's choice). */
-    fun left() {
-        if (timeout == IMMEDIATELY) unlocked = false
+    fun left() = relock()
+
+    /**
+     * Locked again: any move away from Downloads or Files — another tab, Settings, Search, a page opened — asks for the
+     * code once more (the owner's choice), whatever the timeout; the timeout only covers the app sent to the background.
+     */
+    fun relock() {
+        unlocked = false
     }
 
     /** The app sent to the background: locked again, unless a few minutes were chosen (the clock decides those). */
@@ -268,10 +274,10 @@ fun LockSettings(say: (String) -> Unit) {
     }
     when (step) {
         null -> {
-            Note("On. Saved downloads and Files ask for the pin" + if (FilesLock.hasPassword()) "; the Auth Password opens them too." else ". No Auth Password yet: set one in case you forget the pin.")
+            Note("On. Downloads and Files ask for the pin" + if (FilesLock.hasPassword()) "; the Auth Password opens them too." else ". No Auth Password yet: set one in case you forget the pin.")
             Text("Lock Again", Modifier.padding(top = 8.dp), style = Type.label.copy(color = Ink.text))
             Text(
-                "Immediately: as soon as you go to another page.",
+                "Going to another page always locks Downloads and Files again. This is for the app sent to the background.",
                 Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint),
             )
             BarChoices(FilesLock.TIMEOUTS.map { it.second }, FilesLock.TIMEOUTS.indexOfFirst { it.first == FilesLock.timeout }.takeIf { it >= 0 }, Modifier.padding(top = 4.dp)) {

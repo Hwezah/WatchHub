@@ -242,7 +242,8 @@ fun DownloadFileSheet(
     var info by remember { mutableStateOf<LinkInfo?>(null) }
     var asking by remember { mutableStateOf(0) }
     var checked by remember { mutableStateOf(false) }
-    var ticked by remember { mutableStateOf(com.torrentviewer.core.defaultSubtitlePicks(subs.map { it.language })) }
+    /** None ticked here: subtitles are saved from the source's own sheet (the owner kept this one minimal). */
+    val ticked = emptyList<Int>()
     LaunchedEffect(asking) {
         checked = false
         info = if (playlist) null else probeLink(url, headers)
@@ -288,18 +289,6 @@ fun DownloadFileSheet(
             Text(about, Modifier.padding(top = 6.dp, bottom = 12.dp), style = Type.meta.copy(color = Ink.faint))
             Field(fileName, { fileName = it }, "File name", Modifier.fillMaxWidth())
             Field(referer, { referer = it }, "Referer page (leave empty if not sure)", Modifier.padding(top = 10.dp).fillMaxWidth())
-            if (subs.isNotEmpty()) {
-                Text("Subtitles · ${ticked.size} of ${subs.size} ticked", Modifier.padding(top = 14.dp, bottom = 4.dp), style = Type.overline.copy(color = Ink.faint))
-                subs.forEachIndexed { i, sub ->
-                    val on = i in ticked
-                    Tap({ ticked = if (on) ticked - i else ticked + i }, Modifier.fillMaxWidth(), androidx.compose.foundation.shape.RoundedCornerShape(4.dp)) {
-                        androidx.compose.foundation.layout.Row(Modifier.padding(vertical = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            com.torrentviewer.core.Lc(if (on) L.drawable.lucide_ic_circle_check else L.drawable.lucide_ic_circle, tint = if (on) Ink.download else Ink.faint, size = 20.dp)
-                            Text(com.torrentviewer.core.subtitleLanguage(sub.language), Modifier.padding(start = 12.dp), style = Type.body.copy(color = if (on) Ink.text else Ink.muted))
-                        }
-                    }
-                }
-            }
             androidx.compose.foundation.layout.Row(Modifier.padding(top = 16.dp).fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
                 Button("Cancel", onDismiss, Modifier.weight(1f), compact = true)
                 Button("Check again", { asking++ }, Modifier.weight(1f), icon = L.drawable.lucide_ic_rotate_cw, compact = true)

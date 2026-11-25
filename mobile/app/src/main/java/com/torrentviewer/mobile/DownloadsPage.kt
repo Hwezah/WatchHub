@@ -120,7 +120,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     /** "On this phone" opened by its chevron. */
     var showSaved by rememberSaveable { mutableStateOf(false) }
     /** Open, and not locked since: the lock timing out or (Immediately) another page shuts it again. */
-    val savedShown = showSaved && !FilesLock.needed()
+    val savedShown = showSaved  // the whole page is behind the lock now
     var deleting by remember { mutableStateOf<Finished?>(null) }
     /** A film's or episode's ⓘ tapped: its story. */
     var story by remember { mutableStateOf<Finished?>(null) }
@@ -171,10 +171,10 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
         // What's on the phone, folded away until its chevron opens it (the owner's choice).
         if (finished.isNotEmpty()) item {
             // Behind the lock (Settings → Lock): the chevron asks for the pin first, the list opening once it's right.
-            Tap({ if (savedShown) showSaved = false else if (FilesLock.needed()) FilesLock.ask(Tab.LIBRARY) { showSaved = true } else showSaved = true }, Modifier.fillMaxWidth(), RoundedCornerShape(4.dp)) {
+            Tap({ showSaved = !showSaved }, Modifier.fillMaxWidth(), RoundedCornerShape(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { Label("On this phone  ·  ${bytes(finished.sumOf { it.size })}") }
-                    Lc(if (savedShown) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(end = 4.dp), tint = Ink.muted, size = 28.dp)
+                    Box(Modifier.weight(1f).padding(start = 14.dp)) { Label("On this phone  ·  ${bytes(finished.sumOf { it.size })}") }
+                    Lc(if (savedShown) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(end = 14.dp), tint = Ink.muted, size = 28.dp)
                 }
             }
         }

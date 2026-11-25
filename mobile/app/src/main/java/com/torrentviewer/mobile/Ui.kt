@@ -242,7 +242,7 @@ fun Button(
                     fill != null -> Modifier.background(lerp(fill, Color.Black, if (pressed) 0.56f else 0.46f)).grain()
                     else -> Modifier.background(bg)
                 })
-                    .height(if (thin) 34.dp else 52.dp).padding(horizontal = if (thin) 14.dp else 20.dp),
+                    .height(if (thin) 34.dp else 44.dp).padding(horizontal = if (thin) 14.dp else 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
