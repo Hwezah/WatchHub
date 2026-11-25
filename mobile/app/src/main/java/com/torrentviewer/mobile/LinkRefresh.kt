@@ -113,10 +113,11 @@ object LinkRefresh {
         fun allowed(hits: List<Hit>) = allowedHits(hits).filter { rejectKey(it.addon, it.name) !in rejected && it.uri !in rejected }
         // Hosts that answered "too many requests" (429) for this download are asked last: the next link from them is
         // refused the same way until they cool down.
-        fun pick(hits: List<Hit>) = allowed(hits).let { all ->
-            refreshPick(all.filterNot { linkHost(it.uri) in busyHosts }, old, job.source, job.linkName, quality, tried, oldSize, prefs)
-                ?: refreshPick(all, old, job.source, job.linkName, quality, tried, oldSize, prefs)
+        fun pick2(hits: List<Hit>, gone: Set<String>) = allowed(hits).let { all ->
+            refreshPick(all.filterNot { linkHost(it.uri) in busyHosts }, old, job.source, job.linkName, quality, gone, oldSize, prefs)
+                ?: refreshPick(all, old, job.source, job.linkName, quality, gone, oldSize, prefs)
         }
+        fun pick(hits: List<Hit>) = pick2(hits, tried)
         // Only the same file renewed ends the search early: anything else waits for every source (or FRESH_MS), so a fast
         // source's first answer — often a far bigger torrent — doesn't win over a better one still on its way.
         fun sameFile(hits: List<Hit>) = renewal(prefs.usable(allowed(hits)).filter { it.uri != old && it.uri !in tried && batchable(it) && linkHost(it.uri) !in busyHosts }, job.source, job.linkName, quality)
@@ -142,9 +143,20 @@ object LinkRefresh {
         // Out of time with sources still answering: the best of what came, at that resolution. Nothing at it: by hand, a
         // pack holding the episode at it; else nothing — never another resolution.
         val atQuality = allowed(latest).filter { (quality == null || it.quality == quality) && rightFormat(it, prefs.format) }
-        return found ?: pick(latest) ?: preferredPick(atQuality.filter { it.uri != old && it.uri !in tried }, prefs)
-            ?: if (wide) packPick(atQuality, old, tried, season, prefs) else null
+        // Each candidate looked at before it's taken (the owner's ask): a dead link or a web page is passed over rather than
+        // downloaded and thrown away, and one that can be resumed wins over one that only sends the whole file.
+        val first = found
+        return checkedPick(CHECKS, { skip ->
+            val gone = tried + skip
+            first?.takeIf { it.uri !in skip }
+                ?: pick2(latest, gone)
+                ?: preferredPick(atQuality.filter { it.uri != old && it.uri !in gone }, prefs)
+                ?: if (wide) packPick(atQuality, old, gone, season, prefs) else null
+        }) { hit -> if (!hit.direct) LinkCheck.RESUMABLE else LinkFetch.check(hit.uri, hit.headers, isPlaylist(hit)) }
     }
+
+    /** Fresh links looked at before one is taken ([checkedPick]): each look is a second or two, at most 20. */
+    private const val CHECKS = 4
 
     /**
      * ↻ pressed by hand and no single episode anywhere ([wide]): a season (or complete) pack holding the episode, as

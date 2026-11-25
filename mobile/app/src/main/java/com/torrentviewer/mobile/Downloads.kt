@@ -568,6 +568,7 @@ object Downloads {
         val (kept, junk) = readFinished().filter { it.file.exists() }.partition { it.file.length() >= MIN_VIDEO_BYTES }
         junk.forEach { runCatching { it.file.delete() } }
         if (junk.isNotEmpty()) writeFinished(kept) else _finished.value = kept
+        loadMemory()
         val queue = readQueue()
         _live.value = queue.map { LiveDownload(it, if (it.paused) DlState.PAUSED else DlState.RESOLVING) }
         queue.filter { !(it.link && it.paused) }.forEach(::begin)
@@ -816,6 +817,8 @@ object Downloads {
      */
     private fun watchStalls() = scope.launch {
         val seen = HashMap<String, Pair<Long, Long>>()
+        /** Restarts in a row with nothing downloaded between them, per download. */
+        val restarts = HashMap<String, Int>()
         while (true) {
             kotlinx.coroutines.delay(30_000L)
             val now = System.currentTimeMillis()
@@ -823,14 +826,47 @@ object Downloads {
                 val uri = row.job.uri
                 if (!row.job.link || row.state != DlState.DOWNLOADING) { seen.remove(uri); continue }
                 val (done, since) = seen[uri] ?: (row.done to now)
-                if (row.done != done) seen[uri] = row.done to now
-                else if (now - since >= STALL_MS) {
-                    Log.w(TAG, "${row.job.label}: no progress for ${(now - since) / 1000}s — starting it again")
+                if (row.done != done) {
+                    seen[uri] = row.done to now
+                    restarts.remove(uri)
+                } else if (now - since >= STALL_MS) {
                     seen.remove(uri)
-                    forceStart(uri)
+                    val n = (restarts[uri] ?: 0) + 1
+                    // The same hung link started again and again, nothing coming: given up on, and a fresh one looked
+                    // for, rather than a restart every 90 seconds for ever (the owner's ask).
+                    if (stalledOut(n)) {
+                        Log.w(TAG, "${row.job.label}: stuck through $n restarts — giving up on that link")
+                        restarts.remove(uri)
+                        giveUpOn(uri)
+                    } else {
+                        Log.w(TAG, "${row.job.label}: no progress for ${(now - since) / 1000}s — starting it again ($n)")
+                        restarts[uri] = n
+                        forceStart(uri)
+                    }
                 } else seen[uri] = done to since
             }
-            seen.keys.retainAll(_live.value.map { it.job.uri }.toSet())
+            val queued = _live.value.map { it.job.uri }.toSet()
+            seen.keys.retainAll(queued)
+            restarts.keys.retainAll(queued)
+        }
+    }
+
+    /**
+     * A link that stayed stuck through [STALL_RESTARTS] restarts: stopped, and counted as failed. One from a known title
+     * gets a fresh link ([retry], which never goes back to it); any other waits its round, as a failed one does.
+     */
+    private fun giveUpOn(uri: String) {
+        val job = _live.value.find { it.job.uri == uri }?.job ?: return
+        synchronized(lock) { links.remove(uri) }?.cancel()
+        if (job.imdb != null) return retry(uri)
+        val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
+        saveMemory()
+        val wait = waitMinutes(round)
+        update(uri) { it.copy(state = DlState.FAILED, speed = 0, error = "Nothing came from the host · retrying in $wait min") }
+        wakeIn(wait)
+        scope.launch {
+            kotlinx.coroutines.delay(wait * 60_000L)
+            if (_live.value.any { it.job.uri == uri && it.state == DlState.FAILED }) forceStart(uri)
         }
     }
 
@@ -1210,6 +1246,7 @@ object Downloads {
                     _live.value = _live.value.filter { it.job.uri != job.uri }
                     writeQueue(jobs())
                 }
+                saveMemory()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1222,6 +1259,7 @@ object Downloads {
                 if (dead && job.refreshes < MAX_REFRESHES && job.imdb != null) {
                     update(job.uri) { it.copy(state = DlState.RESOLVING, error = if (e is BusyException) "The host is busy — finding another source…" else "Link expired — getting a fresh one…", speed = 0) }
                     failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
+                    saveMemory()
                     val fresh = runCatching { LinkRefresh.fresh(job, tried(job), busyHosts = busy(job)) }.onFailure { Log.w(TAG, "refresh: ${it.message}") }.getOrNull()
                     if (fresh != null) {
                         replaceLink(job, fresh)
@@ -1235,6 +1273,7 @@ object Downloads {
                 // Short (one line on the card): what's saved is always kept, so it isn't said.
                 errors[job.uri] = justTried(job.uri) + (if (dead && job.imdb != null) "No fresh link" else (e.message ?: "Couldn't save that link")) + " · retrying in $wait min"
                 update(job.uri) { it.copy(state = DlState.FAILED, error = errors[job.uri], speed = 0) }
+                saveMemory()
                 wakeIn(wait)
                 scope.launch {
                     kotlinx.coroutines.delay(wait * 60_000L)
@@ -1284,6 +1323,23 @@ object Downloads {
 
     private fun busy(job: DownloadJob) = busyHosts[job.label].orEmpty()
 
+    /** Where [failedLinks], [busyHosts] and [autoRounds] are kept between launches ([RetryMemory]). */
+    private const val RETRY_MEMORY = "download-retry-memory"
+
+    /** The failures remembered from the last run, before the queue starts again: no going back to dead links. */
+    private fun loadMemory() {
+        val m = decodeRetryMemory(Kv.global(RETRY_MEMORY))
+        failedLinks.putAll(m.failed)
+        busyHosts.putAll(m.busy)
+        autoRounds.putAll(m.rounds)
+    }
+
+    /** Written whenever a failure is learnt or forgotten; only for downloads still queued. */
+    private fun saveMemory() = runCatching {
+        val raw = encodeRetryMemory(RetryMemory(HashMap(failedLinks), HashMap(busyHosts), HashMap(autoRounds)), jobs().map { it.label }.toSet())
+        Kv.setGlobal(RETRY_MEMORY, raw.takeIf { it != "{}" })
+    }
+
     /**
      * The ↻ on a failed download. A link from a known title: the sources are asked again in the background and
      * the next fresh link at the same resolution — never one that already failed — takes over, from the start.
@@ -1306,6 +1362,7 @@ object Downloads {
             autoRounds.remove(job.label)
             triedByHand[uri] = System.currentTimeMillis()
         } else failedLinks.merge(job.label, setOf(job.uri)) { a, b -> a + b }
+        saveMemory()
         update(uri) { it.copy(state = DlState.RESOLVING, error = "Finding a fresh ${wantedQuality(job, downloadPrefs().quality) ?: ""} link…".replace("  ", " "), speed = 0) }
         scope.launch {
             if (byHand) {
@@ -1321,6 +1378,7 @@ object Downloads {
             else {
                 // Still nothing: asked again on its own, a few rounds, before it waits for the viewer.
                 val round = autoRounds.merge(job.label, 1, Int::plus) ?: 1
+                saveMemory()
                 val wait = waitMinutes(round)
                 update(uri) {
                     it.copy(state = DlState.FAILED, speed = 0, error = "No other ${wantedQuality(job, downloadPrefs().quality) ?: "working"} source · retrying in $wait min")

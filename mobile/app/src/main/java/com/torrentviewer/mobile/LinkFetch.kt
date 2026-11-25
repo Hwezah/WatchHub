@@ -244,19 +244,32 @@ object LinkFetch {
      * it: a playlist that still opens, or a file that answers with something other than a web page. Quick,
      * and false on any doubt, so a fresh link is looked for instead.
      */
-    suspend fun answers(url: String, headers: Map<String, String>, playlist: Boolean): Boolean = withTimeoutOrNull(20_000) {
+    suspend fun answers(url: String, headers: Map<String, String>, playlist: Boolean): Boolean = check(url, headers, playlist) != LinkCheck.DEAD
+
+    /**
+     * A quick look at a link before it's used: one byte asked for. Dead (no answer, an error, or a web page), the whole
+     * file only (the server ignores ranges, so a stop means starting over), or [LinkCheck.RESUMABLE]. A playlist that
+     * reads as one counts as resumable: its segments are kept one by one.
+     */
+    suspend fun check(url: String, headers: Map<String, String>, playlist: Boolean): LinkCheck = withTimeoutOrNull(20_000) {
         runCatching {
-            if (playlist) fetchText(url, headers).trimStart('\uFEFF').trimStart().startsWith("#EXTM3U")
-            else withContext(Dispatchers.IO) {
+            if (playlist) {
+                if (fetchText(url, headers).trimStart('\uFEFF').trimStart().startsWith("#EXTM3U")) LinkCheck.RESUMABLE else LinkCheck.DEAD
+            } else withContext(Dispatchers.IO) {
                 val conn = open(url, headers, "bytes=0-0")
                 try {
-                    conn.responseCode in 200..299 && conn.contentType?.startsWith("text/", true) != true
+                    val code = conn.responseCode
+                    when {
+                        code !in 200..299 || conn.contentType?.startsWith("text/", true) == true -> LinkCheck.DEAD
+                        code == 206 -> LinkCheck.RESUMABLE
+                        else -> LinkCheck.WHOLE
+                    }
                 } finally {
                     conn.disconnect()
                 }
             }
-        }.getOrDefault(false)
-    } ?: false
+        }.getOrDefault(LinkCheck.DEAD)
+    } ?: LinkCheck.DEAD
 
     /* ---------------------------------------------------------------- one file */
 
