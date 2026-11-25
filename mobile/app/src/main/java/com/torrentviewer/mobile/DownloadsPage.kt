@@ -494,7 +494,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
                 Tap(onCancel, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), tint = Ink.muted, size = 22.dp) }
                 // A pack's episodes fold under the card from here (the owner's choice), right of the ✕.
                 if (pack) Tap({ open = !open }, shape = CircleShape) {
-                    Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(horizontal = 4.dp, vertical = 2.dp), tint = Ink.muted, size = 24.dp)
+                    Lc(if (open) L.drawable.lucide_ic_chevron_up else L.drawable.lucide_ic_chevron_down, Modifier.padding(horizontal = 3.dp, vertical = 1.dp), tint = Ink.muted, size = 28.dp)
                 }
                 }
             }
