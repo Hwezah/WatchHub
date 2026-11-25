@@ -462,11 +462,7 @@ private fun ActiveRow(row: LiveDownload, onPause: () -> Unit, onResume: () -> Un
         if (pack) {
             if (open) {
                 Text("Episodes  ·  ${wanted.size} of ${row.files.size} chosen", Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.text, fontWeight = FontWeight.SemiBold))
-                Row(Modifier.padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip("All", wanted.size == row.files.size, onClick = { row.files.filter { !it.wanted }.forEach { onWanted(it.index, true) } })
-                    // Skips everything not on the phone yet; what is saved stays.
-                    Chip("None", wanted.none { !it.saved }, onClick = { row.files.filter { it.wanted && !it.saved }.forEach { onWanted(it.index, false) } })
-                }
+                // No All / None (the owner's choice): each episode is ticked on its own row.
                 val next = wanted.firstOrNull { !it.saved }?.index
                 // Seasons as their own groups: a complete-series pack is a hundred lines otherwise.
                 val seasons = row.files.groupBy { parseEpisode(it.name)?.season }
