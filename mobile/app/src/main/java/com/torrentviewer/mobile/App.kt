@@ -583,9 +583,9 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
     // Incognito stays unseen outside the app too (the owner's choice): while an incognito tab is on screen, the window
     // is marked secure — no screenshots, and the recents preview shows blank. Cleared the moment you leave it.
     val secret = tab == Tab.BROWSER && pages.isEmpty() && Browser.tab.incognito
-    val host = androidx.compose.ui.platform.LocalContext.current
+    val secureCtx = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(secret) {
-        var c: Context? = host
+        var c: Context? = secureCtx
         while (c != null && c !is android.app.Activity) c = (c as? android.content.ContextWrapper)?.baseContext
         val window = (c as? android.app.Activity)?.window ?: return@LaunchedEffect
         if (secret) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
