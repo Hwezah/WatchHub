@@ -657,10 +657,12 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                         keyboard?.hide()
                     },
                 )
-                // Never in the Browser (the owner's choice): the page runs full screen there, chrome-free, for a proper
-                // browsing feel — its own top bar is all the chrome it needs, and Back leaves the tab (→ Home).
+                // The page runs full screen in the Browser (the owner's choice): no nav there — except the pin pad, which
+                // lives in this bar, so it must still come up when the Browser locks. So: shown as normal off the Browser,
+                // and shown on the Browser only while the code is being asked for (the owner caught the pad not appearing).
                 AnimatedVisibility(
-                    pillShown && OpenSheets.count == 0 && tab != Tab.BROWSER, Modifier.align(Alignment.BottomCenter),
+                    (FilesLock.asking != null || (pillShown && tab != Tab.BROWSER)) && OpenSheets.count == 0,
+                    Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
                 ) { PillBar(tab, choose, haze = haze.takeIf { glass }) }
                 // A Tube video dropped down keeps playing here, above the bar; a tap opens it again in Tube.

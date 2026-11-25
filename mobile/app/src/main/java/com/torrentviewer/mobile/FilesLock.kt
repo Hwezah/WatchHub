@@ -188,12 +188,15 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
     val focus = remember { FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     // The dial pad up at once, every time it's asked for (the owner caught it often not coming): focus alone, at the
-    // row's first frame, came before the field was placed and left the keyboard down. A moment after, focus, and the
-    // keyboard asked for outright.
+    // row's first frame, came before the field was placed and left the keyboard down. So it's asked for a few times over
+    // the next third of a second — once the field has attached, focus takes and the keyboard is asked for outright — so
+    // it comes up whether the lock was automatic or the prompt was tapped.
     LaunchedEffect(byPassword, FilesLock.asks) {
-        kotlinx.coroutines.delay(120)
-        runCatching { focus.requestFocus() }
-        keyboard?.show()
+        repeat(6) {
+            kotlinx.coroutines.delay(70)
+            runCatching { focus.requestFocus() }
+            runCatching { keyboard?.show() }
+        }
     }
     // A very faint strip behind the lock, the field and the X, so the row reads as one (the owner's choice).
     Row(
