@@ -763,17 +763,17 @@ val PosterGrid = object : androidx.compose.foundation.lazy.grid.GridCells {
  */
 @Composable
 fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    // A notch smaller than it was (the owner's choice): 38 × 22, a 15 dp thumb.
-    val travel by androidx.compose.animation.core.animateDpAsState(if (checked) 16.dp else 0.dp, tween(160), label = "toggle")
+    // Smaller again, as the Immersive app's (the owner's choice): 34 × 20, a 14 dp thumb.
+    val travel by androidx.compose.animation.core.animateDpAsState(if (checked) 14.dp else 0.dp, tween(160), label = "toggle")
     // A white thumb, on and off, in both themes (the owner's choice); off, the track a touch darker so it still shows.
     val track by animateColorAsState(if (checked) Ink.accent else Ink.text.copy(alpha = if (Ink.isDark) 0.18f else 0.24f), tween(160), label = "track")
     val thumb by animateColorAsState(Color.White, tween(160), label = "thumb")
     Box(
-        modifier.size(width = 38.dp, height = 22.dp).clip(RoundedCornerShape(50)).background(track)
+        modifier.size(width = 34.dp, height = 20.dp).clip(RoundedCornerShape(50)).background(track)
             .toggleable(checked, remember { MutableInteractionSource() }, indication = null, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange)
-            .padding(3.5.dp),
+            .padding(3.dp),
     ) {
-        Box(Modifier.offset(x = travel).size(15.dp).clip(CircleShape).background(thumb))
+        Box(Modifier.offset(x = travel).size(14.dp).clip(CircleShape).background(thumb))
     }
 }
 
