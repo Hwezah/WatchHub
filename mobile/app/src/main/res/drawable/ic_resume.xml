@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The normal play triangle with a small chevron just ahead of its tip (an "onward" mark on the same stroke line): the
-     hero Resume, a partner to Start over's rotate-ccw. Stroked like the Lucide icons, tinted by the caller. -->
+<!-- A soft, round-cornered play triangle with a rounded chevron a little ahead of its tip (an "onward" mark on the same
+     stroke line): the hero Resume, a partner to Start over's rotate-ccw. Stroked like the Lucide icons, tinted by the
+     caller. Corners are rounded in the path itself so it reads lean, not sharp. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -11,11 +12,11 @@
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="2.0"
-        android:pathData="M4.5,5l10,7l-10,7z" />
+        android:pathData="M7.2,6.55 L14.3,10.95 Q16,12 14.3,13.05 L7.2,17.45 Q5.5,18.5 5.5,16.5 L5.5,7.5 Q5.5,5.5 7.2,6.55 Z" />
     <path
         android:strokeColor="#000000"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="2.0"
-        android:pathData="M16.5,8.5l4,3.5l-4,3.5" />
+        android:pathData="M18.5,8.5 L21.5,12 L18.5,15.5" />
 </vector>
