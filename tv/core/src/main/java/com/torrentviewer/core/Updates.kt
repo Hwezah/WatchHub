@@ -219,51 +219,83 @@ object Updates {
      * switching, a slow DNS) and the next try finds it. Said in plain words if it never does.
      */
     private suspend fun fetch(r: AppRelease, to: File) {
-        var last: IOException? = null
-        repeat(3) { attempt ->
+        var last: Exception? = null
+        // Carries the server's ETag/Last-Modified between tries, so a resume only picks up when the file hasn't changed.
+        var validator: String? = null
+        repeat(5) { attempt ->
             try {
-                return fetchOnce(r, to)
+                validator = fetchOnce(r, to, resume = if (to.isFile) to.length() else 0L, validator = validator)
+                return
             } catch (e: java.net.UnknownHostException) {
                 last = e
-            } catch (e: java.net.SocketTimeoutException) {
-                last = e
-            } catch (e: java.net.ConnectException) {
+            } catch (e: IOException) {
+                // A cut-off read ("unexpected end of stream", a reset, a short transfer) as well as timeouts and refused
+                // connections: keep what arrived and resume on the next try, rather than failing the whole thing.
                 last = e
             }
             _progress.value = 0f
             kotlinx.coroutines.delay(2_000L * (attempt + 1))
         }
-        throw IOException(if (last is java.net.UnknownHostException) "Couldn't reach GitHub — check the connection (or a VPN / DNS blocker) and tap Update again" else "The download kept stalling — tap Update to try again", last)
+        throw IOException(if (last is java.net.UnknownHostException) "Couldn't reach GitHub — check the connection (or a VPN / DNS blocker) and tap Update again" else "The download kept stopping — tap Update to try again", last)
     }
 
-    private suspend fun fetchOnce(r: AppRelease, to: File) {
-        val sha = MessageDigest.getInstance("SHA-256")
-        var done = 0L
-        // Timed out, not left blocked in a read: nothing could cancel that, and every retry found it still running.
-        val conn = URL(r.url).openConnection().apply { connectTimeout = 15_000; readTimeout = 30_000 }
-        // What the server says it is sending: a newer build may have replaced the file since the card read its size.
-        val length = conn.contentLengthLong
-        val expected = if (length > 0) length else r.size
-        conn.getInputStream().use { input ->
-            to.outputStream().use { output ->
+    /**
+     * One download attempt, resuming from [resume] bytes already on disk when it can: a Range request (guarded by
+     * [validator] through `If-Range`, so a build republished mid-download comes back whole, not spliced). Returns the
+     * server's validator for the next attempt. Throws on anything short of a whole, valid APK, for [fetch] to retry.
+     */
+    private suspend fun fetchOnce(r: AppRelease, to: File, resume: Long, validator: String?): String? {
+        val conn = (URL(r.url).openConnection() as java.net.HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            if (resume > 0) {
+                setRequestProperty("Range", "bytes=$resume-")
+                if (validator != null) setRequestProperty("If-Range", validator)
+            }
+        }
+        val code = conn.responseCode
+        if (code == 416) { to.delete(); throw IOException("The part file no longer matches; starting over.") }
+        if (code != 200 && code != 206) throw IOException("GitHub answered $code")
+        val tag = conn.getHeaderField("ETag") ?: conn.getHeaderField("Last-Modified") ?: validator
+        // 206: the rest, appended to what's here. 200: the server sent the whole file (no range, or the build changed),
+        // so start the file over.
+        val resuming = code == 206 && resume > 0
+        if (!resuming && to.isFile) to.delete()
+        val from = if (resuming) resume else 0L
+        val total = conn.contentLengthLong.takeIf { it > 0 }?.let { from + it } ?: r.size
+        conn.inputStream.use { input ->
+            java.io.FileOutputStream(to, resuming).use { output ->
                 val buffer = ByteArray(64 * 1024)
+                var done = from
                 while (true) {
                     currentCoroutineContext().ensureActive()
                     val n = input.read(buffer)
                     if (n < 0) break
                     output.write(buffer, 0, n)
-                    sha.update(buffer, 0, n)
                     done += n
-                    if (expected > 0) _progress.value = done.toFloat() / expected
+                    if (total > 0) _progress.value = done.toFloat() / total
                 }
             }
         }
-        val got = sha.digest().joinToString("") { "%02x".format(it) }
-        // Cut short: what arrived isn't all the server sent. The checksum is only the card's file's: when a newer build
-        // replaced it mid-way (every push publishes over "phone-latest"), the newer, whole file is taken instead.
-        val whole = expected <= 0 || done == expected
-        val same = r.size <= 0 || done == r.size
-        if (!whole || same && r.sha256 != null && got != r.sha256 || !looksLikeApk(to)) throw IOException("The update didn't download properly. Try again.")
+        // Whole, and the file the card meant? The checksum is over the finished file, resumed or not.
+        val size = to.length()
+        val whole = total <= 0 || size >= total
+        val got = runCatching {
+            to.inputStream().use { inp ->
+                val md = MessageDigest.getInstance("SHA-256")
+                val b = ByteArray(64 * 1024)
+                while (true) { val n = inp.read(b); if (n < 0) break; md.update(b, 0, n) }
+                md.digest().joinToString("") { "%02x".format(it) }
+            }
+        }.getOrNull()
+        val same = r.size <= 0 || size == r.size
+        val badChecksum = same && r.sha256 != null && got != r.sha256
+        if (!whole || badChecksum || !looksLikeApk(to)) {
+            // A wrong checksum means the bytes are stale or spliced: drop them so the next try fetches afresh.
+            if (badChecksum) to.delete()
+            throw IOException("The update didn't download properly. Try again.")
+        }
+        return tag
     }
 
     /** An APK is a zip: it starts with "PK". A web page or an error sent instead does not. */
