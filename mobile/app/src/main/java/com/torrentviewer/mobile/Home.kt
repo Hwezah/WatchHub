@@ -89,6 +89,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.composables.icons.lucide.R as L
+import com.torrentviewer.mobile.R
 
 data class Shelf(val title: String, val kind: String, val genre: String? = null) {
     val key get() = "$kind:${genre.orEmpty()}"
@@ -569,6 +570,8 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                                 TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
                             }
                         }
+                        // The play on the poster, in the accent (the owner's choice), as a title's page does it.
+                        if (isPortraitPhone()) Tap({ onOpen(t) }, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Ink.accent, size = 104.dp) }
                     }
                     // The facts on the page, under the picture's edge, not over the picture (the owner's choice).
                     Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone(), release = release)
@@ -577,6 +580,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
             } else {
                 Box(open) {
                     art?.let { Artwork(it, t.title, Modifier.fillMaxSize().bottomScrim(0.35f), fill = false) }
+                    if (isPortraitPhone()) Tap({ onOpen(t) }, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Ink.accent, size = 104.dp) }
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = EDGE, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
                             TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
@@ -597,10 +601,19 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
 
 @Composable
 private fun HeroButtons(t: Title, inList: Boolean, onOpen: (Title) -> Unit, modifier: Modifier) {
-    // An upright phone: the two share the full width, edge to edge; elsewhere they sit side by side.
-    val spread = isPortraitPhone()
-    Row(if (spread) modifier.fillMaxWidth() else modifier, horizontalArrangement = Arrangement.spacedBy(if (spread) 14.dp else 10.dp)) {
-        val each = if (spread) Modifier.weight(1f) else Modifier.widthIn(min = 132.dp)
+    if (isPortraitPhone()) {
+        // Upright: Watch is the play centred on the poster now; here, just one big add-to-list plus, centred, no text,
+        // in the theme's own colour (the owner's choice).
+        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Tap({ SavedStore.toggle(t) }, shape = CircleShape) {
+                Lc(if (inList) L.drawable.lucide_ic_check else R.drawable.ic_plus_round, Modifier.padding(10.dp), tint = if (inList) Ink.accent else Ink.text, size = 60.dp)
+            }
+        }
+        return
+    }
+    // Tablet / landscape: the pair of buttons as before.
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        val each = Modifier.widthIn(min = 132.dp)
         Button("Watch", { onOpen(t) }, each, icon = L.drawable.lucide_ic_play, primary = true, glass = true)
         // Wide enough for "In My List", and the details screen's toggle: a green disc springs in behind the tick.
         Button(
