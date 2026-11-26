@@ -496,7 +496,8 @@ fun <T> Sheet(
                             } else if (option.icon != null) {
                                 Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { Lc(option.icon, tint = option.iconTint ?: Ink.muted, size = 20.dp) }
                             } else {
-                                Box(Modifier.size(22.dp)) { if (on) Lc(L.drawable.lucide_ic_check, tint = Ink.accent, size = 20.dp) }
+                                // The chosen row: a small accent dot, not a tick (the owner's choice).
+                                Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { if (on) Box(Modifier.size(8.dp).clip(CircleShape).background(Ink.accent)) }
                             }
                             Spacer(Modifier.width(12.dp))
                             option.tag?.let {

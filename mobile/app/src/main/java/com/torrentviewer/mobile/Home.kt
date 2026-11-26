@@ -81,7 +81,6 @@ import com.torrentviewer.core.left
 import com.torrentviewer.core.latestPerTitle
 import com.torrentviewer.core.titleKey
 import com.torrentviewer.core.parseEpisode
-import com.torrentviewer.core.quality
 import com.torrentviewer.core.bytes
 import com.torrentviewer.core.playedSize
 import com.torrentviewer.core.remoteArt
@@ -418,7 +417,7 @@ fun ReleasesSheet(all: List<Item>, watch: Watch, onDismiss: () -> Unit) {
         options = all.map {
             val name = it.torrentName ?: it.title
             val hint = listOfNotNull(it.playedSize()?.let(::bytes), it.seeders?.let { s -> "$s seeds" }, resumeStamp(it) ?: "Not started")
-            Option(it.uri, name, hint.joinToString("  ·  "), tag = quality(name))
+            Option(it.uri, name, hint.joinToString("  ·  "))
         },
         selected = latestPerTitle(all).first().uri,
         onPick = { uri ->
