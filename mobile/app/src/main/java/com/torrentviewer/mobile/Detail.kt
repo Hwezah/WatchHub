@@ -512,8 +512,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     when {
                         // An episode left at its end credits is watched: Play goes on to the next instead.
                         last != null && last.ratio > 0.02 && last.ratio < (if (title.isSeries) com.torrentviewer.core.WATCHED_AT else 0.95) -> {
-                            val resume = { savedCopyOf(last)?.let { playSaved(it) } ?: watch.resume(last) }
-                            val startOver = {
+                            val resume: () -> Unit = { savedCopyOf(last)?.let { playSaved(it) } ?: watch.resume(last) }
+                            val startOver: () -> Unit = {
                                 val i = last.lastFileIndex ?: 0
                                 History.setPosition(last.uri, i, 0.0)
                                 savedCopyOf(last)?.let { playSaved(it, fromStart = true) } ?: watch.resume(History.find(last.uri) ?: last)
