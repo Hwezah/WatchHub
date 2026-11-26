@@ -490,7 +490,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         Box(Modifier.fillMaxWidth().aspectRatio(0.88f)) {
                             art?.let { Artwork(it, title.title, Modifier.fillMaxSize(), fill = false) }
                             TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 16.dp).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
-                            if (heroPlay) Tap(playFilm, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Color.White, size = 66.dp) }
+                            if (heroPlay) Tap(playFilm, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Color.White, size = 112.dp) }
                         }
                         // The facts and certificate on the page, under the picture's edge, not over the picture (the owner's choice).
                         Facts(title.copy(genres = title.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone(), release = release)
@@ -501,7 +501,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         art?.let { Artwork(it, title.title, Modifier.fillMaxSize().bottomScrim(0.6f), fill = false) }
                         // Centred under the art, which is cropped from its centre.
                         TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
-                        if (heroPlay) Tap(playFilm, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Color.White, size = 66.dp) }
+                        if (heroPlay) Tap(playFilm, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Color.White, size = 112.dp) }
                     }
                 }
                 Column(
@@ -572,8 +572,8 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         )
                     }
                     title.plot?.let { plot ->
-                        Tap({ expanded = !expanded }, Modifier.padding(top = 14.dp), RoundedCornerShape(0.dp)) {
-                            Text(plot,style = Type.body.copy(color = Ink.text.copy(alpha = 0.85f)), maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
+                        Tap({ expanded = !expanded }, Modifier.fillMaxWidth().padding(top = 14.dp), RoundedCornerShape(0.dp)) {
+                            Text(plot, style = Type.body.copy(color = Ink.text.copy(alpha = 0.85f)), textAlign = if (isPortraitPhone()) TextAlign.Center else null, maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     // The director at the left, and on the same line at the far right the whole story (Wikipedia's plot), the
