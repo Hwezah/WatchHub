@@ -143,6 +143,8 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Downloads.visible = true
+        // Sweep any lingering system-downloader notifications from old builds (a left-over entry can fail days later).
+        Downloads.forgetSystemDownloads()
         com.torrentviewer.mobile.cs.CsPlugins.attach(this)
         // Back in front: a build pushed while away is offered (at most one check every 5 minutes).
         com.torrentviewer.core.Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-")

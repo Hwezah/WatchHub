@@ -1221,21 +1221,28 @@ object Downloads {
     private fun linkWork(uri: String) = File(pieceDir(), "links/${Integer.toHexString(uri.hashCode())}")
 
     /**
-     * What older builds handed Android's own downloader (a source's subtitles): its failed, paused and waiting entries
-     * removed, once at start — they kept notifying as "Download Manager", long after the downloads were cleared, and a
-     * tap never opened this app (the owner caught it). Saved files are left alone; nothing is handed there any more.
+     * What older builds handed Android's own downloader (a source's subtitles): every entry of ours removed, at each
+     * launch and each time the app comes back to the front. They kept notifying as "Download Manager" long after the
+     * downloads were cleared, and a tap never opened this app (the owner caught it). Nothing is handed there any more,
+     * so there is nothing of ours to keep: we sweep them all, whatever their state.
+     *
+     * Not filtered by status, and re-run on resume, on purpose: a left-over entry can sit PENDING (waiting for Wi-Fi)
+     * for days and only then fail, posting a fresh "Download unsuccessful" after a one-time start-up sweep had already
+     * run. A finished one notifies too. Clearing every id, every time we're in front, catches those late failures.
+     * [android.app.DownloadManager.remove] only touches rows this package created; our own saved videos aren't there.
      */
-    private fun forgetSystemDownloads() = scope.launch {
-        runCatching {
-            val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
-            val stale = android.app.DownloadManager.STATUS_FAILED or android.app.DownloadManager.STATUS_PAUSED or
-                android.app.DownloadManager.STATUS_PENDING or android.app.DownloadManager.STATUS_RUNNING
-            val ids = mutableListOf<Long>()
-            dm.query(android.app.DownloadManager.Query().setFilterByStatus(stale))?.use { c ->
-                val col = c.getColumnIndex(android.app.DownloadManager.COLUMN_ID)
-                while (col >= 0 && c.moveToNext()) ids += c.getLong(col)
+    fun forgetSystemDownloads() {
+        if (!::app.isInitialized) return
+        scope.launch {
+            runCatching {
+                val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+                val ids = mutableListOf<Long>()
+                dm.query(android.app.DownloadManager.Query())?.use { c ->
+                    val col = c.getColumnIndex(android.app.DownloadManager.COLUMN_ID)
+                    while (col >= 0 && c.moveToNext()) ids += c.getLong(col)
+                }
+                if (ids.isNotEmpty()) dm.remove(*ids.toLongArray())
             }
-            if (ids.isNotEmpty()) dm.remove(*ids.toLongArray())
         }
     }
 
