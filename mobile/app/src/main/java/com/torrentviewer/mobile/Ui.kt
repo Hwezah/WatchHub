@@ -479,16 +479,16 @@ fun <T> Sheet(
     empty: String? = null,
     busy: Boolean = false,
 ) {
-    BottomSheet(title, onDismiss) {
+    BottomSheet(title, onDismiss, tight = true) {
         when {
             busy && options.isEmpty() -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { Spinner(size = 40.dp) }
-            options.isEmpty() -> EmptyNote(empty ?: "Nothing to choose from.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+            options.isEmpty() -> EmptyNote(empty ?: "Nothing to choose from.", Modifier.padding(horizontal = 11.dp, vertical = 12.dp))
             else -> LazyColumn {
                 itemsIndexed(options) { _, option ->
                     val on = option.value == selected
                     Tap({ onPick(option.value) }, Modifier.fillMaxWidth(), RoundedCornerShape(0.dp)) { pressed ->
                         Row(
-                            Modifier.background(if (pressed) Ink.text.copy(alpha = 0.08f) else Color.Transparent).padding(horizontal = 20.dp, vertical = 13.dp),
+                            Modifier.background(if (pressed) Ink.text.copy(alpha = 0.08f) else Color.Transparent).padding(horizontal = 11.dp, vertical = 13.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             if (option.image != null) {
@@ -589,6 +589,8 @@ fun BottomSheet(
     title: String, onDismiss: () -> Unit, trailing: (@Composable () -> Unit)? = null,
     /** An icon (or anything) heading the sheet in place of the title's words, when [title] is empty. */
     leading: (@Composable () -> Unit)? = null,
+    /** A tighter side gutter for the title, to match a list that uses one (the [Sheet] of options). */
+    tight: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     BackHandler(LocalShown.current, onDismiss)
@@ -657,7 +659,7 @@ fun BottomSheet(
                     // The title, and beside it at the far right whatever the sheet puts there (a Reload…).
                     // No title (a menu that heads itself, as Tube's): just room under the handle.
                     if (title.isEmpty() && trailing == null && leading == null) Spacer(Modifier.height(14.dp))
-                    else Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    else Row(Modifier.fillMaxWidth().padding(start = if (tight) 11.dp else 20.dp, end = if (tight) 11.dp else 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         leading?.invoke()
                         // One line, never wrapped: a long title scrolls slowly across (the owner's choice). Alone in its row on
                         // an upright phone, in the middle. Beside a Reload, from the start, cut short with "…" and a clear gap

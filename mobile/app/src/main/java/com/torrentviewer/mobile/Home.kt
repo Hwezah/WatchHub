@@ -569,6 +569,12 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                             Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
                                 TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
                             }
+                            // The carousel's dots on the poster, under the logo (the owner's choice).
+                            if (count > 1) Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                repeat(count) { i ->
+                                    Box(Modifier.size(if (i == pager.currentPage) 16.dp else 6.dp, 4.dp).clip(CircleShape).background(if (i == pager.currentPage) Color.White else Color.White.copy(alpha = 0.45f)))
+                                }
+                            }
                         }
                         // The play on the poster, in the accent (the owner's choice), as a title's page does it.
                         if (isPortraitPhone()) Tap({ onOpen(t) }, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Ink.accent, size = 104.dp) }
@@ -591,7 +597,8 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                 }
             }
         }
-        if (count > 1) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // The clean layout carries its dots on the poster (above); the fade and wide ones keep them at the foot.
+        if (count > 1 && (wide || HeaderEdge.fade)) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(count) { i ->
                 Box(Modifier.size(if (i == pager.currentPage) 16.dp else 6.dp, 4.dp).clip(CircleShape).background(if (i == pager.currentPage) Ink.text else Ink.faint))
             }
