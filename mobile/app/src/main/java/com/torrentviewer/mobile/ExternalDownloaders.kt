@@ -195,7 +195,7 @@ fun DownloaderSheet(probe: Intent, many: Boolean, onPick: (Downloader) -> Unit, 
         Option<Downloader>(
             Downloader.App(pkg), name,
             hint = if (pkg == current) "Default · a tap sends here" else if (pkg in known) "Downloader" else null,
-            icon = if (pkg in known) L.drawable.lucide_ic_download else L.drawable.lucide_ic_external_link,
+            icon = if (pkg in known) R.drawable.ic_download else L.drawable.lucide_ic_external_link,
             iconTint = if (pkg == current) Ink.download else null,
         )
     } + Option<Downloader>(Downloader.Picker, "Other Apps…", "Android's own list", icon = L.drawable.lucide_ic_share_2) +

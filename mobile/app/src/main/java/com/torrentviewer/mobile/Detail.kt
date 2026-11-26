@@ -596,7 +596,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         Action(L.drawable.lucide_ic_heart, if (liked) "Liked" else "Like", { SavedStore.toggle(title, "favorite") }, modifier = share, on = liked, onColor = Ink.accent)
                         // A film's one-tap download (the owner's choice), by Settings → Preferred download: the smallest reasonable
                         // file at that resolution and format, from every source, links and torrents alike ([preferredPick]).
-                        if (!title.isSeries) Action(L.drawable.lucide_ic_download, "Download", { askFilm = true }, tint = Ink.download, modifier = share)
+                        if (!title.isSeries) Action(R.drawable.ic_download, "Download", { askFilm = true }, tint = Ink.download, modifier = share)
                         // Always here: Cinemeta's trailer, else TMDB's, played in the card over the page.
                         Action(L.drawable.lucide_ic_film, "Trailer", {
                             val known = title.trailer
@@ -1263,7 +1263,7 @@ fun Source(hit: Hit, modifier: Modifier = Modifier, runtimeSeconds: Double = 0.0
                 if (mbps >= HEAVY_MBPS) Text("Needs ${mbps.toInt()} Mb/s", style = Type.meta.copy(fontSize = 11.sp, color = if (mbps >= TOO_HEAVY_MBPS) Ink.danger else Ink.warn))
             }
             // Torrents, files and HLS playlists download; a DASH manifest or another app's link doesn't.
-            if (onDownload != null && canSave(hit)) Tap(onDownload, Modifier.padding(start = 4.dp), CircleShape) { Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.download, size = 20.dp) }
+            if (onDownload != null && canSave(hit)) Tap(onDownload, Modifier.padding(start = 4.dp), CircleShape) { Lc(R.drawable.ic_download, Modifier.padding(8.dp), tint = Ink.download, size = 20.dp) }
             // Everything else that can be done with it: play elsewhere, mirrors, copy, download (also a long-press).
             if (onMore != null) Tap(onMore, Modifier.padding(start = 2.dp), CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
         }

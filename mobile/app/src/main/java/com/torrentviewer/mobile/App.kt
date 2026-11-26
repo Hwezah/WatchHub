@@ -712,7 +712,7 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 title = titleOf(raw).ifBlank { "This torrent" },
                 options = listOf(
                     Option("stream", "Stream now", "Starts playing while it downloads", icon = L.drawable.lucide_ic_play),
-                    Option("download", "Download", "Kept on this phone — see the Downloads tab", icon = L.drawable.lucide_ic_download, iconTint = Ink.download),
+                    Option("download", "Download", "Kept on this phone — see the Downloads tab", icon = R.drawable.ic_download, iconTint = Ink.download),
                     Option("", "Cancel", icon = L.drawable.lucide_ic_x),
                 ),
                 selected = null,

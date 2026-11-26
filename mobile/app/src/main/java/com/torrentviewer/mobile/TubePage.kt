@@ -869,7 +869,7 @@ private fun WatchPage(start: TubeVideo, onClose: () -> Unit, onOpen: (TubeVideo)
                             val saved = later.any { it.id == v.id }
                             TubeAction(L.drawable.lucide_ic_heart, d?.likes?.takeIf { it >= 0 }?.let { compactCount(it) } ?: "Likes") {}
                             TubeAction(L.drawable.lucide_ic_clock, if (saved) "Saved" else "Later", on = saved) { Tube.toggleLater(v) }
-                            TubeAction(L.drawable.lucide_ic_download, "Download") { onDownload(v) }
+                            TubeAction(R.drawable.ic_download, "Download") { onDownload(v) }
                             TubeAction(L.drawable.lucide_ic_share_2, "Share") {
                                 runCatching { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, v.url), v.title)) }
                             }
@@ -1072,7 +1072,7 @@ private fun VideoMenu(v: TubeVideo, onPlay: () -> Unit, onDownload: () -> Unit, 
             Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(1.dp).background(Ink.text.copy(alpha = 0.07f)))
             Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(top = 4.dp)) {
                 MenuRow(L.drawable.lucide_ic_play, "Play") { onDismiss(); onPlay() }
-                MenuRow(L.drawable.lucide_ic_download, "Download", "In this app, or another app", tint = Ink.download) { onDismiss(); onDownload() }
+                MenuRow(R.drawable.ic_download, "Download", "In this app, or another app", tint = Ink.download) { onDismiss(); onDownload() }
                 MenuRow(L.drawable.lucide_ic_clock, if (saved) "Remove from Watch Later" else "Save to Watch Later", tint = if (saved) Ink.accent else Ink.text) { Tube.toggleLater(v); onDismiss() }
                 MenuRow(L.drawable.lucide_ic_share_2, "Share") {
                     onDismiss()

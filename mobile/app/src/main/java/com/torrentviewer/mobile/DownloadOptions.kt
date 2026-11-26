@@ -284,7 +284,7 @@ fun DownloadFileSheet(
                 androidx.compose.foundation.layout.Box(
                     Modifier.padding(end = 12.dp).androidxDisc(),
                     contentAlignment = androidx.compose.ui.Alignment.Center,
-                ) { com.torrentviewer.core.Lc(L.drawable.lucide_ic_download, tint = Ink.download, size = 20.dp) }
+                ) { com.torrentviewer.core.Lc(R.drawable.ic_download, tint = Ink.download, size = 20.dp) }
                 Text("Download file", Modifier.weight(1f), style = Type.title.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
                 // Open its page here, copy the link, share it.
                 Tap({ Browser.newTab(); Browser.go(cur.url); Nav.tab = Tab.BROWSER; onDismiss() }, shape = androidx.compose.foundation.shape.CircleShape) {
@@ -323,7 +323,7 @@ fun DownloadFileSheet(
             androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
             // The actions as rows, not buttons (the owner's choice): Download, Add paused, the next source when this one
             // fails, Check again, and Cancel.
-            SheetAction("Download", { save(paused = false) }, icon = L.drawable.lucide_ic_download, hint = "Save it to this phone now", tint = Ink.download)
+            SheetAction("Download", { save(paused = false) }, icon = R.drawable.ic_download, hint = "Save it to this phone now", tint = Ink.download)
             SheetAction("Add, paused", { save(paused = true) }, icon = L.drawable.lucide_ic_plus, hint = "Queue it, held paused")
             if (hasNext) SheetAction(
                 "Try the next source · ${idx + 2} of ${choices.size}", { idx++ }, icon = L.drawable.lucide_ic_skip_forward,

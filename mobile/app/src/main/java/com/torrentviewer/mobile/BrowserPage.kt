@@ -180,7 +180,7 @@ fun BrowserScreen() {
                     // What this page has that can be downloaded, with a count.
                     Tap({ picking = true }, Modifier.size(width = 44.dp, height = 46.dp), CircleShape) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Lc(L.drawable.lucide_ic_download, tint = if (Browser.found.isNotEmpty() || site) Ink.download else Ink.text, size = 22.dp)
+                            Lc(R.drawable.ic_download, tint = if (Browser.found.isNotEmpty() || site) Ink.download else Ink.text, size = 22.dp)
                             if (Browser.found.isNotEmpty()) Box(
                                 Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 2.dp).size(17.dp).clip(CircleShape).background(Ink.download),
                                 contentAlignment = Alignment.Center,
@@ -248,7 +248,7 @@ fun BrowserScreen() {
                     { block -> if (block) Browser.allowJumps.remove(here) else Browser.allowJumps.add(here) },
                     icon = L.drawable.lucide_ic_shield, hint = "Stop this site jumping you to another",
                 )
-                SheetAction("Grab this page's video", { menu = false; Browser.offerPage() }, icon = L.drawable.lucide_ic_download, tint = Ink.download)
+                SheetAction("Grab this page's video", { menu = false; Browser.offerPage() }, icon = R.drawable.ic_download, tint = Ink.download)
             }
         }
     }
@@ -304,7 +304,7 @@ fun BrowserScreen() {
     if (picking) BottomSheet("On This Page", { picking = false }) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
             if (Browser.url.isNotBlank()) {
-                Button("Grab This Page's Video", { picking = false; Browser.offerPage() }, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_download, fill = Ink.download)
+                Button("Grab This Page's Video", { picking = false; Browser.offerPage() }, Modifier.fillMaxWidth(), icon = R.drawable.ic_download, fill = Ink.download)
                 Spacer(Modifier.height(10.dp))
             }
             if (Browser.found.isEmpty()) EmptyNote("Nothing loaded yet. Start the video playing and it will show up here.")
@@ -345,7 +345,7 @@ fun BrowserScreen() {
             Sheet(
                 title = o.title.take(70),
                 options = listOfNotNull(
-                    if (o.kind == "Stream (DASH)") null else Option("here", "Download Here", if (hls) "Joined into one video · Grabber!/Browser/Video" else "To Grabber! in this app", icon = L.drawable.lucide_ic_download, iconTint = Ink.download),
+                    if (o.kind == "Stream (DASH)") null else Option("here", "Download Here", if (hls) "Joined into one video · Grabber!/Browser/Video" else "To Grabber! in this app", icon = R.drawable.ic_download, iconTint = Ink.download),
                     if (o.kind == "Video" || hls || o.kind == "Stream (DASH)") Option("formats", "More Formats", "MP3, M4A, Opus… or another height", icon = L.drawable.lucide_ic_music) else null,
                     if (grabber) Option("grabber", "Send to Grabber", "The Grabber app downloads it", icon = L.drawable.lucide_ic_external_link) else null,
                     Option("copy", "Copy Link", icon = L.drawable.lucide_ic_copy),

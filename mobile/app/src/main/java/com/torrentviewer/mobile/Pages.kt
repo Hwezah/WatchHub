@@ -907,7 +907,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     // Stays here until it is installed, "Not now" or not: the card is the one that goes away.
                     update?.let { r ->
                         listOf(
-                            Entry(L.drawable.lucide_ic_download, "Update available", "Version ${r.version}  ·  ${bytes(r.size)}", "new version upgrade", Ink.accent) {
+                            Entry(R.drawable.ic_download, "Update available", "Version ${r.version}  ·  ${bytes(r.size)}", "new version upgrade", Ink.accent) {
                                 // Already fetched in the background: straight to the installer. Still coming: said so.
                                 when {
                                     Updates.ready.value == r -> Updates.installReady(appContext)
@@ -928,7 +928,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     listOf(
                         Entry(L.drawable.lucide_ic_radio, "Streaming", "Storage, buffer and trackers", "cache magnet") { page = "Streaming" },
                         Entry(L.drawable.lucide_ic_play, "Playback", "Streaming resolution, languages and subtitles", "vlc media3 skip intro audio resolution quality 720p 1080p 480p stream") { page = "Playback" },
-                        Entry(L.drawable.lucide_ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
+                        Entry(R.drawable.ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
                         Entry(L.drawable.lucide_ic_youtube, "YouTube", "Sign-in and the mini player", "youtube google login sign in account subscriptions tube mini player") { page = "YouTube" },
                         Entry(L.drawable.lucide_ic_shield, "VPN", "WireGuard: Mullvad, Proton… for this app or the whole phone", "vpn wireguard mullvad proton privacy") { page = "VPN" },
                         Entry(L.drawable.lucide_ic_globe, "Browser", "Search engine, ads, pop-ups, redirects", "google duckduckgo bing brave ads popups redirects dark cookies") { page = "Browser" },
@@ -1540,7 +1540,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     .onFailure { watch.notes.tryEmit(it.message ?: "Couldn't restore that backup") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button("Back up", { save.launch("watchly-backup-${java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())}.json") }, icon = L.drawable.lucide_ic_download)
+                Button("Back up", { save.launch("watchly-backup-${java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())}.json") }, icon = R.drawable.ic_download)
                 Button("Restore", { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, icon = L.drawable.lucide_ic_history)
             }
         }

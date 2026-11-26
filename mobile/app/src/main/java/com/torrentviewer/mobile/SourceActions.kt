@@ -135,7 +135,7 @@ fun SourceActions(
             // file at that resolution and format, the same pick as every other automatic download ([preferredPick]).
             val prefs = remember { downloadPrefs() }
             Action(
-                L.drawable.lucide_ic_download, "Auto download",
+                R.drawable.ic_download, "Auto download",
                 "Your preferred ${listOf(prefs.quality, prefs.format).filter { it.isNotEmpty() }.joinToString(" ").ifEmpty { "download" }} · Settings → Preferred Download",
             ) {
                 val pick = preferredPick(allowedHits(all), prefs) ?: bestDownloadable(all)
@@ -147,7 +147,7 @@ fun SourceActions(
                 }
             }
             Action(
-                L.drawable.lucide_ic_download, "Download this source",
+                R.drawable.ic_download, "Download this source",
                 when {
                     link && isDash(current) -> "A DASH stream: can't be saved yet"
                     link && isPlaylist(current) -> "A streaming playlist (HLS): saved as one file"
@@ -200,7 +200,7 @@ fun SourceActions(
                         }
                         unfolded = null
                     },
-                    Modifier.padding(horizontal = 20.dp, vertical = 8.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_download, compact = true,
+                    Modifier.padding(horizontal = 20.dp, vertical = 8.dp).fillMaxWidth(), icon = R.drawable.ic_download, compact = true,
                 )
             }
             Action(L.drawable.lucide_ic_rotate_cw, "Reload links", "Ask every source again") { onDismiss(); onReload() }
@@ -256,7 +256,7 @@ private fun Action(icon: Int, label: String, hint: String? = null, onClick: () -
     Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(5.dp)) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             // Every download is green, here as on the buttons.
-            Lc(icon, tint = if (icon == L.drawable.lucide_ic_download) Ink.download else Ink.muted, size = 20.dp)
+            Lc(icon, tint = if (icon == R.drawable.ic_download) Ink.download else Ink.muted, size = 20.dp)
             Column(Modifier.padding(start = 16.dp)) {
                 Text(label, style = Type.body.copy(fontWeight = FontWeight.SemiBold))
                 hint?.let { PathText(it, style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp)) }
@@ -350,7 +350,7 @@ fun DownloadChoice(
                     style = Type.meta.copy(color = Ink.download, fontWeight = FontWeight.SemiBold),
                 )
             }
-            ChoiceTile(L.drawable.lucide_ic_download, "Internal Downloader", internalNote, Ink.download) {
+            ChoiceTile(R.drawable.ic_download, "Internal Downloader", internalNote, Ink.download) {
                 onDismiss()
                 onInternal()
             }

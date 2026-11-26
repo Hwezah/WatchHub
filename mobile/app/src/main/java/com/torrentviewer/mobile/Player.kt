@@ -1222,7 +1222,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                         },
                         icon = L.drawable.lucide_ic_moon,
                     ),
-                    Option("download", "Download ahead", if (wholeFile) "Whole file" else "Next 5 minutes", icon = L.drawable.lucide_ic_download, iconTint = Ink.download),
+                    Option("download", "Download ahead", if (wholeFile) "Whole file" else "Next 5 minutes", icon = R.drawable.ic_download, iconTint = Ink.download),
                     Option("open", "Open in another player", icon = L.drawable.lucide_ic_external_link),
                 ),
                 selected = null,
@@ -1486,7 +1486,7 @@ private fun TopBar(
         }
         progress?.let {
             Row(Modifier.padding(end = 6.dp).clip(PILL).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Lc(L.drawable.lucide_ic_download, tint = Ink.muted, size = 13.dp)
+                Lc(R.drawable.ic_download, tint = Ink.muted, size = 13.dp)
                 Text(" ${speed(it.speed)}", style = Type.meta.copy(color = Color.White))
                 Spacer(Modifier.width(10.dp))
                 Lc(L.drawable.lucide_ic_users, tint = Ink.muted, size = 13.dp)

@@ -235,7 +235,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
             title = "Use a different source for ${row.job.label}?",
             options = listOf(
                 Option(true, "Find a different source", "Stops this one, deletes what arrived, and never picks it again", icon = L.drawable.lucide_ic_shuffle, iconTint = Ink.download),
-                Option(false, "Keep this one", icon = L.drawable.lucide_ic_download),
+                Option(false, "Keep this one", icon = R.drawable.ic_download),
             ),
             selected = null,
             onPick = {
@@ -248,7 +248,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     cancelling?.let { row ->
         Sheet(
             title = "Stop downloading ${row.job.label}?",
-            options = listOf(Option(true, "Stop and delete what has arrived", "Files already saved stay on this phone", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep downloading", icon = L.drawable.lucide_ic_download, iconTint = Ink.download)),
+            options = listOf(Option(true, "Stop and delete what has arrived", "Files already saved stay on this phone", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep downloading", icon = R.drawable.ic_download, iconTint = Ink.download)),
             selected = null,
             onPick = {
                 if (it) Downloads.cancel(row.job.uri)
@@ -259,7 +259,7 @@ fun DownloadsScreen(watch: Watch, onBack: (() -> Unit)?, header: (@Composable ()
     }
     if (deletingAll) Sheet(
         title = "Stop and delete all ${live.size} downloads?",
-        options = listOf(Option(true, "Stop and delete them all", "Files already saved stay on this phone", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep downloading", icon = L.drawable.lucide_ic_download, iconTint = Ink.download)),
+        options = listOf(Option(true, "Stop and delete them all", "Files already saved stay on this phone", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger), Option(false, "Keep downloading", icon = R.drawable.ic_download, iconTint = Ink.download)),
         selected = null,
         onPick = {
             if (it) live.forEach { row -> Downloads.cancel(row.job.uri) }

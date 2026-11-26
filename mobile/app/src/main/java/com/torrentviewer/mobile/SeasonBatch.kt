@@ -524,7 +524,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                             say("Downloading $many of season $season — see Downloads")
                             onDismiss()
                         },
-                        Modifier.weight(1f), icon = L.drawable.lucide_ic_download, fill = Ink.download,
+                        Modifier.weight(1f), icon = R.drawable.ic_download, fill = Ink.download,
                     )
                 }
             } else Button(
@@ -534,7 +534,7 @@ fun BatchSheet(title: Title, season: Int, say: (String) -> Unit, onDismiss: () -
                     else -> "Send $many to Downloader"
                 },
                 { if (picks.isNotEmpty() && external) send(sendTo) },
-                Modifier.padding(top = 16.dp).fillMaxWidth(), icon = if (external) L.drawable.lucide_ic_external_link else L.drawable.lucide_ic_download,
+                Modifier.padding(top = 16.dp).fillMaxWidth(), icon = if (external) L.drawable.lucide_ic_external_link else R.drawable.ic_download,
                 fill = Ink.download.takeIf { picks.isNotEmpty() },
                 onLongClick = { if (external && picks.isNotEmpty() && !sending) choosing = true },
             )
