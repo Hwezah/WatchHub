@@ -138,6 +138,7 @@ object Vpn {
     private const val CONFIG = "wireguardConfig"
     private const val ON = "vpnOn"
     private const val ONLY_APP = "vpnOnlyApp"
+    private const val BLOCK_ADS = "vpnBlockAds"
     private lateinit var app: Context
     private var backend: GoBackend? = null
 
@@ -175,6 +176,18 @@ object Vpn {
             if (_state.value == VpnState.ON) connect()
         }
 
+    /**
+     * Block ads and trackers across everything the tunnel carries (off by default, so a config's own DNS is kept until
+     * asked). Android allows one VPN at a time, so this rides the WireGuard tunnel: it points the tunnel's DNS at an
+     * ad-blocking resolver. With [onlyApp] off (whole phone), that's the whole phone; with it on, WatchHub only.
+     */
+    var blockAds: Boolean
+        get() = Kv.global(BLOCK_ADS) == "1"
+        set(v) {
+            Kv.setGlobal(BLOCK_ADS, if (v) "1" else "0")
+            if (_state.value == VpnState.ON) connect()
+        }
+
     /** A config file's text, checked before it's kept. Null when it's fine, else why not. */
     fun import(raw: String): String? {
         // As files come: a byte-order mark first, Windows line ends, spaces around lines.
@@ -208,7 +221,7 @@ object Vpn {
         AppScope.launch(Dispatchers.IO) {
             runCatching {
                 val b = backend ?: GoBackend(app).also { backend = it }
-                val config = Config.parse(wireguardForApp(text, app.packageName, onlyApp).byteInputStream())
+                val config = Config.parse(wireguardForApp(text, app.packageName, onlyApp, blockAds).byteInputStream())
                 // From the top: a change of mode or config takes effect.
                 runCatching { b.setState(tunnel, Tunnel.State.DOWN, null) }
                 b.setState(tunnel, Tunnel.State.UP, config)

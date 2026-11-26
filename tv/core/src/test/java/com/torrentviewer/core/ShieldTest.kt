@@ -70,6 +70,30 @@ class ShieldTest {
         assertTrue("PrivateKey = abc=" in out)
     }
 
+    @Test fun blockAdsSetsFilterDns() {
+        val out = wireguardForApp(conf, "x", onlyApp = false, blockAds = true)
+        // The config's own DNS is replaced by the ad-filtering resolver, once, inside [Interface].
+        assertFalse("DNS = 10.64.0.1" in out)
+        assertTrue("DNS = ${AD_FILTER_DNS.joinToString(", ")}" in out)
+        assertEquals(1, Regex("(?m)^DNS =").findAll(out).count())
+        assertTrue(out.indexOf("DNS = ${AD_FILTER_DNS[0]}") < out.indexOf("[Peer]"))
+    }
+
+    @Test fun blockAdsOffKeepsConfigDns() {
+        val out = wireguardForApp(conf, "x", onlyApp = false, blockAds = false)
+        assertTrue("DNS = 10.64.0.1" in out)
+        assertFalse(AD_FILTER_DNS[0] in out)
+    }
+
+    @Test fun blockAdsWithoutConfigDns() {
+        // A config that never had a DNS line still gets the filtering one added.
+        val bare = conf.lineSequence().filterNot { it.trim().startsWith("DNS") }.joinToString("\n")
+        val out = wireguardForApp(bare, "x", onlyApp = true, blockAds = true)
+        assertTrue("DNS = ${AD_FILTER_DNS.joinToString(", ")}" in out)
+        assertTrue("IncludedApplications = x" in out)
+        assertTrue(out.indexOf("DNS =") < out.indexOf("[Peer]"))
+    }
+
     @Test fun keepAlive() {
         assertTrue("PersistentKeepalive = 25" in wireguardForApp(conf, "x", onlyApp = true))
         val own = conf + "\nPersistentKeepalive = 10"

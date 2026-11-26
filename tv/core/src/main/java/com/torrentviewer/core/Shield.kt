@@ -45,21 +45,37 @@ fun hostBlocked(host: String, blocked: Set<String>): Boolean {
 }
 
 /**
+ * AdGuard's public "Default" filtering resolver (ad and tracker domains answered as "not found"). The tunnel is pointed
+ * at it when the owner asks to block ads across the phone: there's only one VPN slot on Android, so the ad blocking
+ * rides the WireGuard tunnel rather than running a second VPN. Device-wide when the tunnel carries the whole phone,
+ * WatchHub-only when it carries only this app.
+ */
+val AD_FILTER_DNS = listOf("94.140.14.14", "94.140.15.15")
+
+/**
  * A WireGuard config (as Mullvad's or Proton's site hands it out) made for this app: any app list it had taken out of
  * [Interface], and — [onlyApp] — `IncludedApplications = [pkg]`, so only this app's traffic goes through the tunnel
- * and the rest of the phone is untouched.
+ * and the rest of the phone is untouched. With [blockAds], the config's own `DNS` is replaced by [AD_FILTER_DNS], so
+ * everything the tunnel carries resolves through an ad-blocking resolver.
  */
-fun wireguardForApp(conf: String, pkg: String, onlyApp: Boolean): String {
+fun wireguardForApp(conf: String, pkg: String, onlyApp: Boolean, blockAds: Boolean = false): String {
     val out = StringBuilder()
     var section = ""
-    var added = false
+    var addedApps = false
+    var addedDns = false
     // Mobile networks drop a connection that's quiet too long: a peer without a keep-alive gets one every 25 s, so
     // the tunnel isn't left "connected" with nothing getting through after the phone sat idle.
     val keepalive = conf.lineSequence().any { it.trim().substringBefore('=').trim().equals("PersistentKeepalive", true) }
+    // What's injected into [Interface] as it closes (another section starts, or the file ends).
+    fun closeInterface() {
+        if (!section.equals("[Interface]", true)) return
+        if (onlyApp && !addedApps) { out.append("IncludedApplications = $pkg\n"); addedApps = true }
+        if (blockAds && !addedDns) { out.append("DNS = ${AD_FILTER_DNS.joinToString(", ")}\n"); addedDns = true }
+    }
     conf.lineSequence().forEach { line ->
         val t = line.trim()
         if (t.startsWith("[") && t.endsWith("]")) {
-            if (section.equals("[Interface]", true) && onlyApp && !added) { out.append("IncludedApplications = $pkg\n"); added = true }
+            closeInterface()
             section = t
         }
         if (!keepalive && section.equals("[Peer]", true) && t.substringBefore('=').trim().equals("Endpoint", true)) {
@@ -68,9 +84,11 @@ fun wireguardForApp(conf: String, pkg: String, onlyApp: Boolean): String {
         }
         val key = t.substringBefore('=').trim()
         if (section.equals("[Interface]", true) && (key.equals("IncludedApplications", true) || key.equals("ExcludedApplications", true))) return@forEach
+        // Blocking ads means we set the DNS ourselves, so the config's own DNS line is dropped.
+        if (blockAds && section.equals("[Interface]", true) && key.equals("DNS", true)) return@forEach
         out.append(line).append('\n')
     }
-    if (section.equals("[Interface]", true) && onlyApp && !added) out.append("IncludedApplications = $pkg\n")
+    closeInterface()
     return out.toString().trimEnd() + "\n"
 }
 

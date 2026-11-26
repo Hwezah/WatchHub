@@ -58,6 +58,7 @@ fun VpnSettings(say: (String) -> Unit) {
     val error by Vpn.error.collectAsState()
     var has by remember { mutableStateOf(Vpn.hasConfig()) }
     var onlyApp by remember { mutableStateOf(Vpn.onlyApp) }
+    var blockAds by remember { mutableStateOf(Vpn.blockAds) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val text = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } }.getOrNull().orEmpty()
@@ -88,6 +89,16 @@ fun VpnSettings(say: (String) -> Unit) {
                 Text("Streams, downloads and the Browser go through it; the rest of the phone doesn't. Off: the whole phone.", style = Type.meta.copy(color = Ink.faint))
             }
             Toggle(onlyApp, { onlyApp = it; Vpn.onlyApp = it })
+        }
+        if (has) Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text("Block ads & trackers", style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Text(
+                    "Resolves names through an ad-blocking DNS while the VPN is on. With \"Only WatchHub\" off, it blocks ads and trackers across the whole phone. Ads served from a site's own address (some in-app video ads) still get through.",
+                    style = Type.meta.copy(color = Ink.faint),
+                )
+            }
+            Toggle(blockAds, { blockAds = it; Vpn.blockAds = it })
         }
         Button(if (has) "Replace Config File" else "Import Config File", { pick.launch(arrayOf("*/*")) }, Modifier.padding(top = 16.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_upload, compact = true)
         // Or the config's text, copied from the provider's page and pasted (the file can't be picked, or won't open).
