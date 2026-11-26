@@ -423,12 +423,14 @@ fun Field(
     trailing: @Composable () -> Unit = {},
     /** To put the keyboard on it as it opens (a name to type in a sheet). */
     focus: androidx.compose.ui.focus.FocusRequester? = null,
+    /** No box behind it, and the masked digits spread wider: the lock's pad on the page itself. */
+    bare: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
     // Very faint (the owner's choice): enough to show where the typing goes, not a frame.
     val ring by animateColorAsState(if (focused) Ink.text.copy(alpha = 0.16f) else Color.Transparent, Motion.effects(), label = "ring")
     Row(
-        modifier.height(50.dp).clip(PILL).background(if (focused) Ink.text.copy(alpha = 0.12f) else QUIET_FILL).border(1.dp, ring, PILL).padding(horizontal = 14.dp),
+        (if (bare) modifier.height(50.dp) else modifier.height(50.dp).clip(PILL).background(if (focused) Ink.text.copy(alpha = 0.12f) else QUIET_FILL).border(1.dp, ring, PILL)).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading?.let {
@@ -448,7 +450,7 @@ fun Field(
                 value = value,
                 onValueChange = onValue,
                 singleLine = true,
-                textStyle = Type.label.copy(fontSize = 16.sp, letterSpacing = if (secret) 8.sp else 0.sp, textAlign = align),
+                textStyle = Type.label.copy(fontSize = if (bare) 22.sp else 16.sp, letterSpacing = if (secret) (if (bare) 16.sp else 8.sp) else 0.sp, textAlign = align),
                 // Green and blinking, as the other boxes (the owner's choice).
                 cursorBrush = SolidColor(Ink.download),
                 visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,

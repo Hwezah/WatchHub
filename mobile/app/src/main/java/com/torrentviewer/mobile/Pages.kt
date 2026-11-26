@@ -2204,6 +2204,6 @@ private fun PinPad(profile: Profile, onOk: () -> Unit, onBack: () -> Unit) {
                     pin = ""
                 }
             }
-        }, "* * * *", Modifier.width(200.dp), secret = true, digits = true)
+        }, "* * * *", Modifier.width(220.dp), secret = true, digits = true, bare = true)
     }
 }

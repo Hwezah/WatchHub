@@ -198,11 +198,9 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
             runCatching { keyboard?.show() }
         }
     }
-    // A very faint strip behind the lock, the field and the X, so the row reads as one (the owner's choice).
+    // No strip behind it (the owner's choice): the lock, the field and the shield sit on the page itself.
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).clip(PILL).background(Ink.text.copy(alpha = 0.05f))
-            // A notch taller (the owner's choice).
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The lock and the shield each 36dp wide, either side, so the field between them sits in the very middle.
@@ -235,7 +233,7 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
                     }
                 },
                 Modifier.fillMaxWidth().focusRequester(focus),
-                textStyle = TextStyle(color = Ink.text, fontSize = 22.sp, letterSpacing = 8.sp, textAlign = TextAlign.Center),
+                textStyle = TextStyle(color = Ink.text, fontSize = 22.sp, letterSpacing = 16.sp, textAlign = TextAlign.Center),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                 visualTransformation = PasswordVisualTransformation('*'),
                 singleLine = true,

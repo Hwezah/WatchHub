@@ -650,8 +650,10 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
             val glass = NavGlass.glass && tab != Tab.BROWSER
             Box(Modifier.fillMaxSize().nestedScroll(watchScroll)) {
                 Box(Modifier.fillMaxSize().then(if (glass) Modifier.hazeSource(haze) else Modifier)) { host(body) }
-                // The pin row has no X (the owner's choice): a tap anywhere outside the bar puts it away, keyboard and all.
-                if (FilesLock.asking != null) Box(
+                // The pin row has no X (the owner's choice): a tap outside the bar puts it away — but only when the code
+                // isn't actually required (the saved-list peek); a real lock stays until the code is right, so a tap can't
+                // dismiss the pad and strand the locked page (the owner caught the Browser's pad not coming back).
+                if (FilesLock.asking != null && !FilesLock.needed()) Box(
                     Modifier.fillMaxSize().clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
                         FilesLock.dismiss()
                         keyboard?.hide()
@@ -661,7 +663,9 @@ private fun Shell(watch: Watch, incoming: MutableState<Uri?>) {
                 // lives in this bar, so it must still come up when the Browser locks. So: shown as normal off the Browser,
                 // and shown on the Browser only while the code is being asked for (the owner caught the pad not appearing).
                 AnimatedVisibility(
-                    (FilesLock.asking != null || (pillShown && tab != Tab.BROWSER)) && OpenSheets.count == 0,
+                    // A code being asked for always brings the pad up, whatever else is open; the plain nav steps aside
+                    // for a sheet and in the Browser.
+                    FilesLock.asking != null || (pillShown && tab != Tab.BROWSER && OpenSheets.count == 0),
                     Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
                 ) { PillBar(tab, choose, haze = haze.takeIf { glass }) }
