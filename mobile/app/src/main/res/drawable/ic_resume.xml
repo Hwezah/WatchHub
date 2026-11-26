@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A play triangle inside a counter-clockwise replay arc (Lucide has no such icon): the hero Resume, matched to
-     Start over's rotate-ccw so the pair read as a set. Stroke tinted by the caller like the other Lucide icons. -->
+<!-- The normal play triangle with a small chevron just ahead of its tip (an "onward" mark on the same stroke line): the
+     hero Resume, a partner to Start over's rotate-ccw. Stroked like the Lucide icons, tinted by the caller. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -11,14 +11,11 @@
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="2.0"
-        android:pathData="M3,12a9,9 0 1,0 9,-9 9.75,9.75 0 0,0 -6.74,2.74L3,8" />
+        android:pathData="M4.5,5l10,7l-10,7z" />
     <path
         android:strokeColor="#000000"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="2.0"
-        android:pathData="M3,3v5h5" />
-    <path
-        android:fillColor="#000000"
-        android:pathData="M10.5,9.5v5l4,-2.5z" />
+        android:pathData="M16.5,8.5l4,3.5l-4,3.5" />
 </vector>
