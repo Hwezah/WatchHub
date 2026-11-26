@@ -2073,7 +2073,7 @@ private fun Picker(
         }
         Spacer(Modifier.height(36.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (profiles.isNotEmpty()) Button(if (managing) "Done" else "Manage", onManage, Modifier.width(210.dp), icon = if (managing) L.drawable.lucide_ic_check else L.drawable.lucide_ic_user, faint = true)
+            if (profiles.isNotEmpty()) Button(if (managing) "Done" else "Manage", onManage, Modifier.width(210.dp), icon = if (managing) L.drawable.lucide_ic_check else L.drawable.lucide_ic_user_round, faint = true, iconSize = 28.dp, textSize = 17.sp, tall = true)
             if (onCancel != null && !managing) Button("Back", onCancel)
         }
     }
@@ -2189,6 +2189,9 @@ private fun PinPad(profile: Profile, onOk: () -> Unit, onBack: () -> Unit) {
     BackHandler { onBack() }
     var pin by remember { mutableStateOf("") }
     var wrong by remember { mutableStateOf(false) }
+    // Focused as it opens, so the green cursor blinks between the stars and the keypad comes up at once.
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { repeat(6) { kotlinx.coroutines.delay(70); runCatching { focus.requestFocus() } } }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Avatar(profile, 96.dp)
         Text(profile.name, Modifier.padding(top = 14.dp), style = Type.display)
@@ -2204,6 +2207,6 @@ private fun PinPad(profile: Profile, onOk: () -> Unit, onBack: () -> Unit) {
                     pin = ""
                 }
             }
-        }, "* * * *", Modifier.width(220.dp), secret = true, digits = true, bare = true)
+        }, "* * * *", Modifier.width(220.dp), secret = true, digits = true, bare = true, focus = focus)
     }
 }

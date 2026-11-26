@@ -204,6 +204,8 @@ fun Button(
     iconSize: Dp? = null,
     /** Barely there: a background that all but matches the page, for a quiet action like "Manage". */
     faint: Boolean = false,
+    /** Override the label's size, for a word meant to read a touch larger than the usual. */
+    textSize: androidx.compose.ui.unit.TextUnit? = null,
 ) {
     val filled = on == true
     val disc by animateFloatAsState(if (filled) 1f else 0f, if (filled) spring(dampingRatio = 0.55f, stiffness = 420f) else tween(180), label = "disc")
@@ -229,7 +231,7 @@ fun Button(
                     fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
                     primary -> if (pressed) Ink.accent.copy(alpha = 0.8f) else Ink.accent
                     // A tint of the text colour: grey on either page; [faint] all but blends it into the page.
-                    else -> tint.copy(alpha = if (faint) (if (pressed) 0.1f else 0.04f) else (if (pressed) 0.18f else 0.09f))
+                    else -> tint.copy(alpha = if (faint) (if (pressed) 0.08f else 0.025f) else (if (pressed) 0.18f else 0.09f))
                 },
                 Motion.effects(), label = "bg",
             )
@@ -276,7 +278,7 @@ fun Button(
                     // The hero's pair keep their icon close to the word.
                     Spacer(Modifier.width(if (glass) 2.dp else 8.dp))
                 }
-                Text(label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = fg, fontSize = textSize ?: Type.label.fontSize), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (balanced && icon != null) Spacer(Modifier.width(if (glass) 26.dp else 32.dp))
             }
         }
@@ -458,7 +460,9 @@ fun Field(
                 visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
                 keyboardOptions = KeyboardOptions(keyboardType = if (digits) KeyboardType.NumberPassword else KeyboardType.Text, imeAction = if (digits) ImeAction.Done else ImeAction.Search),
                 keyboardActions = KeyboardActions(onAny = { onSubmit() }),
-                modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier).onFocusChanged { focused = it.isFocused },
+                // The lock's bare field wraps its content so its Box centres it — an empty centred field otherwise parks
+                // the caret at the left on some builds, and the green cursor must sit in the middle of the stars.
+                modifier = (if (bare) Modifier else Modifier.fillMaxWidth()).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).onFocusChanged { focused = it.isFocused },
             )
         }
         trailing()

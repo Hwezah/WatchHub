@@ -209,7 +209,7 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
             if (typed.isEmpty()) Text(if (byPassword) "Auth Password" else "Auth Pin", style = Type.label.copy(color = Ink.faint), textAlign = TextAlign.Center, maxLines = 1)
             if (byPassword) BasicTextField(
                 typed, { typed = it.replace("\n", "") },
-                Modifier.fillMaxWidth().focusRequester(focus),
+                Modifier.focusRequester(focus),
                 textStyle = TextStyle(color = Ink.text, fontSize = 16.sp, textAlign = TextAlign.Center),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
@@ -232,7 +232,7 @@ fun CodeRow(onOpen: (Tab) -> Unit) {
                         }
                     }
                 },
-                Modifier.fillMaxWidth().focusRequester(focus),
+                Modifier.focusRequester(focus),
                 textStyle = TextStyle(color = Ink.text, fontSize = 22.sp, letterSpacing = 16.sp, textAlign = TextAlign.Center),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                 visualTransformation = PasswordVisualTransformation('*'),
