@@ -581,7 +581,7 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
                     }
                     // The facts on the page, under the picture's edge, not over the picture (the owner's choice).
                     Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone(), release = release)
-                    HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 14.dp, bottom = 22.dp))
+                    HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 14.dp, bottom = 14.dp))
                 }
             } else {
                 Box(open) {

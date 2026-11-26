@@ -200,6 +200,8 @@ fun Button(
     glass: Boolean = false,
     /** A notch taller than the usual button, for a hero action like Play (the owner's choice). */
     tall: Boolean = false,
+    /** Override the icon's size, for a glyph meant to read larger than the usual 18 dp (e.g. Resume's time-left play). */
+    iconSize: Dp? = null,
 ) {
     val filled = on == true
     val disc by animateFloatAsState(if (filled) 1f else 0f, if (filled) spring(dampingRatio = 0.55f, stiffness = 420f) else tween(180), label = "disc")
@@ -254,7 +256,7 @@ fun Button(
                     // The hero's My Listing switched on: a smaller tick in the words' own colour — black on the dark theme's
                     // near-white button, white on the light theme's near-black one — not the green disc (the owner's choice).
                     val quietTick = glass && !primary && on != null
-                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(iconSize ?: 24.dp), contentAlignment = Alignment.Center) {
                         if (on != null) Box(
                             Modifier.size(if (quietTick) 18.dp else 24.dp).graphicsLayer {
                                 scaleX = disc
@@ -267,7 +269,7 @@ fun Button(
                             scaleY = pop.value
                         }, tint = lerp(if (greyDownload) Ink.download else fg, if (quietTick) glassFill else Color.White, disc.coerceIn(0f, 1f)),
                             // The hero's plus a notch bigger (the owner's choice); its tick, once added, stays small.
-                            size = if (quietTick) (if (on == true) 12.dp else 20.dp) else if (on != null) 16.dp else 18.dp)
+                            size = iconSize ?: (if (quietTick) (if (on == true) 12.dp else 20.dp) else if (on != null) 16.dp else 18.dp))
                     }
                     // The hero's pair keep their icon close to the word.
                     Spacer(Modifier.width(if (glass) 2.dp else 8.dp))
