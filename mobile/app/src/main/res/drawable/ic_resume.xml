@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The exact Lucide "play" glyph (same triangle, stroke 2, rounded joins — identical to the Watch/Play button), only
-     nudged left to free room, with a matching chevron added in front of its tip: the hero Resume, partner to Start
-     over's rotate-ccw. Tinted by the caller. -->
+<!-- A big, round-cornered play triangle with a chevron a little ahead of its tip: the hero Resume, a partner to Start
+     over's rotate-ccw. Corners are rounded in the path so it reads soft, not sharp; sized to fill the box. Tinted by
+     the caller. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -11,12 +11,12 @@
         android:strokeColor="#000000"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:strokeWidth="2.0"
-        android:pathData="M2,3 L16,12 L2,21 Z" />
+        android:strokeWidth="2.4"
+        android:pathData="M4.56,3.42 L14.94,10.58 Q17,12 14.94,13.42 L4.56,20.58 Q2.5,22 2.5,19.5 L2.5,4.5 Q2.5,2 4.56,3.42 Z" />
     <path
         android:strokeColor="#000000"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:strokeWidth="2.0"
-        android:pathData="M18,7.5 L21.5,12 L18,16.5" />
+        android:strokeWidth="2.4"
+        android:pathData="M19,8 L21.6,12 L19,16" />
 </vector>
