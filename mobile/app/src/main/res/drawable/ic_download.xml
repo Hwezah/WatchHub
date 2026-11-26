@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A down arrow dropping into an open bowl (the owner's chosen download mark). Stroke 2 and a 24 viewport, like the
-     Lucide icons, so it drops in at the sizes already used. Tinted by the caller (the download green). -->
+<!-- A down arrow dropping into an open bowl (the owner's chosen download mark), filling the box with a clear gap between
+     the arrow and the bowl. Stroke 2 and a 24 viewport, like the Lucide icons. Tinted by the caller (the download green). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -11,17 +11,17 @@
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="2.0"
-        android:pathData="M12,3.5 L12,13.5" />
+        android:pathData="M12,0.5 L12,10.5" />
     <path
         android:strokeColor="#000000"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="2.0"
-        android:pathData="M8.5,10.5 L12,14 L15.5,10.5" />
+        android:pathData="M6,6 L12,12.5 L18,6" />
     <path
         android:strokeColor="#000000"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="2.0"
-        android:pathData="M6,13 Q12,19.5 18,13" />
+        android:pathData="M4,16 Q12,22.5 20,16" />
 </vector>
