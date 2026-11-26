@@ -462,16 +462,23 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 // On any release here, or on a connected account from another device; a series shows it per episode.
                 val finished = history.filter { it.imdb == title.imdb && it.ratio >= com.torrentviewer.core.WATCHED_AT }.maxOfOrNull { it.at }
                 val seenIt = !title.isSeries && (finished != null || title.imdb in stremio.films)
+                val last = remember(history, title.imdb) { latestPerTitle(history.filter { it.imdb == title.imdb }).firstOrNull() }
+                val inResume = last != null && last.ratio > 0.02 && last.ratio < (if (title.isSeries) com.torrentviewer.core.WATCHED_AT else 0.95)
+                // The minimal film hero (the owner's experiment): a big play centred on the poster, for a fresh film upright.
+                val heroPlay = isPortraitPhone() && !title.isSeries && !inResume
+                val playFilm: () -> Unit = {
+                    savedFilm?.let { playSaved(it) }
+                        ?: playLine(shown).takeIf { it.isNotEmpty() }?.let { playFrom(it) }
+                        ?: watch.notes.tryEmit(if (busy) "Still finding sources…" else noneFound(title.title))
+                }
                 /** The certificate and Watched marks, centred on an upright phone, from the start elsewhere. */
-                // The film hero is being kept minimal (the owner's experiment): no certificate on a film, only on a series.
-                val showCert = certificate != null && title.isSeries
                 val badges: @Composable (Modifier) -> Unit = { m ->
-                    if (seenIt || showCert) Row(
+                    if (seenIt || certificate != null) Row(
                         m.fillMaxWidth(),
                         horizontalArrangement = if (isPortraitPhone()) Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally) else Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (showCert) certificate?.let { CertificateBadge(it) }
+                        certificate?.let { CertificateBadge(it) }
                         if (seenIt) WatchedBadge(finished)
                     }
                 }
@@ -483,9 +490,10 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         Box(Modifier.fillMaxWidth().aspectRatio(0.88f)) {
                             art?.let { Artwork(it, title.title, Modifier.fillMaxSize(), fill = false) }
                             TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 16.dp).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
+                            if (heroPlay) Tap(playFilm, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Color.White, size = 66.dp) }
                         }
                         // The facts and certificate on the page, under the picture's edge, not over the picture (the owner's choice).
-                        Facts(title.copy(genres = title.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone(), release = if (title.isSeries) release else null)
+                        Facts(title.copy(genres = title.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone(), release = release)
                         badges(Modifier.padding(top = 10.dp))
                     }
                 } else if (!wide) {
@@ -493,6 +501,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                         art?.let { Artwork(it, title.title, Modifier.fillMaxSize().bottomScrim(0.6f), fill = false) }
                         // Centred under the art, which is cropped from its centre.
                         TitleMark(title, Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE).widthIn(max = 280.dp), maxHeight = 72.dp, style = Type.display, centred = true)
+                        if (heroPlay) Tap(playFilm, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Color.White, size = 66.dp) }
                     }
                 }
                 Column(
@@ -502,15 +511,14 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                 ) {
                     if (wide) TitleMark(title, Modifier.widthIn(max = 320.dp).padding(bottom = 12.dp), maxHeight = 80.dp, style = Type.display)
                     if (wide) Facts(title.copy(genres = title.genres.take(2)), release = release)
-                    else if (!clean) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Facts(title.copy(genres = title.genres.take(2)), centred = isPortraitPhone(), release = if (title.isSeries) release else null) }
+                    else if (!clean) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Facts(title.copy(genres = title.genres.take(2)), centred = isPortraitPhone(), release = release) }
                     if (!clean) badges(Modifier.padding(top = 12.dp))
                     // The list first, as someone chose its order; TMDB for any other film. A series has its seasons.
                     val inOrder by produceState(com.torrentviewer.core.WatchOrders.of(title.imdb), title.imdb) {
                         if (value == null && !title.isSeries) value = com.torrentviewer.core.Tmdb.orderOf(title.imdb)
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(if (heroPlay) 2.dp else 16.dp))
                     // Part-way through — whichever release or episode was last played — Resume leads, Start over under it.
-                    val last = remember(history, title.imdb) { latestPerTitle(history.filter { it.imdb == title.imdb }).firstOrNull() }
                     when {
                         // An episode left at its end credits is watched: Play goes on to the next instead.
                         last != null && last.ratio > 0.02 && last.ratio < (if (title.isSeries) com.torrentviewer.core.WATCHED_AT else 0.95) -> {
@@ -533,33 +541,21 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                 Button("Start over", startOver, Modifier.fillMaxWidth().padding(top = 8.dp), icon = L.drawable.lucide_ic_rotate_ccw)
                             }
                         }
-                        // Left part-way on Stremio, never here: still Resume — the release picked starts at that spot.
-                        !title.isSeries -> {
-                            val playFilm: () -> Unit = {
-                                savedFilm?.let { playSaved(it) }
-                                    ?: playLine(shown).takeIf { it.isNotEmpty() }?.let { playFrom(it) }
-                                    ?: watch.notes.tryEmit(if (busy) "Still finding sources…" else noneFound(title.title))
-                            }
-                            if (isPortraitPhone()) {
-                                // Temporary minimal hero (the owner's experiment): just a big outline play, no button, no label.
-                                Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                                    Tap(playFilm, shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(16.dp), tint = Ink.text, size = 104.dp) }
-                                }
-                            } else Button(
-                                label = when {
-                                    savedFilm != null -> com.torrentviewer.core.resumeLabel(title.imdb, history, stremio) ?: "Play Downloaded"
-                                    shown.isNotEmpty() -> com.torrentviewer.core.resumeLabel(title.imdb, history, stremio) ?: "Play"
-                                    busy -> "Finding sources…"
-                                    else -> "No sources"
-                                },
-                                onClick = playFilm,
-                                modifier = Modifier.fillMaxWidth(),
-                                icon = L.drawable.lucide_ic_play,
-                                primary = true,
-                                glass = true,
-                                tall = true,
-                            )
-                        }
+                        // A film: upright it plays from the big icon centred on the poster above; wide keeps a button.
+                        !title.isSeries -> if (!isPortraitPhone()) Button(
+                            label = when {
+                                savedFilm != null -> com.torrentviewer.core.resumeLabel(title.imdb, history, stremio) ?: "Play Downloaded"
+                                shown.isNotEmpty() -> com.torrentviewer.core.resumeLabel(title.imdb, history, stremio) ?: "Play"
+                                busy -> "Finding sources…"
+                                else -> "No sources"
+                            },
+                            onClick = playFilm,
+                            modifier = Modifier.fillMaxWidth(),
+                            icon = L.drawable.lucide_ic_play,
+                            primary = true,
+                            glass = true,
+                            tall = true,
+                        )
                         upNext != null -> Button(
                             label = if (busy && episode?.id == upNext.id && shown.isEmpty()) "Finding sources…"
                                 else {
