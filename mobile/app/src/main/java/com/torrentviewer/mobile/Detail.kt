@@ -532,7 +532,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                 // Portrait phone: the two share one row as equal halves; Resume carries only the time left
                                 // beside a play-with-replay-arc that matches Start over's icon (the owner's choice).
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(whereLeft(last) ?: "Resume", resume, Modifier.weight(1f), icon = R.drawable.ic_resume, primary = true, glass = true, tall = true, iconSize = 28.dp)
+                                    Button(whereLeft(last) ?: "Resume", resume, Modifier.weight(1f), icon = R.drawable.ic_resume, primary = true, glass = true, tall = true, iconSize = 25.dp)
                                     Button("Start over", startOver, Modifier.weight(1f), icon = L.drawable.lucide_ic_rotate_ccw, tall = true)
                                 }
                             } else {

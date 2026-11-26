@@ -202,6 +202,8 @@ fun Button(
     tall: Boolean = false,
     /** Override the icon's size, for a glyph meant to read larger than the usual 18 dp (e.g. Resume's time-left play). */
     iconSize: Dp? = null,
+    /** Barely there: a background that all but matches the page, for a quiet action like "Manage". */
+    faint: Boolean = false,
 ) {
     val filled = on == true
     val disc by animateFloatAsState(if (filled) 1f else 0f, if (filled) spring(dampingRatio = 0.55f, stiffness = 420f) else tween(180), label = "disc")
@@ -226,8 +228,8 @@ fun Button(
                 when {
                     fill != null -> if (pressed) fill.copy(alpha = 0.8f) else fill
                     primary -> if (pressed) Ink.accent.copy(alpha = 0.8f) else Ink.accent
-                    // A tint of the text colour: grey on either page.
-                    else -> tint.copy(alpha = if (pressed) 0.18f else 0.09f)
+                    // A tint of the text colour: grey on either page; [faint] all but blends it into the page.
+                    else -> tint.copy(alpha = if (faint) (if (pressed) 0.1f else 0.04f) else (if (pressed) 0.18f else 0.09f))
                 },
                 Motion.effects(), label = "bg",
             )
@@ -443,14 +445,14 @@ fun Field(
             // An asterisk sits up at the letters' top, so "* * * *" is nudged down to the box's middle (the owner caught it).
             val stars = placeholder.isNotBlank() && placeholder.all { it == '*' || it == ' ' }
             if (value.isEmpty()) Text(
-                placeholder, if (stars) Modifier.offset(y = 4.dp) else Modifier,
-                style = Type.label.copy(color = Ink.faint, fontSize = if (stars) 18.sp else 16.sp, textAlign = align), maxLines = 1,
+                placeholder, if (stars) Modifier.offset(y = if (bare) 9.dp else 4.dp) else Modifier,
+                style = Type.label.copy(color = Ink.faint, fontSize = if (bare && stars) 36.sp else if (stars) 18.sp else 16.sp, letterSpacing = if (bare && stars) 14.sp else 0.sp, textAlign = align), maxLines = 1,
             )
             BasicTextField(
                 value = value,
                 onValueChange = onValue,
                 singleLine = true,
-                textStyle = Type.label.copy(fontSize = if (bare) 22.sp else 16.sp, letterSpacing = if (secret) (if (bare) 16.sp else 8.sp) else 0.sp, textAlign = align),
+                textStyle = Type.label.copy(fontSize = if (bare) 34.sp else 16.sp, letterSpacing = if (secret) (if (bare) 24.sp else 8.sp) else 0.sp, textAlign = align),
                 // Green and blinking, as the other boxes (the owner's choice).
                 cursorBrush = SolidColor(Ink.download),
                 visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,

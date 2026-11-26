@@ -2073,7 +2073,7 @@ private fun Picker(
         }
         Spacer(Modifier.height(36.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (profiles.isNotEmpty()) Button(if (managing) "Done" else "Manage", onManage, Modifier.width(180.dp), icon = if (managing) L.drawable.lucide_ic_check else L.drawable.lucide_ic_pencil)
+            if (profiles.isNotEmpty()) Button(if (managing) "Done" else "Manage", onManage, Modifier.width(210.dp), icon = if (managing) L.drawable.lucide_ic_check else L.drawable.lucide_ic_user, faint = true)
             if (onCancel != null && !managing) Button("Back", onCancel)
         }
     }
