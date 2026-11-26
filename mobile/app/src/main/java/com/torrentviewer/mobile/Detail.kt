@@ -105,6 +105,7 @@ import com.torrentviewer.core.Addons
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.launch
 import com.composables.icons.lucide.R as L
+import com.torrentviewer.mobile.R
 
 /** The exact strings quality() returns, best first. */
 private val QUALITY_ORDER = listOf("4K", "1440p", "1080p", "720p", "480p", "360p", "CAM")
@@ -511,31 +512,23 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     when {
                         // An episode left at its end credits is watched: Play goes on to the next instead.
                         last != null && last.ratio > 0.02 && last.ratio < (if (title.isSeries) com.torrentviewer.core.WATCHED_AT else 0.95) -> {
-                            // How far through sits above the buttons as a thin sliver with the time left, so Resume and
-                            // Start over are short enough to share one row as equal halves (the owner's choice).
-                            whereLeft(last)?.let { leftText ->
-                                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.weight(1f).height(3.dp).clip(CircleShape).background(Ink.accent.copy(alpha = 0.22f))) {
-                                        Box(Modifier.fillMaxWidth(last.ratio.toFloat().coerceIn(0f, 1f)).fillMaxHeight().clip(CircleShape).background(Ink.accent))
-                                    }
-                                    Text(leftText, style = Type.label.copy(fontSize = 12.sp, color = Ink.muted), modifier = Modifier.padding(start = 10.dp))
-                                }
+                            val resume = { savedCopyOf(last)?.let { playSaved(it) } ?: watch.resume(last) }
+                            val startOver = {
+                                val i = last.lastFileIndex ?: 0
+                                History.setPosition(last.uri, i, 0.0)
+                                savedCopyOf(last)?.let { playSaved(it, fromStart = true) } ?: watch.resume(History.find(last.uri) ?: last)
                             }
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    "Resume",
-                                    { savedCopyOf(last)?.let { playSaved(it) } ?: watch.resume(last) },
-                                    Modifier.weight(1f),
-                                    icon = L.drawable.lucide_ic_play,
-                                    primary = true,
-                                    glass = true,
-                                    tall = true,
-                                )
-                                Button("Start over", {
-                                    val i = last.lastFileIndex ?: 0
-                                    History.setPosition(last.uri, i, 0.0)
-                                    savedCopyOf(last)?.let { playSaved(it, fromStart = true) } ?: watch.resume(History.find(last.uri) ?: last)
-                                }, Modifier.weight(1f), icon = L.drawable.lucide_ic_rotate_ccw, tall = true)
+                            if (isPortraitPhone()) {
+                                // Portrait phone: the two share one row as equal halves; Resume carries only the time left
+                                // beside a play-with-replay-arc that matches Start over's icon (the owner's choice).
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(whereLeft(last) ?: "Resume", resume, Modifier.weight(1f), icon = R.drawable.ic_resume, primary = true, glass = true, tall = true)
+                                    Button("Start over", startOver, Modifier.weight(1f), icon = L.drawable.lucide_ic_rotate_ccw, tall = true)
+                                }
+                            } else {
+                                // Tablet / landscape: full-width stacked, Resume leading with the time on its own button.
+                                Button("Resume" + (whereLeft(last)?.let { "  ·  $it" } ?: ""), resume, Modifier.fillMaxWidth(), icon = L.drawable.lucide_ic_play, primary = true, glass = true, tall = true)
+                                Button("Start over", startOver, Modifier.fillMaxWidth().padding(top = 8.dp), icon = L.drawable.lucide_ic_rotate_ccw)
                             }
                         }
                         // Left part-way on Stremio, never here: still Resume — the release picked starts at that spot.
