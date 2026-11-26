@@ -66,6 +66,10 @@ fun VpnSettings(say: (String) -> Unit) {
         has = Vpn.hasConfig()
         say(problem ?: "VPN config added")
     }
+    // Turning on ad blocking needs the same one-time "allow this VPN" leave WireGuard uses.
+    val allowAd = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK) { blockAds = true; Vpn.blockAds = true }
+    }
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -83,22 +87,27 @@ fun VpnSettings(say: (String) -> Unit) {
             if (has) VpnSwitch("")
         }
         error?.let { Text(it, Modifier.padding(top = 6.dp), style = Type.meta.copy(color = Ink.danger)) }
+        // The ad-block baseline: on with or without the VPN (one VPN slot, so it rides the tunnel when that's on, and
+        // runs on its own when it's off). Shown even with no VPN config, since it stands alone.
+        Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text("Block ads & trackers", style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Text(
+                    "Filters ad and tracker domains across the whole phone, with or without the VPN. Ads served from a site's own address (some in-app video ads) still get through.",
+                    style = Type.meta.copy(color = Ink.faint),
+                )
+            }
+            Toggle(blockAds, { want ->
+                if (!want) { blockAds = false; Vpn.blockAds = false }
+                else android.net.VpnService.prepare(context)?.let { allowAd.launch(it) } ?: run { blockAds = true; Vpn.blockAds = true }
+            })
+        }
         if (has) Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text("Only WatchHub", style = Type.label.copy(fontWeight = FontWeight.SemiBold))
                 Text("Streams, downloads and the Browser go through it; the rest of the phone doesn't. Off: the whole phone.", style = Type.meta.copy(color = Ink.faint))
             }
             Toggle(onlyApp, { onlyApp = it; Vpn.onlyApp = it })
-        }
-        if (has) Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text("Block ads & trackers", style = Type.label.copy(fontWeight = FontWeight.SemiBold))
-                Text(
-                    "Resolves names through an ad-blocking DNS while the VPN is on. With \"Only WatchHub\" off, it blocks ads and trackers across the whole phone. Ads served from a site's own address (some in-app video ads) still get through.",
-                    style = Type.meta.copy(color = Ink.faint),
-                )
-            }
-            Toggle(blockAds, { blockAds = it; Vpn.blockAds = it })
         }
         Button(if (has) "Replace Config File" else "Import Config File", { pick.launch(arrayOf("*/*")) }, Modifier.padding(top = 16.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_upload, compact = true)
         // Or the config's text, copied from the provider's page and pasted (the file can't be picked, or won't open).

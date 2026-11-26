@@ -128,6 +128,17 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- System-wide ad blocking without the WireGuard tunnel: a DNS-only VPN. Bound by the system, which is why it
+             holds BIND_VPN_SERVICE and answers the VpnService action. -->
+        <service
+            android:name=".AdShieldService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
         <!-- The playback card's Play/Pause on older Android, and a headset's buttons on ROMs
              that route them by receiver. Exported because the system is the sender; it acts
              only on ACTION_MEDIA_BUTTON key events. -->

@@ -159,6 +159,8 @@ object Vpn {
         if (::app.isInitialized) return
         app = context.applicationContext
         if (Kv.global(ON) == "1" && hasConfig() && VpnService.prepare(app) == null) connect()
+        // No WireGuard to bring back, but ad blocking left on: the DNS-only shield comes up (if Android still allows it).
+        else if (blockAds && AdShield.ready(app)) AdShield.start(app)
     }
 
     fun hasConfig() = !Secrets.get(CONFIG).isNullOrBlank()
@@ -177,16 +179,28 @@ object Vpn {
         }
 
     /**
-     * Block ads and trackers across everything the tunnel carries (off by default, so a config's own DNS is kept until
-     * asked). Android allows one VPN at a time, so this rides the WireGuard tunnel: it points the tunnel's DNS at an
-     * ad-blocking resolver. With [onlyApp] off (whole phone), that's the whole phone; with it on, WatchHub only.
+     * Block ads and trackers across the phone (off by default). Android allows one VPN at a time, so this shares the
+     * slot with WireGuard: while the VPN is on it rides the tunnel's DNS (the config's DNS is swapped for an ad-blocking
+     * resolver — whole phone with [onlyApp] off, WatchHub only with it on); while the VPN is off the DNS-only [AdShield]
+     * runs on its own. Flipping this reconnects the tunnel or starts/stops the shield as needed.
      */
     var blockAds: Boolean
         get() = Kv.global(BLOCK_ADS) == "1"
         set(v) {
             Kv.setGlobal(BLOCK_ADS, if (v) "1" else "0")
-            if (_state.value == VpnState.ON) connect()
+            // VPN on: reconnect so the tunnel's DNS changes. VPN off: start or stop the DNS-only shield.
+            if (_state.value == VpnState.ON) connect() else syncAdShield()
         }
+
+    /**
+     * Keep the one VPN slot used by whichever is wanted: WireGuard owns it when up (ad blocking then rides its DNS),
+     * otherwise the DNS-only [AdShield] runs when ad blocking is on. Called whenever either toggle changes.
+     */
+    private fun syncAdShield() {
+        if (!::app.isInitialized) return
+        if (_state.value == VpnState.ON || _state.value == VpnState.CONNECTING) { AdShield.stop(app); return }
+        if (blockAds && AdShield.ready(app)) AdShield.start(app) else AdShield.stop(app)
+    }
 
     /** A config file's text, checked before it's kept. Null when it's fine, else why not. */
     fun import(raw: String): String? {
@@ -218,6 +232,8 @@ object Vpn {
         _state.value = VpnState.CONNECTING
         _error.value = null
         Kv.setGlobal(ON, "1")
+        // The WireGuard tunnel is about to take the one VPN slot, so the DNS-only shield steps aside.
+        AdShield.stop(app)
         AppScope.launch(Dispatchers.IO) {
             runCatching {
                 val b = backend ?: GoBackend(app).also { backend = it }
@@ -237,6 +253,8 @@ object Vpn {
         AppScope.launch(Dispatchers.IO) {
             runCatching { backend?.setState(tunnel, Tunnel.State.DOWN, null) }
             _state.value = VpnState.OFF
+            // Slot's free again: bring the DNS-only ad shield back if it's wanted.
+            syncAdShield()
         }
     }
 }
