@@ -533,7 +533,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                                 // beside a play-with-replay-arc that matches Start over's icon (the owner's choice).
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(whereLeft(last) ?: "Resume", resume, Modifier.weight(1f), icon = R.drawable.ic_resume, primary = true, glass = true, tall = true, iconSize = 25.dp)
-                                    Button("Start over", startOver, Modifier.weight(1f), icon = L.drawable.lucide_ic_rotate_ccw, tall = true, iconSize = 25.dp)
+                                    Button("Start over", startOver, Modifier.weight(1f), icon = R.drawable.ic_start_over, tall = true, iconSize = 24.5.dp)
                                 }
                             } else {
                                 // Tablet / landscape: full-width stacked, Resume leading with the time on its own button.
