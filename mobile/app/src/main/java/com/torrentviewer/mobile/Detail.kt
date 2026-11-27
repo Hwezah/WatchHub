@@ -592,7 +592,7 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
                     Row(Modifier.fillMaxWidth().padding(top = 14.dp)) {
                         val share = Modifier.weight(1f)
                         // Green tick for My List, red heart for Like — each fills its disc when on.
-                        Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My Listing" else "My Listing", { SavedStore.toggle(title) }, modifier = share, on = inList)
+                        Action(if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, if (inList) "In My Listing" else "My Listing", { SavedStore.toggle(title) }, modifier = share, on = inList, onColor = Ink.accent)
                         Action(L.drawable.lucide_ic_heart, if (liked) "Liked" else "Like", { SavedStore.toggle(title, "favorite") }, modifier = share, on = liked, onColor = Ink.accent)
                         // A film's one-tap download (the owner's choice), by Settings → Preferred download: the smallest reasonable
                         // file at that resolution and format, from every source, links and torrents alike ([preferredPick]).
