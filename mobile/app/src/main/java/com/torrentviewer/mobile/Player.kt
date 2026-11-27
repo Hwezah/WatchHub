@@ -1463,8 +1463,8 @@ private fun EpisodeRow(ep: Episode, fallback: String?, here: Boolean, seen: Doub
     // Smaller thumbnails on an upright phone (the owner's choice); full size on its side.
     val thumbW = if (isPortraitPhone()) 96.dp else 128.dp
     Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
-        // The one playing sits on a frosted fill nearly the page's own dark (the owner's choice), the others are plain.
-        Row(Modifier.fillMaxWidth().then(if (here) Modifier.background(Color.Black.copy(alpha = 0.5f)).grain() else Modifier).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        // The one playing stands out in a frosted accent wash (the owner's choice: the dark fill was too faint to notice).
+        Row(Modifier.fillMaxWidth().then(if (here) Modifier.background(Ink.accent.copy(alpha = 0.16f)).grain() else Modifier).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(thumbW).aspectRatio(16f / 9f).clip(RoundedCornerShape(4.dp)).background(Color.Black)) {
                 Artwork(ep.thumbnail ?: fallback, ep.name, Modifier.fillMaxSize(), fill = false)
                 if (seen > 0 && !watched) ProgressLine(seen.toFloat(), Modifier.align(Alignment.BottomStart))
@@ -1483,7 +1483,7 @@ private fun EpisodeRow(ep: Episode, fallback: String?, here: Boolean, seen: Doub
                     Lc(L.drawable.lucide_ic_check, tint = Ink.good, size = 13.dp)
                     Text(" Watched", style = Type.meta.copy(color = Ink.good, fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
                 }
-                if (here) Text("Now playing", Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp))
+                if (here) Text("Now playing", Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
             }
         }
     }
