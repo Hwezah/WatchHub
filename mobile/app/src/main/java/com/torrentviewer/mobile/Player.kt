@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -95,6 +96,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
@@ -113,6 +115,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.torrentviewer.core.Artwork
+import com.torrentviewer.core.grain
 import com.torrentviewer.core.TORBOX_STALL_MS
 import com.torrentviewer.core.NeedsVlc
 import com.torrentviewer.core.TORBOX_STALL_NOTE
@@ -1334,37 +1337,47 @@ private fun SourcesPanel(watch: Watch, title: Title?, episode: Episode?, onPick:
     var quality by remember { mutableStateOf(found.find { it.uri == playing }?.quality?.takeIf { it in resolutions }) }
     // One row per release: a list with the same release twice would break the list's keys.
     val shown = remember(found, quality) { com.torrentviewer.core.sourceOrder(found.distinctBy { it.id }, quality) }
+    // Full width on an upright phone, 70% and off to the right on its side (the owner's choice).
+    val portrait = isPortraitPhone()
+    val shape = RoundedCornerShape(16.dp)
+    // Minimal height: the panel wraps to its content, the list capped so a long one scrolls rather than fills the screen.
+    val listCap = (LocalConfiguration.current.screenHeightDp * 0.62f).dp
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume(); onDismiss() } })
-        Column(
-            Modifier.align(Alignment.CenterEnd).fillMaxHeight().widthIn(max = 400.dp).fillMaxWidth(0.9f)
-                .background(Color.Black.copy(alpha = 0.92f)).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
-                .windowInsetsPadding(WindowInsets.safeDrawing).padding(start = 16.dp, end = 12.dp, top = 12.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Sources", Modifier.weight(1f), style = Type.title.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                Tap(onDismiss, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Color.White, size = 22.dp) }
-            }
-            BarChoices(
-                listOf("All") + resolutions, quality?.let { resolutions.indexOf(it) + 1 }?.takeIf { it > 0 } ?: 0,
-                Modifier.padding(bottom = 4.dp),
-                leading = {
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
+                    .then(if (portrait) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.7f))
+                    // Frosted and nearly the page's own dark, as the sheets (the owner's choice).
+                    .clip(shape).background(Color.Black.copy(alpha = 0.92f)).grain()
+                    .pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
+                    .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            ) {
+                // The reload rides the title row now, at the far right before the close (the owner's choice): the
+                // resolutions below keep their own full-width row. A long title scrolls right to left.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sources", Modifier.weight(1f).basicMarquee(), style = Type.title.copy(color = Color.White, fontWeight = FontWeight.Bold), maxLines = 1)
                     if (title != null) Tap({ if (!busy) { again = true; ask++ } }, Modifier.semantics { contentDescription = "Ask every site again" }, CircleShape) {
                         ReloadArrow(busy, Color.White, 20.dp, Modifier.padding(8.dp))
                     }
-                },
-            ) { i -> quality = if (i == 0) null else resolutions[i - 1] }
-            if (shown.isEmpty()) Text(
-                when {
-                    busy -> "Finding sources…"
-                    title == null -> "No other sources kept for this."
-                    else -> "Nothing found${quality?.let { " at $it" } ?: ""}."
-                },
-                Modifier.padding(top = 16.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f)),
-            )
-            else if (busy) Text("${found.size} so far · finding more…", Modifier.padding(top = 2.dp, bottom = 4.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp))
-            LazyColumn(Modifier.padding(top = 4.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(shown, key = { it.id }) { hit -> SourceRow(hit, hit.uri == playing) { onPick(hit) } }
+                    Tap(onDismiss, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Color.White, size = 22.dp) }
+                }
+                BarChoices(
+                    listOf("All") + resolutions, quality?.let { resolutions.indexOf(it) + 1 }?.takeIf { it > 0 } ?: 0,
+                    Modifier.padding(top = 2.dp, bottom = 4.dp), spread = true,
+                ) { i -> quality = if (i == 0) null else resolutions[i - 1] }
+                if (shown.isEmpty()) Text(
+                    when {
+                        busy -> "Finding sources…"
+                        title == null -> "No other sources kept for this."
+                        else -> "Nothing found${quality?.let { " at $it" } ?: ""}."
+                    },
+                    Modifier.padding(top = 16.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f)),
+                )
+                else if (busy) Text("${found.size} so far · finding more…", Modifier.padding(top = 2.dp, bottom = 4.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp))
+                LazyColumn(Modifier.padding(top = 4.dp).heightIn(max = listCap), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(shown, key = { it.id }) { hit -> SourceRow(hit, hit.uri == playing) { onPick(hit) } }
+                }
             }
         }
     }
@@ -1373,17 +1386,26 @@ private fun SourcesPanel(watch: Watch, title: Title?, episode: Episode?, onPick:
 /** One release in the Sources panel: its name, then resolution · size (a torrent's seeds) · where it came from. */
 @Composable
 private fun SourceRow(hit: Hit, here: Boolean, onClick: () -> Unit) {
-    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(5.dp)) {
-        Column(Modifier.fillMaxWidth().background(if (here) Color.White.copy(alpha = 0.12f) else Color.Transparent).padding(horizontal = 8.dp, vertical = 9.dp)) {
-            Text(hit.name, style = Type.label.copy(color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val about = listOfNotNull(
-                hit.quality,
-                hit.size.takeIf { it > 0 }?.let { com.torrentviewer.core.bytes(it) },
-                if (hit.direct) "Link" else "${hit.seeders} seeds",
-                hit.addon.takeIf { it.isNotBlank() },
-            ).joinToString(" · ")
-            Text(about, Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (here) Text("Now playing", Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
+    val about = listOfNotNull(
+        hit.quality,
+        hit.size.takeIf { it > 0 }?.let { com.torrentviewer.core.bytes(it) },
+        if (hit.direct) "Link" else "${hit.seeders} seeds",
+        hit.addon.takeIf { it.isNotBlank() },
+    ).joinToString(" · ")
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
+        // The one playing is marked by an accent bar a notch in from its left edge, the whole card's height, over a
+        // frosted fill nearly the page's own dark (the owner's choice). The others are plain.
+        Box(Modifier.fillMaxWidth().then(if (here) Modifier.background(Color.Black.copy(alpha = 0.45f)).grain() else Modifier)) {
+            Column(Modifier.fillMaxWidth().padding(start = if (here) 18.dp else 8.dp, end = 8.dp, top = 9.dp, bottom = 9.dp)) {
+                // The title on one line, scrolling right to left when it's longer than the row (the owner's choice).
+                Text(hit.name, Modifier.fillMaxWidth().basicMarquee(), style = Type.label.copy(color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold), maxLines = 1)
+                Text(about, Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (here) Text("Now playing", Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
+            }
+            // Full card height, inset a notch from the left edge; matchParentSize so it tracks the card, not the screen.
+            if (here) Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.padding(start = 7.dp).width(3.dp).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(Ink.accent))
+            }
         }
     }
 }
