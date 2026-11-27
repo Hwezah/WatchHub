@@ -764,7 +764,13 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     // An episode's releases come up over the page, rather than at the foot of a long list.
     if (sheet) {
         val ep = episode
-        BottomSheet(ep?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: "Sources", onDismiss = { sheet = false }) {
+        BottomSheet(
+            ep?.let { "S${it.season}:E${it.episode} · ${it.name}" } ?: "Sources",
+            onDismiss = { sheet = false },
+            // The reload lives up here now, at the row's far right; an accent bar marks the row's far left.
+            rail = Ink.accent,
+            trailing = { ReloadPill(busy, { reloadSources(ep) }) },
+        ) {
             val epList = rememberLazyListState()
             androidx.compose.runtime.CompositionLocalProvider(LocalRowsScrolling provides epList.isScrollInProgress) {
             LazyColumn(state = epList) {
@@ -780,7 +786,12 @@ fun DetailScreen(initial: Title, watch: Watch, onOrder: (com.torrentviewer.core.
     // Download lists the releases to pick from, rather than keeping whichever came first.
     if (downloadSheet) {
         val ep = episode
-        BottomSheet(ep?.let { "Download ${episodeTag(it.season, it.episode)}: pick a release" } ?: "Download: pick a release", onDismiss = { downloadSheet = false }) {
+        BottomSheet(
+            ep?.let { "Download ${episodeTag(it.season, it.episode)}: pick a release" } ?: "Download: pick a release",
+            onDismiss = { downloadSheet = false },
+            rail = Ink.accent,
+            trailing = { ReloadPill(busy, { reloadSources(ep) }) },
+        ) {
             val dlList = rememberLazyListState()
             androidx.compose.runtime.CompositionLocalProvider(LocalRowsScrolling provides dlList.isScrollInProgress) {
             LazyColumn(state = dlList) {
@@ -997,15 +1008,15 @@ private fun LazyListScope.sources(
                     }
                 }
             }
-            if (qualities.size > 1 || (!heading && onReload != null && hits != null)) {
+            if (qualities.size > 1) {
                 // Spread across the row like the season pills; with many, 8 dp gaps and a sideways scroll.
-                // Words split by coloured bars, the chosen one with a dot (the owner's choice); the reload stays a pill.
-                // Under a heading, the reload is the heading's; in the episode sheet (no heading), this pill, first.
+                // Words split by coloured bars, the chosen one with a dot (the owner's choice). The reload no longer rides
+                // this row (it sat at the far left, squeezing the resolutions): it is the sheet's own, up in the title row.
                 val names = listOf<String?>(null) + qualities
                 // Spread end to end here (the owner's choice), still split by pipes.
                 BarChoices(
                     listOf("All") + qualities, names.indexOf(quality).takeIf { it >= 0 }, Modifier.padding(bottom = 12.dp),
-                    leading = if (onReload != null && !heading) ({ ReloadPill(busy, onReload) }) else null, spread = true,
+                    spread = true,
                 ) { onQuality(names[it]) }
             }
             // The progress line: centred on an upright phone, from the start elsewhere.

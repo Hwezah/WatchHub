@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,8 +113,9 @@ fun SourceActions(
         Column(Modifier.verticalScroll(scroll).padding(bottom = 8.dp)) {
             Text(
                 listOfNotNull(current.quality, current.size.takeIf { it > 0 }?.let { com.torrentviewer.core.bytes(it) }, current.addon.ifEmpty { null }, current.name).joinToString("  ·  "),
-                Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 8.dp),
                 style = Type.meta.copy(color = Ink.faint), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                textAlign = if (isPortraitPhone()) TextAlign.Center else TextAlign.Start,
             )
             Action(L.drawable.lucide_ic_play, "Play in app") { onDismiss(); onPlay(current) }
             // Android's share sheet: download managers (1DM, ADM), messengers, notes — whatever takes a link.

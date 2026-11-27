@@ -52,6 +52,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -601,6 +602,8 @@ fun BottomSheet(
     leading: (@Composable () -> Unit)? = null,
     /** A tighter side gutter for the title, to match a list that uses one (the [Sheet] of options). */
     tight: Boolean = false,
+    /** A short coloured bar at the far left of the title row, its full height (the owner's choice, for the sources sheets). */
+    rail: Color? = null,
     content: @Composable () -> Unit,
 ) {
     BackHandler(LocalShown.current, onDismiss)
@@ -668,17 +671,27 @@ fun BottomSheet(
                     Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp).size(36.dp, 4.dp).clip(CircleShape).background(Ink.stroke))
                     // The title, and beside it at the far right whatever the sheet puts there (a Reload…).
                     // No title (a menu that heads itself, as Tube's): just room under the handle.
-                    if (title.isEmpty() && trailing == null && leading == null) Spacer(Modifier.height(14.dp))
-                    else Row(Modifier.fillMaxWidth().padding(start = if (tight) 11.dp else 20.dp, end = if (tight) 11.dp else 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (title.isEmpty() && trailing == null && leading == null && rail == null) Spacer(Modifier.height(14.dp))
+                    else Row(
+                        Modifier.fillMaxWidth().then(if (rail != null) Modifier.height(IntrinsicSize.Min) else Modifier)
+                            .padding(start = if (tight) 11.dp else 20.dp, end = if (tight) 11.dp else 14.dp, top = 14.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // An accent bar the row's full height, before everything (the owner's choice for the sources sheets).
+                        if (rail != null) {
+                            Box(Modifier.fillMaxHeight().width(3.dp).clip(RoundedCornerShape(2.dp)).background(rail))
+                            Spacer(Modifier.width(12.dp))
+                        }
                         leading?.invoke()
                         // One line, never wrapped: a long title scrolls slowly across (the owner's choice). Alone in its row on
-                        // an upright phone, in the middle. Beside a Reload, from the start, cut short with "…" and a clear gap
-                        // before it (the owner's choice: scrolling, it ran right up to the button).
-                        val alone = trailing == null && leading == null && isPortraitPhone()
+                        // an upright phone, in the middle. Beside a Reload (or a rail), from the start, cut short with "…" and a
+                        // clear gap before it (the owner's choice: scrolling, it ran right up to the button).
+                        val tamed = trailing != null || rail != null
+                        val alone = trailing == null && leading == null && rail == null && isPortraitPhone()
                         Text(
-                            title, Modifier.weight(1f).then(if (trailing != null) Modifier.padding(end = 16.dp) else Modifier.basicMarquee()),
+                            title, Modifier.weight(1f).then(if (tamed) Modifier.padding(end = 16.dp) else Modifier.basicMarquee()),
                             style = Type.title.copy(fontWeight = FontWeight.Bold), maxLines = 1,
-                            overflow = if (trailing != null) TextOverflow.Ellipsis else TextOverflow.Clip,
+                            overflow = if (tamed) TextOverflow.Ellipsis else TextOverflow.Clip,
                             textAlign = if (alone) TextAlign.Center else TextAlign.Start,
                         )
                         trailing?.invoke()

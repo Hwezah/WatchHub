@@ -300,12 +300,14 @@ fun DownloadFileSheet(
                     com.torrentviewer.core.Lc(L.drawable.lucide_ic_share_2, Modifier.padding(8.dp), tint = Ink.text, size = 22.dp)
                 }
             }
+            // The sheet's description, centred on an upright phone (the owner's choice), from the start elsewhere.
+            val descAlign = if (isPortraitPhone()) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
             // Which source is loaded, when there's more than one to fall through.
             if (choices.size > 1) Text(
                 "Source ${idx + 1} of ${choices.size}" + cur.label.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
-                edge.padding(top = 10.dp), style = Type.overline.copy(color = Ink.faint),
+                edge.fillMaxWidth().padding(top = 10.dp), style = Type.overline.copy(color = Ink.faint), textAlign = descAlign,
             )
-            Text(cur.url, edge.padding(top = if (choices.size > 1) 2.dp else 10.dp), style = Type.meta.copy(color = Ink.text), maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(cur.url, edge.fillMaxWidth().padding(top = if (choices.size > 1) 2.dp else 10.dp), style = Type.meta.copy(color = Ink.text), maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, textAlign = descAlign)
             val failed = checked && info == null && !cur.playlist
             val about = when {
                 cur.playlist -> "Video stream (HLS) · joined and saved as one file"
@@ -317,7 +319,7 @@ fun DownloadFileSheet(
                     if (info!!.resumable) "resumable, ${Downloads.connections} connections" else "one connection, not resumable",
                 ).joinToString(" · ")
             }
-            Text(about, edge.padding(top = 6.dp, bottom = 12.dp), style = Type.meta.copy(color = if (failed) Ink.warn else Ink.faint))
+            Text(about, edge.fillMaxWidth().padding(top = 6.dp, bottom = 12.dp), style = Type.meta.copy(color = if (failed) Ink.warn else Ink.faint), textAlign = descAlign)
             Field(fileName, { fileName = it }, "File name", edge.fillMaxWidth())
             Field(referer, { referer = it }, "Referer page (leave empty if not sure)", edge.padding(top = 10.dp).fillMaxWidth())
             androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
