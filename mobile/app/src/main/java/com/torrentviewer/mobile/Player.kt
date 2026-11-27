@@ -1420,31 +1420,36 @@ private fun EpisodesPanel(title: Title, playing: Episode?, onPlay: (Episode) -> 
     // Specials after the seasons.
     val seasons = remember(title.episodes) { title.episodes.map { it.season }.distinct().sortedBy { if (it == 0) Int.MAX_VALUE else it } }
     var season by remember { mutableStateOf(playing?.season ?: seasons.first()) }
+    // Full width on an upright phone, 70% off to the right on its side (the owner's choice), frosted and page-dark.
+    val portrait = isPortraitPhone()
+    val shape = RoundedCornerShape(16.dp)
     Box(Modifier.fillMaxSize()) {
         // The picture stays in view beside the list; a tap on it closes the list.
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume(); onDismiss() } })
-        Column(
-            Modifier.align(Alignment.CenterEnd).fillMaxHeight().widthIn(max = 400.dp).fillMaxWidth(0.9f)
-                .background(Color.Black.copy(alpha = 0.92f)).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
-                .windowInsetsPadding(WindowInsets.safeDrawing).padding(start = 16.dp, end = 12.dp, top = 12.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Episodes", Modifier.weight(1f), style = Type.title.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                Tap(onDismiss, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Color.White, size = 22.dp) }
-            }
-            if (seasons.size > 1) Row(Modifier.padding(top = 4.dp, bottom = 4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                seasons.forEach { s ->
-                    // A green tick on a season watched through.
-                    val done = seasonWatched(title.episodes, s, seen)
-                    Chip(if (s == 0) "Specials" else "Season $s", s == season, onClick = { season = s }, trailing = L.drawable.lucide_ic_check.takeIf { done }, trailingTint = Ink.good)
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd).fillMaxHeight()
+                    .then(if (portrait) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.7f))
+                    .clip(shape).background(Color.Black.copy(alpha = 0.92f)).grain()
+                    .pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
+                    .padding(start = 16.dp, end = 12.dp, top = 12.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Episodes", Modifier.weight(1f).basicMarquee(), style = Type.title.copy(color = Color.White, fontWeight = FontWeight.Bold), maxLines = 1)
+                    Tap(onDismiss, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Color.White, size = 22.dp) }
                 }
-            }
-            key(season) {
-                val shown = remember { title.episodes.filter { it.season == season } }
-                val list = rememberLazyListState(shown.indexOfFirst { it.id == playing?.id }.coerceAtLeast(0))
-                LazyColumn(Modifier.padding(top = 6.dp).weight(1f), state = list, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(shown, key = { it.id }) { ep ->
-                        EpisodeRow(ep, title.wide, ep.id == playing?.id, seen[Ep(ep.season, ep.episode)] ?: 0.0) { onPlay(ep) }
+                // The seasons as pipe-split words, no pill behind them, the chosen one accent with a dot (the owner's choice).
+                if (seasons.size > 1) BarChoices(
+                    seasons.map { if (it == 0) "Specials" else "Season $it" }, seasons.indexOf(season).takeIf { it >= 0 },
+                    Modifier.padding(top = 4.dp, bottom = 4.dp),
+                ) { i -> season = seasons[i] }
+                key(season) {
+                    val shown = remember { title.episodes.filter { it.season == season } }
+                    val list = rememberLazyListState(shown.indexOfFirst { it.id == playing?.id }.coerceAtLeast(0))
+                    LazyColumn(Modifier.padding(top = 6.dp).weight(1f), state = list, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(shown, key = { it.id }) { ep ->
+                            EpisodeRow(ep, title.wide, ep.id == playing?.id, seen[Ep(ep.season, ep.episode)] ?: 0.0) { onPlay(ep) }
+                        }
                     }
                 }
             }
@@ -1455,9 +1460,12 @@ private fun EpisodesPanel(title: Title, playing: Episode?, onPlay: (Episode) -> 
 @Composable
 private fun EpisodeRow(ep: Episode, fallback: String?, here: Boolean, seen: Double, onClick: () -> Unit) {
     val watched = isWatched(seen)
-    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(5.dp)) {
-        Row(Modifier.fillMaxWidth().background(if (here) Color.White.copy(alpha = 0.12f) else Color.Transparent).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(4.dp)).background(Color.Black)) {
+    // Smaller thumbnails on an upright phone (the owner's choice); full size on its side.
+    val thumbW = if (isPortraitPhone()) 96.dp else 128.dp
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
+        // The one playing sits on a frosted fill nearly the page's own dark (the owner's choice), the others are plain.
+        Row(Modifier.fillMaxWidth().then(if (here) Modifier.background(Color.Black.copy(alpha = 0.5f)).grain() else Modifier).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(thumbW).aspectRatio(16f / 9f).clip(RoundedCornerShape(4.dp)).background(Color.Black)) {
                 Artwork(ep.thumbnail ?: fallback, ep.name, Modifier.fillMaxSize(), fill = false)
                 if (seen > 0 && !watched) ProgressLine(seen.toFloat(), Modifier.align(Alignment.BottomStart))
                 if (watched) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(18.dp).clip(CircleShape).background(Ink.good), contentAlignment = Alignment.Center) {
