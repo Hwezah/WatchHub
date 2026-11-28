@@ -48,7 +48,6 @@ import com.torrentviewer.core.GENRES
 import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Kids
 import com.torrentviewer.core.Meta
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.ImdbMark
 import com.torrentviewer.core.Pick
 import com.torrentviewer.core.SettingsStore
@@ -62,7 +61,7 @@ import com.torrentviewer.core.imdbScore
 /** One suggestion, big: its backdrop and logo, its IMDb rating, and whose fault it is. All on art, so white. */
 @Composable
 private fun PickCard(pick: Pick, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(9.dp)
     val t = pick.title
     Tap(onClick, modifier, shape) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(Color.Black)) {
@@ -123,7 +122,7 @@ private const val YOUR_GENRES = "your genres"
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun TopScreen(startKind: String, onOpen: (Title) -> Unit, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    BackHandler(LocalShown.current, onBack)
     val settings by SettingsStore.value.collectAsState()
     var kind by rememberSaveable { mutableStateOf(startKind) }
     var genre by rememberSaveable { mutableStateOf(YOUR_GENRES.takeIf { settings.genres.isNotEmpty() }) }
@@ -138,16 +137,16 @@ fun TopScreen(startKind: String, onOpen: (Title) -> Unit, onBack: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
-            GridCells.Adaptive(104.dp),
+            PosterGrid,
             state = rememberLazyGridState(),
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),
+            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Heading("Top on IMDb", Modifier.padding(start = 48.dp))
+                    Heading("Top on IMDb", Modifier.padding(start = 48.dp, end = if (isPortraitPhone()) 48.dp else 0.dp), centred = isPortraitPhone())
                     // Small enough for one line; wrapped, not scrolled, where it still doesn't fit: a menu opens
                     // under its chip, so none may sit off the screen's edge.
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -162,7 +161,7 @@ fun TopScreen(startKind: String, onOpen: (Title) -> Unit, onBack: () -> Unit) {
                 }
             }
             if (titles == null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.padding(top = 40.dp), contentAlignment = Alignment.Center) { Spinner(size = 36.dp) } }
-            else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Note("Nothing rated that high here.") }
+            else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { EmptyNote("Nothing rated that high here.") }
             itemsIndexed(shown, key = { _, t -> t.imdb }) { i, t ->
                 Box {
                     PosterCard(t, { onOpen(t) }, sub = t.year?.take(4))

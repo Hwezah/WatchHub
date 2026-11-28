@@ -77,8 +77,68 @@ class Watch(val engine: TorrentStream) {
 
     fun fail(message: String) {
         Log.w("watch", message)
+        // Play lined up others: the next is tried instead of giving up.
+        if (tryNext(message)) return
         notes.tryEmit(message)
         phase = Phase.IDLE
+    }
+
+    /**
+     * The releases found for what is playing — Play's list, or the one a release was picked from — for the player's
+     * Sources panel to switch between. Kept per title and episode: the panel searches afresh when they aren't this one's.
+     */
+    var sources by mutableStateOf<SourceList?>(null)
+        private set
+
+    /** The player's Sources panel found the releases itself (the play came without a list): kept for its next look. */
+    fun keepSources(list: SourceList) {
+        sources = list
+    }
+
+    /**
+     * The player's Sources panel: [hit] instead of the release playing, from [seconds] in — the same spot, whichever
+     * release plays it. A link is given the spot outright; a torrent takes it from the title's place ([carried]).
+     */
+    fun switchTo(hit: Hit, from: Title?, episode: Episode?, seconds: Double) {
+        fallbacks = emptyList()
+        open(hit, from, episode?.let { episodeTag(it.season, it.episode) }, episode, at = seconds)
+    }
+
+    /** What Play lined up after the release it opened, best first: tried in turn while one won't play. */
+    private var fallbacks: List<Hit> = emptyList()
+    private var fallbackTitle: Title? = null
+    private var fallbackTag: String? = null
+    private var fallbackEpisode: Episode? = null
+    /** How many of the lined-up releases have been tried, for the note. */
+    private var tried = 0
+
+    /**
+     * Play: the first of [hits] — and should it not play (an error, a dead link, a file no player opens), the next,
+     * and the next, rather than backing out. A release picked by hand is played alone ([stream]).
+     */
+    fun streamFirstOf(hits: List<Hit>, from: Title?, tag: String? = null, episode: Episode? = null, among: List<Hit> = hits) {
+        val first = hits.firstOrNull() ?: return
+        sources = SourceList(from?.imdb, episode?.id, among)
+        fallbacks = hits.drop(1)
+        fallbackTitle = from
+        fallbackTag = tag
+        fallbackEpisode = episode
+        tried = 1
+        open(first, from, tag, episode)
+    }
+
+    /**
+     * The release playing failed with [reason]: the next one Play lined up, from the same spot in the film (the
+     * place is the title's, whichever release plays it). False when none is left.
+     */
+    fun tryNext(reason: String): Boolean {
+        val next = fallbacks.firstOrNull() ?: return false
+        fallbacks = fallbacks.drop(1)
+        tried++
+        engine.note("play: ${reason.take(120)} — trying source $tried")
+        notes.tryEmit("That source didn't play — trying another (${next.quality ?: "next"}, ${fallbacks.size} more after it)")
+        open(next, fallbackTitle, fallbackTag, fallbackEpisode)
+        return true
     }
 
     private fun uriOf(raw: String) = if (SettingsStore.value.value.addTrackers) withTrackers(raw) else raw
@@ -154,7 +214,15 @@ class Watch(val engine: TorrentStream) {
     }
 
     /** A chosen release becomes a stream. `tag` (S01E02) picks the file inside a pack. */
-    fun stream(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null) = AppScope.launch {
+    fun stream(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null, among: List<Hit> = emptyList()): kotlinx.coroutines.Job {
+        // A release picked by hand is played alone: no line-up behind it. The list it was picked from, for the player.
+        fallbacks = emptyList()
+        if (among.isNotEmpty()) sources = SourceList(from?.imdb, episode?.id, among)
+        return open(hit, from, tag, episode)
+    }
+
+    /** [stream] without touching the line-up: Play's first release, and each next one tried. */
+    private fun open(hit: Hit, from: Title?, tag: String? = null, episode: Episode? = null, at: Double? = null) = AppScope.launch {
         if (hit.external) {
             opens.tryEmit(hit.uri)
             return@launch
@@ -175,7 +243,9 @@ class Watch(val engine: TorrentStream) {
                 addon = hit.addonUrl.takeIf { hit.direct && it.isNotEmpty() },
             ),
         )
-        if (hit.direct) return@launch playLink(fresh, hit.name, hit.size, hit.headers)
+        // Switched to from the player ([switchTo]): a link starts where the last release was left.
+        if (hit.direct && at != null && at > 0) History.setPosition(fresh.uri, 0, at)
+        if (hit.direct) return@launch playLink(fresh, hit.name, hit.size, hit.headers, hit.mime)
         val found = inspect(fresh) ?: return@launch
         if (found.files.none { it.isVideo }) return@launch fail("This torrent holds no video.")
         // A pack of anime names its files by the number through the show: let that pick too.
@@ -235,7 +305,8 @@ class Watch(val engine: TorrentStream) {
      * other, so it resumes from Continue Watching too; the player is handed its path as
      * though the engine had just announced it.
      */
-    fun playFile(path: String, label: String, from: Title? = null, poster: String? = null) = AppScope.launch {
+    // [fromStart]: Start over — from the beginning, not where the title was left.
+    fun playFile(path: String, label: String, from: Title? = null, poster: String? = null, fromStart: Boolean = false) = AppScope.launch {
         val file = java.io.File(path.removePrefix("file://"))
         if (!file.exists()) return@launch fail("That file is gone — it may have been deleted or the card removed.")
         gen++
@@ -251,8 +322,11 @@ class Watch(val engine: TorrentStream) {
         item = target
         // The full entry — logo, episodes — whatever the caller had to hand.
         target.imdb?.let { id -> launch { Meta.title(id, target.kind ?: "movie")?.let { if (item?.uri == target.uri) title = it } } }
-        meta = TorrentMeta(label, listOf(TorrentFile(0, file.path, file.name, file.length(), true, false)))
+        val local = TorrentMeta(label, listOf(TorrentFile(0, file.path, file.name, file.length(), true, false)))
+        meta = local
         playingIndex = 0
+        // Where the title was last left, whichever copy played it (a stream, before this one was downloaded); or the start.
+        if (fromStart) History.setPosition(file.path, 0, 0.0) else runCatching { carried(file.path, local, 0) }
         via = null
         torboxIndexed = false
         engine.progress.value = null
@@ -265,14 +339,14 @@ class Watch(val engine: TorrentStream) {
      * A link that plays as it is — an addon's debrid stream, a file on the viewer's own server:
      * one file, no torrent, so the engine only has to let go of whatever it was streaming.
      */
-    // ponytail: [headers] aren't kept in History, so a link that needs them may not resume from Continue
-    // Watching; keep them on the Item if an addon that needs them gets common.
-    private suspend fun playLink(target: Item, name: String, size: Long, headers: Map<String, String> = emptyMap()) {
+    // [headers] and [mime] are kept on the History item, so Continue Watching resumes such a link too —
+    // while it lasts: a plugin's link often carries a token that expires within hours.
+    private suspend fun playLink(target: Item, name: String, size: Long, headers: Map<String, String> = emptyMap(), mime: String? = null) {
         val ticket = ++gen
         withContext(Dispatchers.IO) { engine.stop() }
         if (ticket != gen) return
         source = null
-        History.patch(target.uri) { it.copy(torrentName = name, lastFileIndex = 0, files = listOf(StoredFile(0, name, size, true, false, name))) }
+        History.patch(target.uri) { it.copy(torrentName = name, lastFileIndex = 0, files = listOf(StoredFile(0, name, size, true, false, name)), headers = headers, mime = mime) }
         item = History.find(target.uri) ?: target
         meta = TorrentMeta(name, listOf(TorrentFile(0, name, name, size, true, false)))
         playingIndex = 0
@@ -280,7 +354,7 @@ class Watch(val engine: TorrentStream) {
         torboxIndexed = false
         engine.progress.value = null
         // A link that needs headers can't go to a Cast receiver, which won't send them.
-        engine.ready.value = Ready(target.uri, name, emptyList(), lanUrl = target.uri.takeIf { headers.isEmpty() }, headers = headers)
+        engine.ready.value = Ready(target.uri, name, emptyList(), lanUrl = target.uri.takeIf { headers.isEmpty() }, headers = headers, mime = mime)
         playId++
         phase = Phase.PLAYING
     }
@@ -300,7 +374,7 @@ class Watch(val engine: TorrentStream) {
         if (isDirectLink(target.uri)) {
             val hash = linkHash(target.uri)
             if (hash != null && !Addons.stillServes(target.uri, target.addon)) return@launch fromPeers(target, hash)
-            return@launch playLink(target, target.torrentName ?: target.label, target.files?.firstOrNull()?.size ?: 0)
+            return@launch playLink(target, target.torrentName ?: target.label, target.files?.firstOrNull()?.size ?: 0, target.headers, target.mime)
         }
         val known = target.lastFileIndex
         if (known != null && !target.files.isNullOrEmpty() && target.torrentName != null) {
@@ -531,6 +605,7 @@ class Watch(val engine: TorrentStream) {
     fun startAt(): Double = item?.let { History.find(it.uri)?.positions?.get(playingIndex) } ?: 0.0
 
     fun exit() {
+        fallbacks = emptyList()
         pauseOnStremio()
         gen++
         phase = Phase.IDLE
@@ -547,3 +622,9 @@ class Watch(val engine: TorrentStream) {
         if (phase == Phase.INSPECTING) exit()
     }
 }
+
+/**
+ * The releases found for one title ([imdb]) and episode ([episodeId], null for a film), as the player's Sources panel
+ * offers them.
+ */
+data class SourceList(val imdb: String?, val episodeId: String?, val hits: List<Hit>)

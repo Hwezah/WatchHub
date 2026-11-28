@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A trash can with an X in its body (Lucide has no such icon): "Delete permanently" on the swipe sheet. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.0"
+        android:pathData="M3,6H21" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.0"
+        android:pathData="M8,6V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.0"
+        android:pathData="M19,6l-1,14a2,2 0 0,1 -2,2H8a2,2 0 0,1 -2,-2L5,6" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.0"
+        android:pathData="M10,11l4,6" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.0"
+        android:pathData="M14,11l-4,6" />
+</vector>

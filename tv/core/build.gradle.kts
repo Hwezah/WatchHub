@@ -38,6 +38,9 @@ dependencies {
     val media3 = "1.9.4"
     api("androidx.media3:media3-exoplayer:$media3")
     api("androidx.media3:media3-ui:$media3")
+    // Streaming formats: most links CloudStream plugins find are HLS (.m3u8), some DASH.
+    api("androidx.media3:media3-exoplayer-hls:$media3")
+    api("androidx.media3:media3-exoplayer-dash:$media3")
     api("org.jellyfin.media3:media3-ffmpeg-decoder:1.9.0+1")
 
     api(platform("androidx.compose:compose-bom:2026.06.01"))

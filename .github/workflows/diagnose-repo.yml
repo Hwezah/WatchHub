@@ -1,0 +1,39 @@
+name: Diagnose a CloudStream repository
+
+# Run by hand: follows a shortcode the way the app does (cutt.ly, no redirect following), then the
+# repo.json, its plugin lists and one .cs3 file, printing what each step answered.
+
+on:
+  # Runs when this file is pushed (hand-run workflows only work from the default branch).
+  push:
+    branches: ["ccr-*"]
+    paths: [".github/workflows/diagnose-repo.yml"]
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Follow the repository
+        shell: bash
+        env:
+          CODE: phisherrepo
+        run: |
+          UA="Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
+          echo "== cutt.ly/$CODE (as the app asks: no redirects followed)"
+          curl -sS -o body.html -D head.txt -A "$UA" "https://cutt.ly/$CODE" || true
+          sed -n '1,20p' head.txt
+          echo "-- body (first 600 chars)"; head -c 600 body.html; echo
+          loc=$(grep -i '^location:' head.txt | head -1 | cut -d' ' -f2- | tr -d '\r')
+          echo "== Location: ${loc:-<none>}"
+          [ -n "$loc" ] || loc=$(grep -oE 'https?://[^"<> ]+\.json' body.html | grep -v cutt.ly | head -1)
+          echo "== repo.json URL used: ${loc:-<none found>}"
+          [ -n "$loc" ] || exit 1
+          echo "== repo.json"; curl -sS -L -A "$UA" "$loc" | tee repo.json | head -c 800; echo
+          list=$(python3 -c "import json;print(json.load(open('repo.json'))['pluginLists'][0])")
+          echo "== plugin list: $list"
+          curl -sS -L -A "$UA" "$list" -o plugins.json
+          python3 -c "import json;d=json.load(open('plugins.json'));print(len(d),'plugins');print(d[0]['name'],d[0]['url'])"
+          cs3=$(python3 -c "import json;print(json.load(open('plugins.json'))[0]['url'])")
+          curl -sS -L -A "$UA" "$cs3" -o one.cs3
+          ls -l one.cs3; unzip -l one.cs3 | head; unzip -p one.cs3 manifest.json; echo

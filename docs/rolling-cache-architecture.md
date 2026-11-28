@@ -300,9 +300,9 @@ The same two players take the other streams of section 0 unchanged: a TorBox,
 debrid or own-server link is opened as a URL rather than through
 `LocalFileServer`. A link's headers (`Ready.headers`, set before `open`) go with
 every request Media3 makes; libVLC can send only the `User-Agent` and `Referer`
-of them. Headers are not kept in History, so a link that needs them may not
-resume from Continue Watching, and it is not offered to a Cast receiver, which
-would not send them.
+of them. Headers (and a MIME hint for HLS/DASH links without an extension) are
+kept on the History item, so such a link resumes from Continue Watching while it
+lasts; it is not offered to a Cast receiver, which would not send them.
 
 ---
 

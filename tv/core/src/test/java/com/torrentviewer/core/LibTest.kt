@@ -51,6 +51,44 @@ class LibTest {
         assertEquals(listOf(false, true, false), lists.catalogs.map { it.required })
         assertEquals(listOf(true, false, true), lists.catalogs.map { it.search })
         assertEquals("old", lists.catalogs[2].name)
+        // A required choice with its options listed: shown, made with the first option.
+        val preset = toAddon(
+            "https://a.example",
+            JSONObject("""{"name":"P","resources":["catalog"],"types":["movie"],"catalogs":[
+               {"type":"movie","id":"trend","name":"Trending","extra":[{"name":"genre","isRequired":true,"options":["Action","Drama"]}]}]}"""),
+        )!!.catalogs.single()
+        assertFalse(preset.required)
+        assertEquals("genre=Action", preset.preset)
+        assertEquals("Action", preset.presetLabel)
+        assertEquals(listOf("Action", "Drama"), preset.genres)
+        // Xperience's browse list: its genres (no "None"), kept off Home.
+        val browse = toAddon(
+            "https://a.example",
+            JSONObject("""{"name":"X","resources":["catalog"],"types":["movie"],"catalogs":[
+               {"type":"movie","id":"discover","name":"Movies","showInHome":false,"extra":[{"name":"genre","isRequired":true,"options":["None","Action","Drama"]}],"extraRequired":["genre"]}]}"""),
+        )!!.catalogs.single()
+        assertEquals(listOf("Action", "Drama"), browse.genres)
+        assertFalse(browse.showInHome)
+        assertFalse(browse.pages)
+        // A film genre's series twin, by name.
+        val tvGenres = listOf("Action & Adventure", "Comedy", "Sci-Fi & Fantasy", "War & Politics")
+        assertEquals("Sci-Fi & Fantasy", matchGenre("Science Fiction", tvGenres))
+        assertEquals("Action & Adventure", matchGenre("Action", tvGenres))
+        assertEquals("Comedy", matchGenre("comedy", tvGenres))
+        assertNull(matchGenre("Horror", tvGenres))
+        // A list that pages, in either shape: its row keeps going past the first answer.
+        val paged = toAddon(
+            "https://a.example",
+            JSONObject("""{"name":"X","resources":["catalog"],"types":["movie"],"catalogs":[
+               {"type":"movie","id":"new","name":"New","extra":[{"name":"genre","options":["Action"]},{"name":"skip"}]},
+               {"type":"series","id":"old","name":"Old","extraSupported":["skip"]}]}"""),
+        )!!.catalogs
+        assertTrue(paged.all { it.pages })
+        // Requests in the protocol's shape: extras joined by "&", the page as "skip".
+        assertEquals("https://a.example/catalog/movie/new.json", catalogUrl("https://a.example", "movie", "new"))
+        assertEquals("https://a.example/catalog/movie/new/skip=20.json", catalogUrl("https://a.example", "movie", "new", skip = 20))
+        assertEquals("https://a.example/catalog/movie/new/genre=Sci-Fi&skip=40.json", catalogUrl("https://a.example", "movie", "new", "genre=Sci-Fi", 40))
+        assertEquals("https://a.example/catalog/series/a%20b/genre=Drama.json", catalogUrl("https://a.example", "series", "a b", "genre=Drama"))
         // The TV's QR link: sent only to a TV page on the home network.
         val tv = "http://192.168.1.5:40123/" + "ab".repeat(12)
         assertEquals(tv, tvDropUrl("watchly://tv-addons?to=" + java.net.URLEncoder.encode(tv, "UTF-8")))
@@ -457,6 +495,37 @@ class LibTest {
         assertEquals(listOf("tt3", "tt1", "tt2"), sortTitles(t, Sort.YEAR).map { it.imdb })
         assertEquals(listOf("tt2", "tt1", "tt3"), sortTitles(t, Sort.TITLE).map { it.imdb })
         assertEquals(t, sortTitles(t, Sort.POPULAR))
+        // Newest: a year at a time, its best rated first, then the year before.
+        val years = listOf(
+            Title("a", "movie", "A", year = "2013", rating = "8.2"), Title("b", "movie", "B", year = "2014", rating = "8.1"),
+            Title("c", "movie", "C", year = "2013", rating = "8.5"), Title("d", "movie", "D", year = "2014"), Title("e", "movie", "E", year = "2014", rating = "8.4"),
+        )
+        assertEquals(listOf("e", "b", "d", "c", "a"), sortTitles(years, Sort.YEAR).map { it.imdb })
+        // The last ten years: 2017 to 2026 in 2026, a series by the year it began; no year, no place.
+        val span = listOf(Title("n", "movie", "N", year = "2026"), Title("o", "movie", "O", year = "2017"), Title("p", "movie", "P", year = "2016"),
+            Title("s", "tv", "S", year = "2018–2024"), Title("u", "movie", "U"))
+        assertEquals(listOf("n", "o", "s"), fromLastYears(span, 10, 2026).map { it.imdb })
+        // Cartoons and anime out, by any of their genres.
+        val drawn = listOf(Title("a", "movie", "A", genres = listOf("Action", "Animation")), Title("b", "movie", "B", genres = listOf("Action")), Title("c", "tv", "C", genres = listOf("anime")))
+        assertEquals(listOf("b"), withoutAnimation(drawn).map { it.imdb })
+        // Downloads' folders under Grabber!: films in Video/Movies, episodes by show and season in Video/Shows.
+        assertEquals(listOf("Video", "Movies"), libraryFolders("Interstellar", "Interstellar.2014.720p.mkv", "movie", null))
+        assertEquals(listOf("Video", "Shows", "1923", "Season 1"), libraryFolders("1923 · S01E04", "1923.S01E04.720p.mkv", "tv", null))
+        assertEquals(listOf("Video", "Shows", "Daredevil_ Born Again", "Season 2"), libraryFolders("Daredevil: Born Again", "x.mkv", "tv", 2))
+        assertEquals(listOf("Video", "Shows", "Show"), libraryFolders("Show", "trailer.mkv", "tv", null))
+        // Search: the film once (IMDb's id kept), placeholders gone, the real release ahead of a fan "series".
+        val film = Title("tt6806448", "movie", "Hobbs & Shaw", year = "2019", rating = "6.4", poster = "p")
+        val twin = Title("tmdb:384018", "movie", "Hobbs & Shaw", year = "2019", poster = "p")
+        val fan = Title("tt999", "tv", "Hobbs and Shaw", poster = "p")
+        val untitled = Title("tt111", "movie", "Untitled Hobbs & Shaw Sequel")
+        assertEquals(listOf("tt6806448", "tt999"), tidySearch(listOf(fan to 0.9, untitled to 0.8, twin to 0.8, film to 0.8)).map { it.imdb })
+        assertEquals(emptyList<String>(), tidySearch(listOf(Title("tt2", "movie", "Untitled Hobbs Sequel", poster = "p") to 0.9)).map { it.imdb })
+        // An addon's series search answering with a film: a film it stays.
+        val answer = JSONArray("""[{"id":"tt6806448","type":"movie","name":"Hobbs & Shaw"},{"id":"tt1","type":"series","name":"S"},{"id":"tt3","name":"N"}]""")
+        assertEquals(listOf("movie", "tv", "tv"), addonSearchTitles(answer, "series").sortedBy { it.imdb }.let { l -> listOf(l.first { it.imdb == "tt6806448" }.kind, l.first { it.imdb == "tt1" }.kind, l.first { it.imdb == "tt3" }.kind) })
+        // A season's download skips what hasn't aired yet.
+        fun ep(n: Int, d: String?) = Episode("tt1:2:$n", 2, n, "E$n", null, null, d)
+        assertEquals(listOf(1, 3), airedBy(listOf(ep(1, "2026-11-15T00:00:00.000Z"), ep(2, "2026-11-22"), ep(3, null)), "2026-11-17").map { it.episode })
     }
 
     @Test fun languages() {

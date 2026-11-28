@@ -25,6 +25,7 @@ import com.torrentviewer.core.SUB_SIZES
 import com.torrentviewer.core.langName
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,7 +84,6 @@ import com.torrentviewer.core.Ink
 import com.torrentviewer.core.Item
 import com.torrentviewer.core.Lc
 import com.torrentviewer.core.Meta
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.Profile
 import com.torrentviewer.core.Profiles
 import com.torrentviewer.core.SavedStore
@@ -111,6 +111,7 @@ import androidx.compose.foundation.border
 import com.torrentviewer.core.colorOf
 import com.torrentviewer.core.parseEpisode
 import com.torrentviewer.core.searchStreams
+import com.torrentviewer.core.fromLastYears
 import com.torrentviewer.core.sortTitles
 import com.torrentviewer.core.ADDON_SHELF
 import com.torrentviewer.core.TOP_SHELF
@@ -121,42 +122,150 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.composables.icons.lucide.R as L
 
-/** Poster columns: three across a phone held upright. */
-private val POSTER = GridCells.Adaptive(104.dp)
+/** Poster columns: three across a phone held upright, more turned sideways ([PosterGrid]). */
+private val POSTER = PosterGrid
 
 private fun subOf(t: Title) = listOfNotNull(if (t.isSeries) "Series" else "Film", t.year?.take(4)).joinToString("  ·  ")
 
 /* -------------------------------------------------------------- catalog */
 
-/** A whole shelf as a grid, with the phone's four orders. */
+/** App-wide: whether "See all" lists leave out cartoons and anime (Settings → No Animation Results). */
+private const val NO_ANIMATION = "noAnimation"
+
+/** How far back an addon's list shows in "See all": what's recent, not a century of film. */
+private const val RECENT_YEARS = 10
+
+/** How much of a list is read before its order shows: enough for the top of every year. */
+private const val FIRST_ORDER = 400
+
+/**
+ * How much of a list is read to put it in order, the rest after [FIRST_ORDER] while the grid is up: a list ranked by
+ * rating across all years ("Highly Rated") holds only a few dozen of any one year in its first 400. Past this, later
+ * pages still come as the grid is scrolled. ponytail: a list of thousands is cut here; raise it if a year still runs short.
+ */
+private const val WHOLE_LIST = 2000
+
+/**
+ * A whole shelf as a grid, with the phone's four orders. An addon's list opens newest first, a year at a time and each
+ * year's best rated first, the whole list read for it; the built-in shelves open as they're ranked.
+ */
 @Composable
 fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
-    var sort by rememberSaveable { mutableStateOf(Sort.POPULAR) }
+    // A Genres tile's list: Movies and Shows tabs, each kind's own browse list in that genre (Xperience keeps them apart).
+    val kinds = remember(shelf.genre) { shelf.genre?.let { com.torrentviewer.core.Addons.genreKinds(it) } }
+    var tab by rememberSaveable(shelf.genre) { mutableStateOf(shelf.kind) }
+    val kind = if (kinds != null) tab else shelf.kind
+    val genreKey = if (kinds != null) kinds[tab] else shelf.genre
+    /** A tab with no list of that genre (no "Horror" among series): nothing to fetch, rather than every show there is. */
+    val missing = kinds != null && genreKey == null
+    var sort by rememberSaveable { mutableStateOf(if (genreKey?.startsWith(ADDON_SHELF) == true) Sort.YEAR else Sort.POPULAR) }
     // Top rated is the genre's real best, not just its fifty most popular reordered. An addon's list is only itself.
-    val source = if (sort == Sort.RATING && shelf.genre?.startsWith(ADDON_SHELF) != true) TOP_SHELF + shelf.genre.orEmpty() else shelf.genre
-    var titles by remember(source) { mutableStateOf(Meta.peekCatalog(shelf.kind, source)) }
-    LaunchedEffect(source) { if (titles.isNullOrEmpty()) titles = Meta.catalog(shelf.kind, source) }
-    val shown = remember(titles, sort) { sortTitles(Kids.only(titles.orEmpty()), sort) }
+    val source = if (sort == Sort.RATING && genreKey?.startsWith(ADDON_SHELF) != true) TOP_SHELF + genreKey.orEmpty() else genreKey
+    var titles by remember(source, kind) { mutableStateOf(if (missing) emptyList() else Meta.peekCatalog(kind, source)) }
+    LaunchedEffect(source, kind) { if (!missing && titles.isNullOrEmpty()) titles = Meta.catalog(kind, source) }
+    // An addon's list shows its last ten years only (the owner's choice: it runs back to silent films); the built-in
+    // shelves are this week's popular and IMDb's best, whatever their age.
+    val recentOnly = genreKey?.startsWith(ADDON_SHELF) == true
+    val thisYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+    // Cartoons and anime hidden when asked (Settings → No Animation Results) — not in a list that is them.
+    val drawnList = shelf.title.contains("Anim", true) || genreKey.orEmpty().contains("Anim", true)
+    val noAnimation = remember { com.torrentviewer.core.Kv.global(NO_ANIMATION) == "1" }
+    val shown = remember(titles, sort, noAnimation) {
+        Kids.only(titles.orEmpty()).let { if (recentOnly) fromLastYears(it, RECENT_YEARS, thisYear) else it }
+            .let { if (noAnimation && !drawnList) com.torrentviewer.core.withoutAnimation(it) else it }.let { sortTitles(it, sort) }
+    }
+    val grid = rememberLazyGridState()
+    /** A longer list in, never a shorter one: a scroll's page and the ordering's can finish in either order. */
+    fun grow(next: List<Title>?) {
+        if (next != null && next.size > (titles?.size ?: 0)) titles = next
+    }
+    // Put in an order of its own (by year, rating, name): the list read first, a few pages at once, so a year isn't
+    // done before its later pages came. Hidden until [FIRST_ORDER] are in; then shown while the rest, up to
+    // [WHOLE_LIST], slots into place (the grid keeps its place by the card at the top). The catalogue's own order
+    // needs only what's scrolled to.
+    var filling by remember(source) { mutableStateOf(false) }
+    var topping by remember(source) { mutableStateOf(false) }
+    LaunchedEffect(source, sort, titles != null) {
+        if (sort == Sort.POPULAR || titles == null || missing) {
+            filling = false
+            topping = false
+            return@LaunchedEffect
+        }
+        filling = (titles?.size ?: 0) < FIRST_ORDER
+        topping = !filling
+        try {
+            while ((titles?.size ?: 0) < WHOLE_LIST && Meta.pages(kind, source)) {
+                val next = Meta.more(kind, source, batch = 4) ?: break
+                grow(next)
+                if (filling && (titles?.size ?: 0) >= FIRST_ORDER) {
+                    filling = false
+                    topping = true
+                }
+            }
+        } finally {
+            // Also when another order is picked mid-way, which starts this afresh.
+            filling = false
+            topping = false
+        }
+    }
+    // Near the foot of the grid, the list's next page (an addon that pages, Cinemeta's lists): newest-first lists go on
+    // back in time rather than stopping at the first answer's twenty-odd.
+    var loading by remember(source) { mutableStateOf(false) }
+    LaunchedEffect(grid, source) {
+        androidx.compose.runtime.snapshotFlow { grid.layoutInfo.let { i -> i.totalItemsCount > 1 && (i.visibleItemsInfo.lastOrNull()?.index ?: 0) >= i.totalItemsCount - 9 } }
+            .collect { near ->
+                if (near && !missing && !loading && !filling && !topping && titles != null && Meta.pages(kind, source)) {
+                    loading = true
+                    grow(Meta.more(kind, source))
+                    loading = false
+                }
+            }
+    }
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             POSTER,
-            state = rememberLazyGridState(),
+            state = grid,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),
+            contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
-                    Heading(shelf.title, Modifier.padding(start = 48.dp))
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Sort.entries.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
+                    Heading(shelf.title, Modifier.padding(start = 48.dp, end = if (isPortraitPhone()) 48.dp else 0.dp), centred = isPortraitPhone())
+                    // No line under these (the owner's choice): the chosen one has the red dot beside it instead.
+                    if (kinds != null) TextTabs(listOf("Movies", "Shows"), if (tab == "tv") 1 else 0, dotAt = if (tab == "tv") 1 else 0, underline = false) { tab = if (it == 1) "tv" else "movie" }
+                    // End to end, like the app's other pill rows. No A–Z here (the owner's choice); No Animation is in Settings.
+                    SpreadRow {
+                        Sort.entries.filter { it != Sort.TITLE }.forEach { s -> Chip(s.label, s == sort, onClick = { sort = s }) }
+                    }
+                    // The rest of the list still coming in, each title to its year: centred on an upright phone (the owner's rule).
+                    if (topping) Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = if (isPortraitPhone()) Arrangement.Center else Arrangement.Start,
+                    ) {
+                        Spinner(size = 14.dp)
+                        Text("Adding the rest of the list · ${titles?.size ?: 0} titles", Modifier.padding(start = 8.dp), style = Type.meta)
                     }
                 }
             }
-            if (titles == null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.padding(top = 40.dp), contentAlignment = Alignment.Center) { Spinner(size = 36.dp) } }
-            else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Note("Nothing on this shelf right now.") }
-            items(shown, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
+            if (titles == null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) { Spinner(size = 36.dp) } }
+            else if (filling) item(span = { GridItemSpan(maxLineSpan) }) {
+                // The order shows once the list is all in, rather than titles jumping about as each page lands.
+                Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Spinner(size = 36.dp)
+                    Text("Putting the list in order · ${titles?.size ?: 0} titles", Modifier.padding(top = 12.dp), style = Type.meta)
+                }
+            }
+            else if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                EmptyNote(if (kinds != null && genreKey == null) "No ${if (tab == "tv") "shows" else "films"} in this genre." else "Nothing on this shelf right now.")
+            }
+            if (!filling) items(shown, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
+            // Read to its end: how many it held, so a short year is the list's, not the app's.
+            if (!filling && !topping && !loading && sort != Sort.POPULAR && shown.isNotEmpty() && !Meta.pages(kind, source)) item(key = "~end~", span = { GridItemSpan(maxLineSpan) }) {
+                Text(if (recentOnly) "All ${shown.size} titles from the last $RECENT_YEARS years in this list" else "All ${shown.size} titles in this list", Modifier.fillMaxWidth().padding(vertical = 16.dp), style = Type.meta, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+            if (loading) item(key = "~more~", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) { Spinner(size = 28.dp) } }
         }
         BackButton(onBack)
     }
@@ -164,28 +273,19 @@ fun CatalogScreen(shelf: Shelf, onOpen: (Title) -> Unit, onBack: () -> Unit) {
 
 /* --------------------------------------------------------------- search */
 
-/** How well a title answers what was typed; lower is better. */
-private fun relevance(title: String, query: String): Int {
-    val a = title.trim().lowercase()
-    val q = query.trim().lowercase()
-    return when {
-        a == q -> 0
-        a.startsWith(q) -> 1
-        q in a -> 2
-        else -> 3
-    }
-}
-
 /** "2020s"… and before 1990 one bucket; the year a title's releaseInfo starts with. */
 private val DECADES = listOf(2020 to "2020s", 2010 to "2010s", 2000 to "2000s", 1990 to "1990s", 0 to "Before 1990")
 
 private fun decadeOf(t: Title) = t.year?.take(4)?.toIntOrNull()?.let { if (it < 1990) 0 else it / 10 * 10 }
 
 /** Which filter's list is up. */
-private enum class Picking { KIND, GENRE, DECADE, RATING, SORT, QUALITY, ORDER }
+private enum class Picking { KIND, GENRE, DECADE, RATING, SORT, ORDER }
 
 /** How releases are ordered: the ranking (seeds, then fit), or by size. */
-private enum class HitOrder(val label: String) { BEST("Best match"), BIGGEST("Biggest"), SMALLEST("Smallest") }
+private enum class HitOrder(val label: String) { BEST("Best match"), SMALLEST("Smallest"), BIGGEST("Biggest"), SEEDS("Most seeds") }
+
+/** A stream worth listing in search: anything but a trailer or sample (a known size under [MIN_EPISODE_BYTES]). */
+private fun notJunk(h: Hit) = h.size == 0L || h.size >= MIN_EPISODE_BYTES
 
 /**
  * Results arrive as the letters do; the Torrents switch searches release names instead.
@@ -207,12 +307,34 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
     var decade by rememberSaveable { mutableStateOf<Int?>(null) }
     var atLeast by rememberSaveable { mutableStateOf<Int?>(null) }
     var sort by rememberSaveable { mutableStateOf(Sort.POPULAR) }
-    var quality by rememberSaveable { mutableStateOf<String?>(null) }
+    /** The Streams filters, as the season sheet's: resolution, codec, format, subtitles, source. */
+    var streamFilter by remember { mutableStateOf(BatchFilter()) }
     var order by rememberSaveable { mutableStateOf(HitOrder.BEST) }
     var picking by remember { mutableStateOf<Picking?>(null) }
-    val filtered = !torrents && (kind != null || genre != null || decade != null || atLeast != null || sort != Sort.POPULAR) || torrents && (quality != null || order != HitOrder.BEST)
+    val filtered = !torrents && (kind != null || genre != null || decade != null || atLeast != null || sort != Sort.POPULAR) || torrents && (streamFilter != BatchFilter() || order != HitOrder.BEST)
     /** Going by rating: browse the best of the genre, or of everything, not only what's popular this week. */
     val byRating = sort == Sort.RATING || atLeast != null
+    // AI search: a description ("the one where a man relives the same day") also goes to the viewer's AI, whose
+    // guesses show above the usual results. Only with a service and key set (Settings → AI Search), never for kids.
+    val aiReady by com.torrentviewer.core.AiSearch.ready.collectAsState()
+    var aiTitles by remember { mutableStateOf<List<Title>?>(null) }
+    var aiBusy by remember { mutableStateOf(false) }
+    var aiNote by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(query, torrents, aiReady) {
+        val q = query.trim()
+        aiTitles = null
+        aiNote = null
+        aiBusy = false
+        if (torrents || Kids.on || !aiReady || !com.torrentviewer.core.looksLikeDescription(q) || com.torrentviewer.core.episodeAsked(q) != null) return@LaunchedEffect
+        // Longer than the title search's pause: a description is still being typed, and each ask costs the viewer.
+        delay(900)
+        aiBusy = true
+        runCatching { com.torrentviewer.core.AiSearch.suggest(q) { partial -> aiTitles = partial } }
+            .onSuccess { aiTitles = it; if (it.isEmpty()) aiNote = "The AI's guesses aren't in the catalogue — try more detail" }
+            .onFailure { e -> if (e !is kotlinx.coroutines.CancellationException) aiNote = e.message ?: "AI search failed" }
+        aiBusy = false
+    }
+    val aiShown = !torrents && (aiBusy || aiNote != null || !aiTitles.isNullOrEmpty())
 
     LaunchedEffect(query, torrents, genre, kind, byRating) {
         val q = query.trim()
@@ -233,15 +355,30 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
         busy = true
         // A kids profile has no torrent search (a release name can't be vetted) and sees family titles only.
         if (torrents && !Kids.on) {
-            hits = searchStreams(q) { hits = it }
+            // As a title page asks: the CloudStream plugins and the addons together (the addons alone found far fewer).
+            val link = com.torrentviewer.core.linkHit(q)
+            hits = if (link != null) listOf(link) else com.torrentviewer.core.typedTarget(q)?.let { (found, episode) ->
+                // A series' episode needs the show's episode list, as the plugins look the episode up in it.
+                val title = if (episode != null) Meta.title(found.imdb, found.kind) ?: found else found
+                val ep = episode?.let { (s, e) -> title.episodes.find { it.season == s && it.episode == e } }
+                val addons: suspend (com.torrentviewer.core.OnHits) -> List<Hit> = { fromAddons ->
+                    if (episode != null) com.torrentviewer.core.searchEpisode(title, episode.first, episode.second, fromAddons)
+                    else searchStreams(title.title, title.imdb, title.year?.take(4), type = title.type, onHits = fromAddons)
+                }
+                try {
+                    // An episode the show's list doesn't have (yet): the addons alone, rather than the plugins searching films.
+                    if (episode != null && ep == null) addons { hits = it }
+                    else com.torrentviewer.mobile.cs.CsStreams.withPlugins(title, ep, { hits = it }, addons = addons)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    hits.orEmpty()
+                }
+            }.orEmpty()
         } else {
-            results = coroutineScope {
-                val films = async { Meta.search(q, "movie") }
-                val series = async { Meta.search(q, "tv") }
-                // And every addon catalogue that searches, as Stremio asks them all.
-                val mine = async { Meta.searchAddons(q) }
-                Kids.only((films.await() + series.await() + mine.await()).distinctBy { it.imdb }.sortedBy { relevance(it.title, q) })
-            }
+            // Forgiving: spelling, "the", numbers, a year after the name; a second round with parts of it when nothing
+            // close came back. Results show as soon as the first round is in.
+            results = Kids.only(Meta.searchEverywhere(q) { first -> if (first.isNotEmpty()) results = Kids.only(first) })
         }
         busy = false
     }
@@ -257,20 +394,43 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
             sort,
         )
     }
-    val releases = hits?.let { list ->
-        val q = list.filter { quality == null || it.quality == quality }
+    // Torrents under MIN_SEEDS are left out here too (Settings → Streaming), unless shown by hand for this search.
+    val hideFew = com.torrentviewer.core.SettingsStore.value.collectAsState().value.hideFewSeeds
+    val cachedIds by TorBox.cached.collectAsState()
+    var showFew by remember(query) { mutableStateOf(false) }
+    val leaveOut = com.torrentviewer.core.SettingsStore.value.collectAsState().value.leaveOut
+    // Worked out when something it depends on changes, not on every redraw: hundreds of releases, several regexes each.
+    val (releases, hiddenFew) = remember<Pair<List<Hit>?, Int>>(hits, streamFilter, order, hideFew, showFew, cachedIds, leaveOut) {
+        val list = hits ?: return@remember null to 0
+        val cached = cachedIds.mapTo(HashSet()) { it.lowercase() }
+        val matching = list.filter { allowed(it, leaveOut, cached) && notJunk(it) && streamFilter.accepts(traitsOf(it)) }.distinctBy { it.id }
+        val q = if (hideFew && !showFew) matching.filterNot { fewSeeds(it, cached) } else matching
         when (order) {
             HitOrder.BEST -> q
             HitOrder.BIGGEST -> q.sortedByDescending { it.size }
-            HitOrder.SMALLEST -> q.sortedBy { it.size }
+            // An unknown size isn't the smallest.
+            HitOrder.SMALLEST -> q.sortedWith(compareBy<Hit> { if (it.size > 0) 0 else 1 }.thenBy { it.size })
+            HitOrder.SEEDS -> q.sortedByDescending { it.seeders }
+        } to (matching.size - q.size)
+    }
+
+    // The results' heading: in the search header, or under the AI's suggestions when they show.
+    val typed = query.trim()
+    val heading = when {
+        torrents && releases != null -> if (releases.isEmpty()) if (busy) "Searching…" else if (hits!!.isNotEmpty()) "No releases match the filters" else "No releases for “$typed”" else "${releases.size} releases" + if (busy) "  ·  finding more…" else ""
+        !torrents && titles != null -> when {
+            titles.isNotEmpty() -> if (browsing) genre ?: "Top results" else "Top results"
+            results!!.isNotEmpty() -> "Nothing matches the filters"
+            else -> "Nothing found for “$typed”"
         }
+        else -> null
     }
 
     LazyVerticalGrid(
         POSTER,
         state = rememberLazyGridState(),
         modifier = Modifier.fillMaxSize().imePadding(),
-        contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),
+        contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -280,24 +440,26 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                 Field(
                     query,
                     { query = it },
-                    if (torrents) "A film, or a link to play" else "Movies, shows, anime",
+                    if (torrents) "A film, a show (+ s01e03), or a link" else "Movies, shows, anime",
                     Modifier.fillMaxWidth(),
                     leading = L.drawable.lucide_ic_search,
                     onSubmit = { recents = Searches.remember(query) },
                     trailing = {
                         when {
                             busy -> Spinner(size = 20.dp)
-                            query.isNotEmpty() -> Tap({ query = "" }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(4.dp), tint = Ink.muted, size = 18.dp) }
+                            query.isNotEmpty() -> Tap({ query = "" }, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(4.dp), tint = Ink.muted, size = 24.dp) }
                         }
                     },
                 )
-                // A kids profile searches titles only.
-                if (!Kids.on) Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip("Titles", !torrents, onClick = { torrents = false; hits = null })
-                    Chip("Streams", torrents, onClick = { torrents = true; results = null }, icon = L.drawable.lucide_ic_layers)
-                }
                 // One chip per filter, red while it narrows anything.
-                Row(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // The search's two modes, as the row's first chip: titles, or (red, with ✕) releases from every addon.
+                // A kids profile searches titles only.
+                SpreadRow(Modifier.padding(top = 12.dp)) {
+                    if (!Kids.on) Chip(
+                        "Streams", torrents,
+                        onClick = { if (torrents) { torrents = false; hits = null } else { torrents = true; results = null } },
+                        icon = L.drawable.lucide_ic_layers, trailing = if (torrents) L.drawable.lucide_ic_x else null,
+                    )
                     if (!torrents) {
                         Chip(when (kind) { "movie" -> "Films"; "tv" -> "Series"; else -> "Films & series" }, kind != null, onClick = { picking = Picking.KIND })
                         Chip(genre ?: "Any genre", genre != null, onClick = { picking = Picking.GENRE })
@@ -305,36 +467,88 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
                         Chip(atLeast?.let { "IMDb $it+" } ?: "Any rating", atLeast != null, onClick = { picking = Picking.RATING })
                         Chip(if (sort == Sort.POPULAR) "Best match" else sort.label, sort != Sort.POPULAR, onClick = { picking = Picking.SORT })
                     } else {
-                        Chip(quality ?: "Any quality", quality != null, onClick = { picking = Picking.QUALITY })
-                        Chip(order.label, order != HitOrder.BEST, onClick = { picking = Picking.ORDER })
+                        HitOrder.entries.forEach { o -> Chip(o.label, order == o, onClick = { order = o }) }
                     }
                     if (filtered) Chip("Clear", false, icon = L.drawable.lucide_ic_x, onClick = {
-                        kind = null; genre = null; decade = null; atLeast = null; sort = Sort.POPULAR; quality = null; order = HitOrder.BEST
+                        kind = null; genre = null; decade = null; atLeast = null; sort = Sort.POPULAR; streamFilter = BatchFilter(); order = HitOrder.BEST
                     })
+                }
+                // The Streams filters, from what this search found: each row offers what the others leave possible.
+                val found = hits.orEmpty()
+                if (torrents && found.isNotEmpty()) {
+                    val f = streamFilter
+                    FilterRow("Resolution", filterOptions(found, f.copy(quality = null), ::notJunk) { it.quality }, f.quality) { streamFilter = f.copy(quality = it) }
+                    FilterRow("Codec", filterOptions(found, f.copy(codec = null), ::notJunk) { it.codec }, f.codec) { streamFilter = f.copy(codec = it) }
+                    FilterRow("Format", filterOptions(found, f.copy(format = null), ::notJunk) { it.format }, f.format) { streamFilter = f.copy(format = it) }
+                    FilterRow(
+                        "Subtitles", filterOptions(found, f.copy(subsOnly = false), ::notJunk) { if (it.subs) "With subs" else null },
+                        if (f.subsOnly) "With subs" else null,
+                    ) { streamFilter = f.copy(subsOnly = it != null) }
+                    FilterRow("Source", filterOptions(found, f.copy(source = null), ::notJunk) { it.source }, f.source, label = { if (it == "Link") "Direct link" else it }) {
+                        streamFilter = f.copy(source = it)
+                    }
+                }
+                // What AI search can do, said once where a search starts: centred on an upright phone.
+                if (!torrents && !Kids.on && query.isBlank()) {
+                    val portrait = isPortraitPhone()
+                    PathText(
+                        "Can't remember the name? Describe it — “a man relives the same day over and over” — and AI suggests titles." +
+                            if (aiReady) "" else " Set it up in Settings → AI Search.",
+                        Modifier.fillMaxWidth().padding(top = 18.dp, start = if (portrait) 12.dp else 0.dp, end = if (portrait) 12.dp else 0.dp),
+                        style = Type.meta.copy(color = Ink.faint),
+                        textAlign = if (portrait) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                    )
                 }
                 if (recents.isNotEmpty() && results == null && hits == null) {
                     Row(Modifier.padding(top = 26.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Recent searches", Modifier.weight(1f), style = Type.title.copy(fontWeight = FontWeight.Bold))
-                        Tap({ recents = Searches.clear() }, shape = CircleShape) { Text("Clear", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = Type.meta) }
+                        Tap({ recents = Searches.clear() }, shape = PILL) { Text("Clear", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = Type.meta) }
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         recents.forEach { r -> Chip(r, false, onClick = { query = r }, icon = L.drawable.lucide_ic_history) }
                     }
                 }
-                val q = query.trim()
-                val heading = when {
-                    torrents && releases != null -> if (releases.isEmpty()) if (busy) "Searching…" else if (hits!!.isNotEmpty()) "No releases match the filters" else "No releases for “$q”" else "${releases.size} releases" + if (busy) "  ·  finding more…" else ""
-                    !torrents && titles != null -> when {
-                        titles.isNotEmpty() -> if (browsing) genre ?: "Top results" else "Top results"
-                        results!!.isNotEmpty() -> "Nothing matches the filters"
-                        else -> "Nothing found for “$q”"
-                    }
-                    else -> null
+                if (!aiShown) heading?.let { Text(it, Modifier.fillMaxWidth().padding(top = 24.dp), style = headingStyle(it, isPortraitPhone())) }
+                // Centred on an upright phone, as the hint above it.
+                else Row(
+                    Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (isPortraitPhone()) Arrangement.Center else Arrangement.Start,
+                ) {
+                    Lc(L.drawable.lucide_ic_sparkles, tint = Ink.accent, size = 20.dp)
+                    Text("  AI Suggestions", style = Type.title.copy(fontWeight = FontWeight.Bold))
+                    if (aiBusy) Spinner(Modifier.padding(start = 10.dp), size = 18.dp)
                 }
-                heading?.let { Text(it, Modifier.padding(top = 24.dp), style = Type.title.copy(fontWeight = FontWeight.Bold)) }
             }
         }
+        if (aiShown) {
+            aiNote?.let { note ->
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    PathText(
+                        note, Modifier.fillMaxWidth().padding(bottom = 8.dp), style = Type.meta.copy(color = Ink.muted),
+                        textAlign = if (isPortraitPhone()) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                    )
+                }
+            }
+            items(aiTitles.orEmpty(), key = { "ai-" + it.imdb }) { t ->
+                PosterCard(t, {
+                    recents = Searches.remember(query)
+                    onOpen(t)
+                }, sub = subOf(t))
+            }
+            // "Nothing found" says nothing while the AI is still answering, or once it has found something.
+            val quiet = !torrents && titles.isNullOrEmpty() && (aiBusy || !aiTitles.isNullOrEmpty())
+            if (!quiet) heading?.let { h -> item(span = { GridItemSpan(maxLineSpan) }) { Text(h, Modifier.fillMaxWidth().padding(top = 16.dp), style = headingStyle(h, isPortraitPhone())) } }
+        }
         if (torrents) {
+            if (hiddenFew > 0) item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = if (isPortraitPhone()) Alignment.Center else Alignment.CenterStart) {
+                    Text(
+                        "$hiddenFew torrent${if (hiddenFew == 1) "" else "s"} under $MIN_SEEDS seeds hidden · Show",
+                        Modifier.clip(RoundedCornerShape(4.dp)).clickable { showFew = true }.padding(horizontal = 6.dp, vertical = 4.dp),
+                        style = Type.meta.copy(color = Ink.muted, fontWeight = FontWeight.SemiBold),
+                    )
+                }
+            }
             items(releases.orEmpty(), key = { it.id }, span = { GridItemSpan(maxLineSpan) }) { hit ->
                 Source(hit, onDownload = {
                     Downloads.add(downloadJob(hit, null))
@@ -362,27 +576,112 @@ fun SearchScreen(watch: Watch, onOpen: (Title) -> Unit) {
             Picking.DECADE -> Sheet("Year", listOf(Option<Int?>(null, "Any year")) + DECADES.map { (y, label) -> Option<Int?>(y, label) }, decade, { decade = it; close() }, close)
             Picking.RATING -> Sheet("IMDb rating", listOf(Option<Int?>(null, "Any rating")) + listOf(6, 7, 8, 9).map { Option<Int?>(it, "IMDb $it+") }, atLeast, { atLeast = it; close() }, close)
             Picking.SORT -> Sheet("Order", Sort.entries.map { Option(it, if (it == Sort.POPULAR) "Best match" else it.label) }, sort, { sort = it; close() }, close)
-            Picking.QUALITY -> Sheet("Quality", listOf(Option<String?>(null, "Any quality")) + listOf("4K", "1080p", "720p").map { Option<String?>(it, it) }, quality, { quality = it; close() }, close)
             Picking.ORDER -> Sheet("Order", HitOrder.entries.map { Option(it, it.label) }, order, { order = it; close() }, close)
         }
     }
 }
 
+/**
+ * A results heading is bold; "Nothing found…" and the like are a quiet note, not a headline — in the middle on an
+ * upright phone ([centred], the owner's choice), as the app's other empty notes are.
+ */
+private fun headingStyle(text: String, centred: Boolean = false) =
+    if (text.startsWith("No")) Type.label.copy(fontWeight = FontWeight.Normal, color = Ink.muted, textAlign = if (centred) TextAlign.Center else TextAlign.Start)
+    else Type.title.copy(fontWeight = FontWeight.Bold)
+
 /* -------------------------------------------------------------- library */
 
-private enum class Shelfs(val label: String) { HISTORY("History"), LATER("My List"), FAVORITE("Favourites") }
+private enum class Shelfs(val label: String) { HISTORY("History"), LATER("My Listing"), FAVORITE("Favourites") }
+
+private enum class LibrarySection(val label: String) { WISHLIST("My Wishlist"), DOWNLOADS("Downloads") }
+
+/**
+ * The Library's two tabs, spread across the width: plain words, the chosen one bright with a line under it
+ * (a little below the word, as wide as it); a red dot by Downloads while one is running.
+ */
+@Composable
+private fun LibraryTabs(on: LibrarySection, running: Boolean, onPick: (LibrarySection) -> Unit) =
+    // The chosen tab's red dot, no line under (the owner's choice); a download running shows green by Downloads.
+    // Only the chosen tab has a dot (the owner's choice); the two sit at the row's far ends.
+    TextTabs(LibrarySection.entries.map { it.label }, on.ordinal, dotAt = on.ordinal, underline = false, ends = true) { onPick(LibrarySection.entries[it]) }
+
+/**
+ * Tabs as plain words spread across the width, the chosen one bright with a red line under it as wide as the word;
+ * a red dot beside the one at [dotAt]. The Library's Wishlist / Downloads, a genre's Movies / Shows.
+ */
+@Composable
+fun TextTabs(labels: List<String>, chosen: Int, dotAt: Int? = null, underline: Boolean = true, busyAt: Int? = null, ends: Boolean = false, onPick: (Int) -> Unit) {
+    // [ends]: the first at the left edge and the last at the right, rather than spread evenly.
+    Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = if (ends) Arrangement.SpaceBetween else Arrangement.SpaceEvenly) {
+        labels.forEachIndexed { i, label ->
+            val on = i == chosen
+            Column(
+                Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Max).clip(RoundedCornerShape(4.dp))
+                    .then(Modifier.clickable { onPick(i) }).padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, style = Type.title.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) Ink.text else Ink.muted))
+                    if (i == dotAt) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.accent))
+                    // Something going on behind a tab not chosen (a download running): a green dot.
+                    else if (i == busyAt) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Ink.download))
+                }
+                if (underline) Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (on) Ink.accent else Color.Transparent))
+            }
+        }
+    }
+}
 
 /** Everything played (the only way back to a magnet watched once), and the two saved lists. */
 @Composable
 fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownloads: () -> Unit) {
     val downloading by Downloads.live.collectAsState()
+    /** The Library's two halves: what is watched and wanted, and what is on (or coming to) this phone. */
+    // Downloads first (the owner's choice), and back to it whenever something new is sent to download.
+    var section by rememberSaveable { mutableStateOf(LibrarySection.DOWNLOADS) }
+    var seenDownloads by remember { mutableStateOf(downloading.size) }
+    LaunchedEffect(downloading.size) {
+        if (downloading.size > seenDownloads) section = LibrarySection.DOWNLOADS
+        seenDownloads = downloading.size
+    }
+    // Leaving Downloads for the Wishlist locks it again, as leaving the tab does (the owner's choice).
+    LaunchedEffect(section) { if (section != LibrarySection.DOWNLOADS) FilesLock.relock() }
+    if (section == LibrarySection.DOWNLOADS && FilesLock.needed()) {
+        // Behind the code (Settings → Lock): asked for straight away, and again from the button if dismissed — but only
+        // while the Library is the page on screen. The tabs stay composed behind each other, so asking regardless popped
+        // the pin pad (and its keyboard) over every other tab each time the lock closed again (the owner caught it).
+        val shown = LocalShown.current
+        LaunchedEffect(shown) {
+            if (shown) FilesLock.ask(Tab.LIBRARY) {}
+            else if (FilesLock.asking == Tab.LIBRARY) FilesLock.dismiss()
+        }
+        // The same lock as everywhere (the owner's design): in the middle of the screen, the whole page a tap to unlock;
+        // the heading and the Wishlist tab above it still answer.
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().tapToUnlock(Tab.LIBRARY), contentAlignment = Alignment.Center) { LockPrompt("Downloads are locked.") }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Heading("Library") { AddLinkPlus() }
+                LibraryTabs(section, downloading.isNotEmpty()) { section = it }
+            }
+        }
+        return
+    }
+    if (section == LibrarySection.DOWNLOADS) {
+        DownloadsScreen(watch, onBack = null) {
+            Heading("Library") { AddLinkPlus() }
+            LibraryTabs(section, downloading.isNotEmpty()) { section = it }
+        }
+        return
+    }
     val stremio by Stremio.connected.collectAsState()
     val stremioLibrary by Stremio.library.collectAsState()
     /** Per profile; the guest is offered nothing it would lose on exit. */
     var stremioLater by remember(me.id) { mutableStateOf(me.isGuest || Kv.get(STREMIO_LATER) != null) }
     val history by History.items.collectAsState()
     val saved by SavedStore.items.collectAsState()
-    var shelf by rememberSaveable { mutableStateOf(Shelfs.HISTORY) }
+    // History's chip is gone (the owner's choice: Home's Continue Watching row has what's part-watched); its list is
+    // kept here in code, unreached. ponytail: finished titles and "From Stremio" have no list now; revisit if missed.
+    var shelf by rememberSaveable(key = "library-shelf") { mutableStateOf(Shelfs.LATER) }
     var menu by remember { mutableStateOf<Item?>(null) }
     var clearing by remember { mutableStateOf(false) }
     var releases by remember { mutableStateOf<List<Item>?>(null) }
@@ -397,7 +696,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
         if (shelf == Shelfs.HISTORY) GridCells.Adaptive(340.dp) else POSTER,
         state = rememberLazyGridState(),
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = 24.dp),
+        contentPadding = PaddingValues(start = EDGE, end = EDGE, bottom = NAV_CLEARANCE),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -407,14 +706,9 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
                     if (shelf == Shelfs.HISTORY && items.isNotEmpty()) Tap({ clearing = true }, shape = CircleShape) {
                         Lc(L.drawable.lucide_ic_trash_2, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp)
                     }
-                    // Downloads live here now, off the tab bar; the dot says one is running.
-                    Tap(onDownloads, shape = CircleShape) {
-                        Box {
-                            Lc(L.drawable.lucide_ic_download, Modifier.padding(8.dp), tint = Ink.muted, size = 22.dp)
-                            if (downloading.isNotEmpty()) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(8.dp).clip(CircleShape).background(Ink.accent))
-                        }
-                    }
+                    AddLinkPlus()
                 }
+                LibraryTabs(section, downloading.isNotEmpty()) { section = it }
                 // Where the history is, the history's sync is offered.
                 if (Stremio.available && !stremio && !stremioLater) {
                     StremioSection(me, onLater = {
@@ -423,13 +717,15 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
                     })
                 }
                 if (stremio) Text("✓ Signed in to Stremio — your library and where you stopped are below", Modifier.padding(bottom = 10.dp), style = Type.meta.copy(color = Ink.faint))
-                Row(Modifier.padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Shelfs.entries.forEach { s -> Chip(s.label, s == shelf, onClick = { shelf = s }) }
+                // End to end, like the other pill rows.
+                // Two pills: centred, the space shared round them (the owner's choice).
+                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Shelfs.entries.filter { it != Shelfs.HISTORY }.forEach { s -> Chip(s.label, s == shelf, onClick = { shelf = s }) }
                 }
             }
         }
         if (shelf == Shelfs.HISTORY) {
-            if (items.isEmpty() && fromStremio.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Note("Nothing here yet. Anything you play turns up in this list.", Modifier.padding(top = 16.dp)) }
+            if (items.isEmpty() && fromStremio.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { EmptyNote("Nothing here yet. Anything you play turns up in this list.", Modifier.padding(top = 16.dp)) }
             items(items, key = { it.titleKey }) { item ->
                 HistoryRow(item, sources[item.titleKey] ?: 1, onPlay = {
                     // Played from more than one release: ask which, as Continue watching does.
@@ -443,7 +739,7 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
             items(fromStremio, key = { "stremio:${it.imdb}" }) { s -> StremioRow(s) { onOpen(Title(s.imdb, s.kind, s.title, year = s.year)) } }
         } else {
             if (listed.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Note(if (shelf == Shelfs.LATER) "Titles you add to My List wait here." else "Titles you like collect here.", Modifier.padding(top = 16.dp))
+                EmptyNote(if (shelf == Shelfs.LATER) "Titles you add to My Listing wait here." else "Titles you like collect here.", Modifier.padding(top = 16.dp))
             }
             items(listed, key = { it.imdb }) { t -> PosterCard(t, { onOpen(t) }, sub = subOf(t)) }
         }
@@ -454,9 +750,9 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
         Sheet(
             title = name,
             options = listOfNotNull(
-                Option("play", "Resume"),
-                item.imdb?.let { Option("info", "Details") },
-                Option("remove", "Remove from Library", if ((sources[item.titleKey] ?: 1) > 1) "With every release it was played from" else null),
+                Option("play", "Resume", icon = L.drawable.lucide_ic_play),
+                item.imdb?.let { Option("info", "Details", icon = L.drawable.lucide_ic_info) },
+                Option("remove", "Remove from Library", if ((sources[item.titleKey] ?: 1) > 1) "With every release it was played from" else null, icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
             ),
             selected = null,
             onPick = {
@@ -474,7 +770,10 @@ fun LibraryScreen(watch: Watch, me: Profile, onOpen: (Title) -> Unit, onDownload
     if (clearing) {
         Sheet(
             title = "Clear everything you have played?",
-            options = listOf(Option(true, "Clear all", "Resume points and downloaded subtitles go too"), Option(false, "Cancel")),
+            options = listOf(
+                Option(true, "Clear all", "Resume points and downloaded subtitles go too", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
+                Option(false, "Cancel", icon = L.drawable.lucide_ic_x),
+            ),
             selected = null,
             onPick = {
                 if (it) History.clear(watch.engine)
@@ -505,9 +804,10 @@ fun whereLeft(item: Item): String? {
 @Composable
 private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
     val paused = com.torrentviewer.core.Stremio.library.collectAsState().value.paused.find { it.imdb == s.imdb }
-    Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp)) { pressed ->
-        Row(Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))) {
+    Tap(onOpen, Modifier.fillMaxWidth(), RoundedCornerShape(6.dp)) { pressed ->
+        // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card); 2 dp on the right.
+        Row((if (pressed) Modifier.background(Ink.surface2) else Modifier.frosted(RoundedCornerShape(6.dp))).padding(end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(88.dp).height(96.dp)) {
                 Artwork("https://images.metahub.space/poster/medium/${s.imdb}/img", s.title, Modifier.fillMaxSize())
                 paused?.let { ProgressLine((it.progress / 100).toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp) }
             }
@@ -529,9 +829,14 @@ private fun StremioRow(s: com.torrentviewer.core.Seen, onOpen: () -> Unit) {
 /** One title in the Library: its poster with the progress along the foot, where it was left, when, and a menu. */
 @Composable
 private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: () -> Unit) {
-    Tap(onPlay, Modifier.fillMaxWidth(), RoundedCornerShape(10.dp), onLongClick = onMore) { pressed ->
-        Row(Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))) {
+    Tap(onPlay, Modifier.fillMaxWidth(), RoundedCornerShape(6.dp), onLongClick = onMore) { pressed ->
+        // The poster runs to the card's top, bottom and left edges (the owner's choice: a shorter card). The ⋮'s dots are
+        // a thin line in the middle of a 20dp icon: 4dp at the end keeps them clear of the card's edge.
+        Row(
+            Modifier.background(if (pressed) Ink.surface2 else Ink.surface).padding(end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.width(88.dp).height(96.dp)) {
                 Artwork(remoteArt(item.poster) ?: item.art(), item.label, Modifier.fillMaxSize())
                 if (item.ratio > 0) ProgressLine(item.ratio.toFloat(), Modifier.align(Alignment.BottomStart), height = 3.dp)
             }
@@ -545,10 +850,12 @@ private fun HistoryRow(item: Item, releases: Int, onPlay: () -> Unit, onMore: ()
                     maxLines = 1,
                 )
             }
-            Box(Modifier.size(38.dp).clip(CircleShape).background(Ink.accent), contentAlignment = Alignment.Center) {
-                Lc(L.drawable.lucide_ic_play, tint = Color.White, size = 18.dp)
+            // A bare ▷, no disc behind it (the owner's choice), as on the downloading cards.
+            Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                Lc(L.drawable.lucide_ic_play, tint = Ink.text, size = 22.dp)
             }
-            Tap(onMore, shape = CircleShape) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
+            // Tall tap room above and below, little beside: the card's edge is right there.
+            Tap(onMore, shape = RoundedCornerShape(5.dp)) { Lc(L.drawable.lucide_ic_ellipsis_vertical, Modifier.padding(start = 6.dp, top = 12.dp, bottom = 12.dp), tint = Ink.muted, size = 20.dp) }
         }
     }
 }
@@ -582,13 +889,16 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val update by Updates.release.collectAsState()
     val appContext = LocalContext.current
-    BackHandler(page != null) { page = null }
+    /** Something to read under Last crash report: looked at again each time the list comes back. */
+    val crashed = remember(page) { CrashGuard.anything(appContext) }
+    BackHandler(page != null && LocalShown.current) { page = null }
     // The list keeps its own place, for coming back to; a page always opens at its top.
     val listScroll = rememberScrollState()
     val pageScroll = rememberScrollState()
     LaunchedEffect(page) { if (page != null) pageScroll.scrollTo(0) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(if (page == null) listScroll else pageScroll).padding(horizontal = EDGE).padding(bottom = 32.dp)) {
+    // Its foot scrolls up clear of the tab bar, as every page's does (the owner's choice).
+    Column(Modifier.fillMaxSize().verticalScroll(if (page == null) listScroll else pageScroll).padding(horizontal = EDGE).padding(bottom = NAV_CLEARANCE)) {
         if (page == null) {
             Heading("Settings")
             Field(query, { query = it }, "Search settings", Modifier.fillMaxWidth().padding(bottom = 12.dp), leading = L.drawable.lucide_ic_search)
@@ -597,8 +907,13 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     // Stays here until it is installed, "Not now" or not: the card is the one that goes away.
                     update?.let { r ->
                         listOf(
-                            Entry(L.drawable.lucide_ic_download, "Update available", "Version ${r.version}  ·  ${bytes(r.size)}", "new version upgrade", Ink.accent) {
-                                downloadUpdate(appContext, r) { watch.notes.tryEmit(it) }
+                            Entry(R.drawable.ic_download, "Update available", "Version ${r.version}  ·  ${bytes(r.size)}", "new version upgrade", Ink.accent) {
+                                // Already fetched in the background: straight to the installer. Still coming: said so.
+                                when {
+                                    Updates.ready.value == r -> Updates.installReady(appContext)
+                                    Updates.progress.value != null -> watch.notes.tryEmit("Still downloading — Install shows at the top when it's ready")
+                                    else -> Updates.download(appContext, r) { watch.notes.tryEmit(it) }
+                                }
                             },
                         )
                     },
@@ -607,26 +922,38 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         Entry(L.drawable.lucide_ic_users, "Switch profile", "Change to a different profile", onClick = onSwitchProfile),
                     ),
                     listOf(
-                        Entry(L.drawable.lucide_ic_palette, "Appearance", "Theme and home screen genres", "light dark") { page = "Appearance" },
+                        Entry(L.drawable.lucide_ic_house, "Home screen", "Built-in rows, and which addon catalogues show", "metadata tmdb catalog rows") { page = "Home screen" },
+                        Entry(L.drawable.lucide_ic_palette, "Appearance", "Theme, navigation and home screen genres", "light dark pill bar tabs") { page = "Appearance" },
                     ),
                     listOf(
                         Entry(L.drawable.lucide_ic_radio, "Streaming", "Storage, buffer and trackers", "cache magnet") { page = "Streaming" },
-                        Entry(L.drawable.lucide_ic_play, "Playback", "Player, languages and subtitles", "vlc media3 skip intro audio") { page = "Playback" },
-                        Entry(L.drawable.lucide_ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
+                        Entry(L.drawable.lucide_ic_play, "Playback", "Streaming resolution, languages and subtitles", "vlc media3 skip intro audio resolution quality 720p 1080p 480p stream") { page = "Playback" },
+                        Entry(R.drawable.ic_download, "Downloads", "Network, order and storage", "wi-fi sd card battery") { page = "Downloads" },
+                        Entry(L.drawable.lucide_ic_youtube, "YouTube", "Sign-in and the mini player", "youtube google login sign in account subscriptions tube mini player") { page = "YouTube" },
+                        Entry(L.drawable.lucide_ic_shield, "VPN", "WireGuard: Mullvad, Proton… for this app or the whole phone", "vpn wireguard mullvad proton privacy") { page = "VPN" },
+                        Entry(L.drawable.lucide_ic_globe, "Browser", "Search engine, ads, pop-ups, redirects", "google duckduckgo bing brave ads popups redirects dark cookies") { page = "Browser" },
+                        Entry(L.drawable.lucide_ic_shield, "Secure DNS", "For plugins: look sites up past your provider's blocks", "doh dns over https cloudflare google blocked network") { page = "Secure DNS" },
+                        Entry(L.drawable.lucide_ic_sliders_horizontal, "Preferred download", "What one-tap Download picks: resolution, codec, format…", "720p x265 hevc mkv mp4 quality codec") { page = "Preferred download" },
                     ),
                     listOf(
                         Entry(L.drawable.lucide_ic_link, "Integrations", "Simkl and MDBList", "tracking watched sync") { page = "Integrations" },
                         Entry(L.drawable.lucide_ic_key, "Services", "SubDL and TorBox keys", "subtitles api") { page = "Services" },
+                        Entry(L.drawable.lucide_ic_sparkles, "AI Search", "Describe a film or show; your AI names it", "ai claude gemini chatgpt openai deepseek openrouter describe") { page = "AI Search" },
                     ),
                     listOf(
                         Entry(L.drawable.lucide_ic_history, "Backup", "Save or restore your library", "export import") { page = "Backup" },
                         Entry(L.drawable.lucide_ic_sparkles, "Welcome tour", "See the first-run tour again", "onboarding") { tourAgain = true },
-                        Entry(L.drawable.lucide_ic_refresh_cw, "Check for updates", "You have version ${BuildConfig.VERSION_NAME}", "new version upgrade") { Updates.checkNow { watch.notes.tryEmit(it) } },
+                        Entry(L.drawable.lucide_ic_refresh_cw, "Check for updates", "You have version ${BuildConfig.VERSION_NAME}", "new version upgrade") {
+                            watch.notes.tryEmit("Checking for a newer build…")
+                            Updates.checkPhoneBuild(BuildConfig.VERSION_CODE, "WatchHub-phone-", force = true) { watch.notes.tryEmit(it) }
+                        },
                     ),
                     listOf(
-                        Entry(L.drawable.lucide_ic_scale, "Legal notice", "Watchly is a media player only", "disclaimer copyright dmca") { page = "Legal notice" },
+                        Entry(L.drawable.lucide_ic_lock, "Lock", "A code before Library and Files", "pin password code private downloads") { page = "Lock" },
+                        Entry(L.drawable.lucide_ic_file_text, "Last crash report", if (crashed) "Something failed — open to read and share it" else "Nothing has gone wrong", "crash error bug log") { page = "Last crash report" },
+                        Entry(L.drawable.lucide_ic_scale, "Legal notice", "WatchHub is a media player only", "disclaimer copyright dmca") { page = "Legal notice" },
                         Entry(L.drawable.lucide_ic_shield, "Privacy policy", "What stays here and what is sent", "data") { page = "Privacy policy" },
-                        Entry(L.drawable.lucide_ic_file_text, "Terms and conditions", "The rules for using Watchly", "agreement licence") { page = "Terms and conditions" },
+                        Entry(L.drawable.lucide_ic_file_text, "Terms and conditions", "The rules for using WatchHub", "agreement licence") { page = "Terms and conditions" },
                     ),
                 ),
                 query,
@@ -643,18 +970,32 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 style = Type.meta.copy(color = Ink.faint, fontSize = 11.sp),
             )
         } else {
-            Row(Modifier.statusBarsPadding().padding(top = 8.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundIcon(L.drawable.lucide_ic_arrow_left, { page = null })
-                Text(page.orEmpty(), Modifier.padding(start = 12.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
-            }
+            BackTitle(page.orEmpty(), { page = null }, Modifier.statusBarsPadding().padding(start = 6.dp, end = 6.dp, top = 18.dp, bottom = 14.dp))
         }
 
+        if (page == "Last crash report") Panel {
+            val context = LocalContext.current
+            var report by remember { mutableStateOf(CrashGuard.report(context)) }
+            val text = report
+            if (text == null) EmptyNote("Nothing has gone wrong since this was last cleared.", Modifier.padding(bottom = 18.dp))
+            else {
+                Row(Modifier.padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("Share", false, onClick = {
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text)
+                        runCatching { context.startActivity(android.content.Intent.createChooser(send, "Share report").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    }, icon = L.drawable.lucide_ic_share_2)
+                    Chip("Clear", false, onClick = { CrashGuard.clear(context); report = null }, icon = L.drawable.lucide_ic_x)
+                }
+                Text(text, Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.muted, fontSize = 11.sp))
+            }
+        }
+        if (page == "Lock") Panel { LockSettings { watch.notes.tryEmit(it) } }
         if (page == "Legal notice") Panel { LegalText(com.torrentviewer.core.Legal.NOTICE) }
         if (page == "Privacy policy") Panel { LegalText(com.torrentviewer.core.Legal.PRIVACY) }
         if (page == "Terms and conditions") Panel { LegalText(com.torrentviewer.core.Legal.TERMS) }
 
         if (page == "Integrations") Panel {
-            Text("What you finish here is marked watched on your accounts, and what they have watched shows here. You sign in on each service's own page, so your password never comes to Watchly.", Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint))
+            Text("What you finish here is marked watched on your accounts, and what they have watched shows here. You sign in on each service's own page, so your password never comes to WatchHub.", Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint))
             com.torrentviewer.core.WATCH_TRACKERS.forEach { TrackerSection(it) }
         }
 
@@ -667,9 +1008,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 else -> "Library, My List and resume points belong to this profile."
             },
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // The avatar and Switch profile on one grey strip, at its two ends (the owner's choice).
+            Row(
+                Modifier.fillMaxWidth().clip(PILL).background(Ink.surface).padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
                 Avatar(me, 44.dp)
-                Spacer(Modifier.width(14.dp))
                 Button(if (profiles.isEmpty()) "Add profiles" else "Switch profile", onSwitchProfile, icon = L.drawable.lucide_ic_users)
             }
         }
@@ -687,12 +1031,12 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                 val unlocked = !locked || current == me.pin
                 if (locked) {
                     Text("Current PIN", Modifier.padding(bottom = 6.dp), style = Type.overline)
-                    Field(current, { current = it.filter(Char::isDigit).take(4) }, "• • • •", Modifier.widthIn(max = 200.dp).fillMaxWidth(), secret = true, digits = true)
+                    Field(current, { current = it.filter(Char::isDigit).take(4) }, "* * * *", Modifier.fillMaxWidth(), secret = true, digits = true)
                     Text("New PIN", Modifier.padding(top = 14.dp, bottom = 6.dp), style = Type.overline)
                 }
                 // The digits and Set side by side; Remove on its own line, so nothing is cut short on a narrow phone.
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Field(pin, { pin = it.filter(Char::isDigit).take(4) }, "– – – –", Modifier.weight(1f).widthIn(max = 200.dp), secret = true, digits = true)
+                    Field(pin, { pin = it.filter(Char::isDigit).take(4) }, "* * * *", Modifier.weight(1f), secret = true, digits = true)
                     Spacer(Modifier.width(10.dp))
                     Button(if (locked) "Change PIN" else "Set PIN", {
                         when {
@@ -705,7 +1049,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                                 watch.notes.tryEmit("PIN set for ${me.name}")
                             }
                         }
-                    }, icon = L.drawable.lucide_ic_lock)
+                    }, Modifier.weight(1f), icon = L.drawable.lucide_ic_lock, tall = true)
                 }
                 if (locked) Button("Remove PIN", {
                     if (unlocked) {
@@ -713,7 +1057,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         current = ""
                         watch.notes.tryEmit("PIN removed")
                     } else watch.notes.tryEmit(if (current.length < 4) "Enter the current PIN to remove it" else "That's not the PIN")
-                }, Modifier.padding(top = 10.dp), icon = L.drawable.lucide_ic_lock_open)
+                }, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_lock_open)
             }
         }
 
@@ -737,47 +1081,69 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
         }
 
-        Section("Extra trackers","Attach public trackers to bare magnet links so they resolve faster.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("On", settings.addTrackers, onClick = { set(settings.copy(addTrackers = true)) })
-                Chip("Off", !settings.addTrackers, onClick = { set(settings.copy(addTrackers = false)) })
+        // Left out everywhere: tapped ones (red) never show, and a download never picks them.
+        Text("Leave out", style = Type.title.copy(fontWeight = FontWeight.Bold))
+        Text(
+            "Tapped ones never show in sources lists or Search, and downloads never pick them. Careful with \"Not stated\": " +
+                "many plugin links don't say their codec or format.",
+            Modifier.padding(top = 4.dp, bottom = 6.dp), style = Type.meta.copy(color = Ink.faint),
+        )
+        LEAVE_OUT.forEach { (heading, choices) ->
+            Text(heading, Modifier.padding(top = 8.dp, bottom = 6.dp), style = Type.overline.copy(color = Ink.faint))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                choices.forEach { (key, label) ->
+                    val out = key in settings.leaveOut
+                    Chip(label, out, onClick = { set(settings.copy(leaveOut = if (out) settings.leaveOut - key else settings.leaveOut + key)) }, icon = if (out) L.drawable.lucide_ic_x else null, compact = true)
+                }
             }
+        }
+        Spacer(Modifier.height(22.dp))
+        ToggleSection(
+            "Hide torrents under $MIN_SEEDS seeds", "Torrents with $DEAD_SEEDS to ${MIN_SEEDS - 1} seeds are left out of the sources lists and never picked for a download: they rarely finish. A tap under the list still shows them. Under $DEAD_SEEDS seeds they never show.",
+            settings.hideFewSeeds,
+        ) { set(settings.copy(hideFewSeeds = it)) }
+        ToggleSection("Extra trackers", "Attach public trackers to bare magnet links so they resolve faster.", settings.addTrackers) {
+            set(settings.copy(addTrackers = it))
         }
         }
 
         if (page == "Playback") Panel {
-        Section("Player","Media3 hands a file it can't play to VLC by itself. VLC from the start plays the most formats and full ASS subtitle styling.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Media3", !settings.vlcPlayer, onClick = { set(settings.copy(vlcPlayer = false)) })
-                Chip("VLC", settings.vlcPlayer, onClick = { set(settings.copy(vlcPlayer = true)) })
+        // What Play picks for a film or an episode, apart from what Download picks (Settings → Preferred download).
+        Section(
+            "Preferred Streaming Resolution",
+            "What the Play buttons stream: sources at this resolution first, then the nearest below, then above (and a note says so). " +
+                "Auto plays 1080p on Wi-Fi and 720p on mobile data. Separate from the download resolution.",
+        ) {
+            SpreadRow {
+                com.torrentviewer.core.STREAM_QUALITIES.forEach { q -> Chip(q.ifEmpty { "Auto" }, settings.streamQuality == q, onClick = { set(settings.copy(streamQuality = q)) }) }
             }
         }
-
-        Section("Skip intro", "Where an episode's intro is known, jump past it by itself instead of showing the Skip intro button. Once per episode — seek back to watch it.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Automatically", settings.autoSkipIntro, onClick = { set(settings.copy(autoSkipIntro = true)) })
-                Chip("Show the button", !settings.autoSkipIntro, onClick = { set(settings.copy(autoSkipIntro = false)) })
+        // Tube's own: what a YouTube video opens at (the owner's choice), Auto among them.
+        Section("YouTube Resolution", "What YouTube videos open at: that resolution, else the nearest below, else above. Auto lets YouTube adapt to the connection.") {
+            SpreadRow {
+                com.torrentviewer.core.TUBE_QUALITIES.forEach { q -> Chip(q.ifEmpty { "Auto" }, settings.tubeQuality == q, onClick = { set(settings.copy(tubeQuality = q)) }) }
             }
+        }
+        // Two-way choices are switches here, as Grabber's settings are (the owner's choice); three or more stay chips.
+        ToggleSection("Skip intros automatically", "Where an episode's intro is known, jump past it by itself; off shows a Skip intro button instead. Once per episode — seek back to watch it.", settings.autoSkipIntro) {
+            set(settings.copy(autoSkipIntro = it))
         }
 
         Section("Languages", "A matching track comes on by itself when a video opens; picking one yourself wins. Online subtitle search looks in the subtitle language.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SpreadRow {
                 Chip("Audio: " + if (settings.audioLang.isEmpty()) "file's default" else langName(settings.audioLang), settings.audioLang.isNotEmpty(), onClick = { picking = "audio" })
                 Chip("Subtitles: " + if (settings.subLang.isEmpty()) "off" else langName(settings.subLang), settings.subLang.isNotEmpty(), onClick = { picking = "subs" })
             }
         }
 
-        Section("Subtitle style", "Size, colour and a box behind the words. Media3 shows a change on the next line; VLC from the next video.") {
+        Section("Subtitle style", "Size, colour and a box behind the words. Media3 shows a change on the next line; VLC (when a file needs it) from the next video.") {
             val style = settings.subtitles
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SUB_SIZES.keys.forEach { s -> Chip(s.replaceFirstChar(Char::uppercase), style.size == s, onClick = { set(settings.copy(subtitles = style.copy(size = s))) }) }
             }
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("White", !style.yellow, onClick = { set(settings.copy(subtitles = style.copy(yellow = false))) })
-                Chip("Yellow", style.yellow, onClick = { set(settings.copy(subtitles = style.copy(yellow = true))) })
-                Chip("Box behind", style.box, onClick = { set(settings.copy(subtitles = style.copy(box = !style.box))) })
-            }
         }
+        ToggleSection("Yellow subtitles", "Off for white.", settings.subtitles.yellow) { set(settings.copy(subtitles = settings.subtitles.copy(yellow = it))) }
+        ToggleSection("Box behind subtitles", "A dark band behind the words, for bright scenes.", settings.subtitles.box) { set(settings.copy(subtitles = settings.subtitles.copy(box = it))) }
         }
 
         if (page == "Services") Panel {
@@ -839,18 +1205,39 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         Section("Network", "Wi-Fi only holds a download on mobile data — it waits, and carries on when Wi-Fi is back. Use mobile data on a waiting download to let that one through.") {
             var wifiOnly by remember { mutableStateOf(Downloads.wifiOnly) }
             var sdCard by remember { mutableStateOf(Downloads.sdCard) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Wi-Fi only", wifiOnly, onClick = { wifiOnly = true; Downloads.wifiOnly = true })
-                Chip("Any network", !wifiOnly, onClick = { wifiOnly = false; Downloads.wifiOnly = false })
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Wi-Fi only", Modifier.weight(1f), style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Toggle(wifiOnly, { wifiOnly = it; Downloads.wifiOnly = it })
             }
             var sequential by remember { mutableStateOf(Downloads.sequential) }
             Text(
                 "Fastest takes pieces from wherever the swarm has them. In order fills each file from the start, so you can watch it while it downloads — but it is slower.",
                 Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Fastest", !sequential, onClick = { sequential = false; Downloads.sequential = false })
-                Chip("In order", sequential, onClick = { sequential = true; Downloads.sequential = true })
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Download in order", Modifier.weight(1f), style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Toggle(sequential, { sequential = it; Downloads.sequential = it })
+            }
+            // Data saver: on mobile data, season scans check fewer links and stop an episode once its pick is confirmed.
+            var saver by remember { mutableStateOf(Downloads.dataSaver) }
+            Text(
+                "Data saver: on mobile data, a season scan checks only the ${downloadPrefs().quality.ifEmpty { "preferred" }} links, " +
+                    "fewer of them. Every site is still waited for. Wi-Fi isn't affected.",
+                Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
+            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Data saver", Modifier.weight(1f), style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Toggle(saver, { saver = it; Downloads.dataSaver = it })
+            }
+            // Direct links: how many connections at once, as 1DM's threads.
+            var connections by remember { mutableStateOf(Downloads.connections) }
+            Text(
+                "Direct links are fetched over several connections at once, each a part of the file — as 1DM does. More is faster; " +
+                    "if a site slows down or refuses, try fewer. Torrents aren't affected.",
+                Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
+            )
+            SpreadRow {
+                listOf(1, 8, 16, 32, 64).forEach { n -> Chip(if (n == 1) "1 connection" else "$n", connections == n, onClick = { connections = n; Downloads.connections = n }) }
             }
             // Re-read on return from the system prompt.
             val context = LocalContext.current
@@ -861,10 +1248,10 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
             }
             if (!unrestricted) {
                 Text(
-                    "Battery saving can slow or stop downloads with the screen off. Let Watchly run in the background to keep them going.",
+                    "Battery saving can slow or stop downloads with the screen off. Let WatchHub run in the background to keep them going.",
                     Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
                 )
-                Chip("Allow background downloads", false, onClick = { Downloads.askUnrestricted(context) })
+                Solo { m -> Chip("Allow Background Downloads", false, onClick = { Downloads.askUnrestricted(context) }, m, tall = true) }
             }
             if (Downloads.hasCard) {
                 Text(
@@ -872,7 +1259,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                         if (Downloads.busy || watch.phase != Phase.IDLE) " Switchable once nothing is downloading or playing." else "",
                     Modifier.padding(top = 14.dp, bottom = 8.dp), style = Type.meta.copy(color = Ink.faint),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SpreadRow {
                     listOf(false to "Phone", true to "SD card").forEach { (card, label) ->
                         Chip(label, sdCard == card, onClick = {
                             if (Downloads.busy || watch.phase != Phase.IDLE) watch.notes.tryEmit("Finish or stop downloads and playback first.")
@@ -887,24 +1274,250 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
         }
         }
 
-        if (page == "Appearance") Panel {
-        Section("Theme", "Light or dark pages, or whichever the phone is set to. The player stays dark either way.") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (mode, label) ->
-                    Chip(label, settings.themeMode == mode, onClick = { set(settings.copy(themeMode = mode)) })
-                }
-            }
+        if (page == "Preferred download") Panel {
+        Text(
+            "The download buttons on films and episodes pick one release for you: your resolution, or the next one up when it isn't there, a single " +
+                "file before a streaming playlist (HLS), a torrent with 20+ seeds before a thinner one, then your codec, format, subtitles and source, then the lightest. " +
+                "Season downloads pick the same way for each episode. Nothing under 25 MB (trailers, samples) is ever picked.",
+            Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
+        )
+        PrefRow("Resolution", listOf("" to "Any", "4K" to "4K", "1080p" to "1080p", "720p" to "720p", "480p" to "480p"), settings.dlQuality) { set(settings.copy(dlQuality = it)) }
+        PrefRow("Codec", listOf("" to "Any", "x265" to "x265 (HEVC)", "x264" to "x264 (AVC)", "AV1" to "AV1"), settings.dlCodec) { set(settings.copy(dlCodec = it)) }
+        PrefRow("Format", listOf("" to "Any", "MKV" to "MKV", "MP4" to "MP4"), settings.dlFormat) { set(settings.copy(dlFormat = it)) }
+        PrefRow("Subtitles", listOf("" to "Any", "subs" to "With subs"), if (settings.dlSubs) "subs" else "") { set(settings.copy(dlSubs = it == "subs")) }
+        PrefRow("Source", listOf("" to "Any", "Torrent" to "Torrent", "Link" to "Direct link"), settings.dlSource) { set(settings.copy(dlSource = it)) }
+        Spacer(Modifier.height(8.dp))
+        ToggleSection(
+            "Prefer Direct Links",
+            "A direct link downloads at once, with no seeds to wait on: it's taken before a torrent of the same resolution — " +
+                "unless it's over 1.5× the size of the lightest torrent (or its size isn't known while the torrent's is).",
+            settings.dlDirect,
+        ) { set(settings.copy(dlDirect = it)) }
         }
 
-        Section("Genres on the home screen", "Leave all off to build the home screen from what you have watched.") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                GENRES.forEach { g ->
-                    val on = g in settings.genres
-                    Chip(g, on, icon = if (on) L.drawable.lucide_ic_check else null, onClick = {
-                        set(settings.copy(genres = if (on) settings.genres - g else settings.genres + g))
+        if (page == "AI Search") Panel {
+        Text(
+            "Type a description in Search — “heist film where they enter people's dreams” — and the AI you choose here names " +
+                "what it might be; its guesses show above the usual results. Bring your own key: requests go from this phone " +
+                "straight to that service and are charged to your account there. Descriptions of four words or more are sent; titles aren't.",
+            Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
+        )
+        PrefRow("Service", listOf("" to "Off") + com.torrentviewer.core.AiProvider.entries.map { it.id to it.label }, settings.aiProvider) {
+            set(settings.copy(aiProvider = it, aiModel = ""))
+            com.torrentviewer.core.AiSearch.refresh()
+        }
+        com.torrentviewer.core.AiProvider.of(settings.aiProvider)?.let { p ->
+            var aiKey by remember(p) { mutableStateOf("") }
+            var aiModel by remember(p) { mutableStateOf(settings.aiModel) }
+            var saved by remember(p) { mutableStateOf(com.torrentviewer.core.AiSearch.hasKey(p)) }
+            Section(
+                "${p.label} key",
+                if (saved) "Saved, encrypted on this phone. Enter another to replace it."
+                else "Create one at ${p.keyFrom}. It stays encrypted on this phone.",
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Field(aiKey, { aiKey = it.trim() }, if (saved) "••••••••••••" else "Your ${p.label} API key", Modifier.weight(1f), secret = true)
+                    Spacer(Modifier.width(10.dp))
+                    Button("Save", {
+                        if (aiKey.isEmpty()) watch.notes.tryEmit("Paste your ${p.label} key first")
+                        else {
+                            com.torrentviewer.core.AiSearch.setKey(p, aiKey)
+                            aiKey = ""
+                            saved = true
+                            watch.notes.tryEmit("${p.label} key saved")
+                        }
+                    }, icon = L.drawable.lucide_ic_key)
+                }
+                if (saved) {
+                    var testing by remember(p) { mutableStateOf(false) }
+                    val testScope = rememberCoroutineScope()
+                    // Side by side, sharing the width.
+                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(if (testing) "Testing…" else "Test Key", {
+                            if (!testing) {
+                                testing = true
+                                testScope.launch {
+                                    runCatching { com.torrentviewer.core.AiSearch.test(p) }
+                                        .onSuccess { m -> watch.notes.tryEmit("${p.label} key works · $m") }
+                                        .onFailure { e -> watch.notes.tryEmit(e.message ?: "${p.label} didn't answer") }
+                                    testing = false
+                                }
+                            }
+                        }, Modifier.weight(1f), icon = L.drawable.lucide_ic_check)
+                        Button("Remove Key", {
+                            com.torrentviewer.core.AiSearch.setKey(p, "")
+                            saved = false
+                            watch.notes.tryEmit("${p.label} key removed")
+                        }, Modifier.weight(1f), icon = L.drawable.lucide_ic_trash_2)
+                    }
+                }
+            }
+            Section(
+                "Model",
+                "Leave empty and the app uses ${com.torrentviewer.core.AiSearch.modelInUse(p)} — if the service ever retires it, the app asks " +
+                    "which models your key can use and switches to the newest. Type a model name to use that one instead.",
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Field(aiModel, { aiModel = it.trim() }, p.defaultModel, Modifier.weight(1f))
+                    Spacer(Modifier.width(10.dp))
+                    Button("Save", {
+                        set(settings.copy(aiModel = aiModel))
+                        watch.notes.tryEmit(if (aiModel.isEmpty()) "Using ${p.defaultModel}" else "Using $aiModel")
                     })
                 }
             }
+        }
+        }
+
+        if (page == "VPN") Panel {
+            Section("VPN", "A WireGuard connection inside the app, from Proton VPN (free or paid), Mullvad or another provider. Android asks once for leave.") {
+                VpnSettings { watch.notes.tryEmit(it) }
+            }
+        }
+        if (page == "YouTube") Panel {
+            Section("Account", "Signed in, Tube's Home starts with your own subscriptions and downloads can save videos shown only to signed-in accounts. The session stays on this phone.") {
+                YouTubeAccountCard()
+            }
+            ToggleSection("Mini Player", "A video you drop down keeps playing in a strip above the tab bar; drag it anywhere, tap it to open the video again.", TubeSession.miniEnabled) {
+                TubeSession.useMiniPlayer(it)
+            }
+        }
+        if (page == "Browser") Panel {
+            // The Grabber app's browser settings, for the Browser tab.
+            Section("Search Engine", "Where words typed in the Browser's address bar are searched.") {
+                var engine by remember { mutableStateOf(Browser.engine) }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Browser.ENGINES.forEach { (name, _) -> Chip(name, engine == name, onClick = { engine = name; Browser.engine = name }) }
+                }
+            }
+            Section("Pages", "How pages behave in the Browser tab.") {
+                @Composable
+                fun row(title: String, hint: String, get: () -> Boolean, set: (Boolean) -> Unit) {
+                    var on by remember { mutableStateOf(get()) }
+                    Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(title, style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                            Text(hint, style = Type.meta.copy(color = Ink.faint))
+                        }
+                        Toggle(on, { on = it; set(it) })
+                    }
+                }
+                row("Block Ads", "Drops requests to ad and tracker networks", { Browser.blockAds }, { Browser.blockAds = it })
+                row("Dark Pages", "Shows light websites dark, with the app's dark theme", { Browser.darkPages }, { Browser.darkPages = it })
+                row("Block Pop-ups", "Windows a page opens by itself are dropped; a tapped link to a real page opens in a new tab", { Browser.blockPopups }, { Browser.blockPopups = it })
+                row("Block Redirects", "Stops pages jumping to ad and betting sites; a bar offers Open Anyway", { Browser.blockRedirects }, { Browser.blockRedirects = it })
+                row("Spot Videos and Files", "Watches what pages load and offers it to download", { Browser.sniffMedia }, { Browser.sniffMedia = it })
+            }
+            Section("Ad Blocking", "StevenBlack's and AdGuard's lists of ad, tracker, pop-up and video-ad sites (updated weekly), leftover ad boxes hidden, pop-up ads caught without leaving the page, video ads skipped, and YouTube's ads removed before they play.") {
+                val count by AdBlock.count.collectAsState()
+                val scope = rememberCoroutineScope()
+                var busy by remember { mutableStateOf(false) }
+                Text(if (count > 0) "${"%,d".format(count)} sites blocked" + (AdBlock.updatedAt().takeIf { it > 0 }?.let { " · updated ${com.torrentviewer.core.ago(it)}" } ?: "") else "Not downloaded yet",
+                    Modifier.padding(bottom = 10.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold))
+                Button(if (busy) "Updating…" else "Update Now", {
+                    if (!busy) { busy = true; scope.launch { runCatching { AdBlock.update() }.onFailure { watch.notes.tryEmit(it.message ?: "Couldn't update the blocklist") }; busy = false } }
+                }, icon = L.drawable.lucide_ic_refresh_cw, compact = true)
+            }
+            Section("Browsing Data", "Forget cookies, sign-ins, the cache and history.") {
+                Button("Clear Browsing Data", { Browser.clearData(); watch.notes.tryEmit("Browsing data cleared") }, icon = L.drawable.lucide_ic_trash_2, compact = true)
+            }
+        }
+        if (page == "Secure DNS") Panel {
+        Text(
+            "Many internet providers block streaming sites by their names, so plugins find few links or none. Auto (the " +
+                "default) uses your phone's lookup and, for any site it can't find, asks Cloudflare or Google over HTTPS instead — " +
+                "as CloudStream's own setting does. Cloudflare or Google uses that one for every site; Off never does. Only the plugins' traffic is affected.",
+            Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
+        )
+        PrefRow("Provider", com.torrentviewer.mobile.cs.SECURE_DNS, settings.secureDns) {
+            set(settings.copy(secureDns = it))
+            com.torrentviewer.mobile.cs.SecureDns.clear()
+        }
+        }
+
+        if (page == "Home screen") Panel {
+        ToggleSection(
+            "Built-in rows",
+            "The app's own rows — genres from Cinemeta, IMDb charts, TMDB's picks for you, watch orders. Off, Home is " +
+                "only your setup: Continue Watching, My List and your addons' catalogues (Xperience, AIO…) in your addon order.",
+            settings.builtInHome,
+        ) { set(settings.copy(builtInHome = it)) }
+        val addons by Addons.list.collectAsState()
+        val withRows = addons.filter { a -> a.on && a.catalogs.any { !it.required && it.showInHome } }
+        Section(
+            "Addon catalogues on Home",
+            if (withRows.isEmpty()) "None of your addons has a catalogue." else
+                "Hide an addon's rows (HdHub's, PenguPlay's…) and keep its streams. Order them in the Addons tab.",
+        ) {
+            withRows.forEach { a ->
+                Text(a.name, Modifier.padding(top = 6.dp, bottom = 4.dp), style = Type.overline.copy(color = Ink.faint))
+                a.catalogs.filter { !it.required && it.showInHome }.forEach { c ->
+                    val key = a.shelfKey(c)
+                    val shown = key !in settings.hiddenShelves
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${c.name} · ${com.torrentviewer.core.typeLabel(c.type)}", Modifier.weight(1f), style = Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Toggle(shown, { on ->
+                            set(settings.copy(hiddenShelves = if (on) settings.hiddenShelves - key else settings.hiddenShelves + key))
+                        })
+                    }
+                }
+            }
+        }
+        }
+
+        if (page == "Appearance") Panel {
+        ToggleSection("Follow the phone's theme", "Light or dark as the phone is set. The player stays dark either way.", settings.themeMode == "system") {
+            set(settings.copy(themeMode = if (it) "system" else if (Ink.isDark) "dark" else "light"))
+        }
+        if (settings.themeMode != "system") ToggleSection("Dark theme", "Near-black pages; off for warm paper.", settings.themeMode == "dark") {
+            set(settings.copy(themeMode = if (it) "dark" else "light"))
+        }
+
+        ToggleSection("Plain surfaces", "The same colours throughout, without the frosted grain over cards, sheets, buttons and the tab bar.", settings.plainSurfaces) {
+            set(settings.copy(plainSurfaces = it))
+        }
+
+        Section("Button Colour", "Play, Watch and the app's other main buttons and highlights: ${settings.accent}.") {
+            // Two rows of six: twelve in one would crowd an upright phone.
+            com.torrentviewer.core.ACCENT_SHADES.chunked(6).forEachIndexed { row, shades ->
+            SpreadRow(if (row > 0) Modifier.padding(top = 10.dp) else Modifier) {
+                shades.forEach { (name, argb) ->
+                    val on = settings.accent == name
+                    Tap({ set(settings.copy(accent = name)) }, shape = CircleShape) {
+                        Box(
+                            Modifier.size(38.dp).border(2.dp, if (on) Ink.text else Color.Transparent, CircleShape).padding(4.dp)
+                                .background(Color(argb), CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) { if (on) Lc(L.drawable.lucide_ic_check, tint = if (com.torrentviewer.core.readsDark(argb)) Color(0xFF141414) else Color.White, size = 16.dp) }
+                    }
+                }
+            }
+            }
+        }
+
+        ToggleSection("Floating tab bar", "A pill that hides as you scroll; off for a bar along the bottom.", settings.navStyle == "pill") {
+            set(settings.copy(navStyle = if (it) "pill" else "bar"))
+        }
+
+        Section("Tab Bar Look", "Frosted: the bar's own colour with the app's grain. Glass: what scrolls behind it shows through, blurred (Android 12 and later).") {
+            BarChoices(NavGlass.CHOICES, NavGlass.CHOICES.indexOf(NavGlass.style)) { NavGlass.choose(NavGlass.CHOICES[it]) }
+        }
+        Section("Active Tab", "The chosen tab in the bottom bar: ${NavActive.style}.") {
+            BarChoices(NavActive.CHOICES, NavActive.CHOICES.indexOf(NavActive.style)) { NavActive.choose(NavActive.CHOICES[it]) }
+        }
+        Section("Active Tab Icon", "The chosen tab's icon: in the button colour, or plain white.") {
+            BarChoices(NavActive.ICONS, NavActive.ICONS.indexOf(NavActive.icon)) { NavActive.chooseIcon(NavActive.ICONS[it]) }
+        }
+        ToggleSection("Fade header pictures", "The big pictures at the top of Home and of a title's page fade into the page; off for a clean straight line.", HeaderEdge.fade) {
+            HeaderEdge.choose(it)
+        }
+
+        // "Genres on the home screen" is gone from here (the owner's choice); the choice already made still stands.
+        // Read by the lists opened from Home (a genre's, a row's "See all"); kept app-wide, as the phone's taste.
+        var noAnimation by remember { mutableStateOf(com.torrentviewer.core.Kv.global(NO_ANIMATION) == "1") }
+        ToggleSection("No Animation Results", "Cartoons and anime are left out of the genre lists and every row's See all. Animation's own list still shows them.", noAnimation) {
+            noAnimation = it
+            com.torrentviewer.core.Kv.setGlobal(NO_ANIMATION, if (it) "1" else null)
         }
         }
 
@@ -927,7 +1540,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                     .onFailure { watch.notes.tryEmit(it.message ?: "Couldn't restore that backup") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button("Back up", { save.launch("watchly-backup-${java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())}.json") }, icon = L.drawable.lucide_ic_download)
+                Button("Back up", { save.launch("watchly-backup-${java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())}.json") }, icon = R.drawable.ic_download)
                 Button("Restore", { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, icon = L.drawable.lucide_ic_history)
             }
         }
@@ -1053,7 +1666,7 @@ fun StremioSection(me: Profile, onLater: (() -> Unit)? = null) {
     val hint = when {
         connected -> "Signed in${email?.takeIf { me.id == Stremio.profileId }?.let { " as $it" }.orEmpty()} — your Stremio library and where you stopped are here, My List is your library there, and what you finish is marked watched."
         me.isGuest -> "Your Stremio library, Continue Watching and addons here. As Guest it's forgotten when the app closes."
-        else -> "Your Stremio library, Continue Watching and addons here, kept in step both ways. Sign in on Stremio's own page — your password never comes to Watchly."
+        else -> "Your Stremio library, Continue Watching and addons here, kept in step both ways. Sign in on Stremio's own page — your password never comes to WatchHub."
     }
     val body: @Composable () -> Unit = {
         val c = code
@@ -1095,20 +1708,21 @@ fun StremioSection(me: Profile, onLater: (() -> Unit)? = null) {
                     changed++
                 }, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_link)
             }
-            c != null -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button("Open Stremio", { runCatching { browser.openUri(c.uriComplete) } }, icon = L.drawable.lucide_ic_link, primary = true)
-                Button("Cancel", { job?.cancel() })
+            // The buttons share the card's width.
+            c != null -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button("Open Stremio", { runCatching { browser.openUri(c.uriComplete) } }, Modifier.weight(1f), icon = L.drawable.lucide_ic_link, primary = true)
+                Button("Cancel", { job?.cancel() }, Modifier.weight(1f))
             }
-            else -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            else -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // The card's heading already says Stremio, and a dialog is narrow: "Not now" was cut to "Not …".
-                Button(if (onLater != null) "Sign in" else "Sign in to Stremio", ::connect, icon = L.drawable.lucide_ic_link, primary = true)
-                onLater?.let { Button("Not now", it) }
+                Button(if (onLater != null) "Sign in" else "Sign in to Stremio", ::connect, Modifier.weight(1f), icon = L.drawable.lucide_ic_link, primary = true)
+                onLater?.let { Button("Not now", it, Modifier.weight(1f)) }
             }
         }
         note?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint)) }
     }
     if (onLater == null) Section("Stremio account", hint, body)
-    else Column(Modifier.fillMaxWidth().padding(bottom = 14.dp).background(Ink.surface, RoundedCornerShape(12.dp)).padding(16.dp)) {
+    else Column(Modifier.fillMaxWidth().padding(bottom = 14.dp).background(Ink.surface, RoundedCornerShape(8.dp)).padding(CARD)) {
         Text("Bring your Stremio library", style = Type.title.copy(fontWeight = FontWeight.Bold))
         Text(hint, Modifier.padding(top = 4.dp, bottom = 12.dp), style = Type.meta.copy(color = Ink.faint))
         body()
@@ -1141,10 +1755,23 @@ fun AddonsScreen(watch: Watch) {
             adding = false
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = EDGE).padding(bottom = 32.dp)) {
+    // Stremio addons, or CloudStream plugins: two kinds of source, one tab.
+    var plugins by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = EDGE).padding(bottom = NAV_CLEARANCE)) {
         Heading("Addons")
+        // End to end: each the page's margin from its edge, the space between them.
+        // On an upright phone the two share the width, half each (as Search's Titles / Streams); elsewhere side by side.
+        val half = isPortraitPhone()
+        Row(if (half) Modifier.fillMaxWidth().padding(bottom = 16.dp) else Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Chip("Stremio Addons", !plugins, onClick = { plugins = false }, if (half) Modifier.weight(1f) else Modifier, tall = true)
+            Chip("CloudStream", plugins, onClick = { plugins = true }, if (half) Modifier.weight(1f) else Modifier, tall = true)
+        }
+        if (plugins) {
+            PluginsSection(watch)
+            return@Column
+        }
         Text(
-            "Streams, subtitles and extra catalogues come from addons — public ones, your debrid service's, or your own media server's. Watchly comes with none.",
+            "Streams, subtitles and extra catalogues come from addons — public ones, your debrid service's, or your own media server's. WatchHub comes with none.",
             Modifier.padding(bottom = 18.dp), style = Type.meta.copy(color = Ink.faint),
         )
         Group("Add an addon") {
@@ -1152,14 +1779,14 @@ fun AddonsScreen(watch: Watch) {
                 Field(link, { link = it.trim() }, "https://…/manifest.json", Modifier.fillMaxWidth(), onSubmit = ::add, leading = L.drawable.lucide_ic_link)
                 Button(if (adding) "Adding…" else "Add addon", ::add, Modifier.padding(top = 10.dp).fillMaxWidth(), icon = L.drawable.lucide_ic_plus, primary = true)
                 Text(
-                    "Or tap Install on an addon's site and pick Watchly.",
+                    "Or tap Install on an addon's site and pick WatchHub.",
                     Modifier.padding(top = 10.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp),
                 )
             }
         }
         if (addons.isEmpty()) {
             Text("No addons yet", Modifier.padding(start = 4.dp, top = 6.dp, bottom = 10.dp), style = Type.overline.copy(color = Ink.faint))
-            Note("Add one to find streams for every film and episode. Without any, only links you paste in Search will play.")
+            EmptyNote("Add one to find streams for every film and episode. Without any, only links you paste in Search will play.")
             return@Column
         }
         // Stremio's list: a search over what is installed, and a pill per type they serve.
@@ -1175,7 +1802,7 @@ fun AddonsScreen(watch: Watch) {
             (query.isBlank() || a.name.contains(query.trim(), ignoreCase = true)) &&
                 (type == null || a.resources.any { type in it.types } || a.catalogs.any { it.type == type })
         }
-        if (shown.isEmpty()) Note("No installed addon matches.")
+        if (shown.isEmpty()) EmptyNote("No installed addon matches.")
         shown.forEach { a ->
             val at = addons.indexOf(a)
             AddonCard(a, first = at == 0, last = at == addons.lastIndex, onRemoved = { watch.notes.tryEmit("Uninstalled ${a.name}") })
@@ -1191,9 +1818,9 @@ fun AddonsScreen(watch: Watch) {
 private fun AddonCard(a: com.torrentviewer.core.Addon, first: Boolean, last: Boolean, onRemoved: () -> Unit) {
     val m = remember(a.manifest) { runCatching { org.json.JSONObject(a.manifest) }.getOrNull() }
     val types = remember(a) { (a.resources.flatMap { it.types } + a.catalogs.map { it.type }).distinct().joinToString(", ") { com.torrentviewer.core.typeLabel(it) } }
-    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(16.dp)) {
+    Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(9.dp)).frosted(RoundedCornerShape(9.dp)).padding(CARD)) {
         Row(verticalAlignment = Alignment.Top) {
-            Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(52.dp).clip(RoundedCornerShape(6.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
                 Lc(L.drawable.lucide_ic_puzzle, tint = Ink.muted, size = 24.dp)
                 m?.optString("logo")?.takeIf { it.startsWith("http") }?.let { Artwork(it, a.name, Modifier.fillMaxSize(), fill = false) }
             }
@@ -1214,15 +1841,10 @@ private fun AddonCard(a: com.torrentviewer.core.Addon, first: Boolean, last: Boo
         // The host only: the rest of the link can be the viewer's own key.
         Text(a.host, Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Tap({ Addons.remove(a.url); onRemoved() }, Modifier.weight(1f), RoundedCornerShape(24.dp)) { pressed ->
-                Box(
-                    Modifier.fillMaxWidth().height(46.dp).border(1.dp, Ink.text.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
-                        .background(Ink.text.copy(alpha = if (pressed) 0.12f else 0f)),
-                    contentAlignment = Alignment.Center,
-                ) { Text("Uninstall", style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = Ink.muted)) }
-            }
-            Spacer(Modifier.width(8.dp))
-            Chip(if (a.on) "On" else "Off", a.on, onClick = { Addons.toggle(a.url) })
+            // Switches (the owner's choice): installed — off uninstalls it — and on or paused.
+            LabeledToggle("Installed", true, { on -> if (!on) { Addons.remove(a.url); onRemoved() } })
+            Spacer(Modifier.weight(1f))
+            LabeledToggle("On", a.on, { Addons.toggle(a.url) })
             if (!first) Tap({ Addons.move(a.url, -1) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_chevron_up, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
             if (!last) Tap({ Addons.move(a.url, 1) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_chevron_down, Modifier.padding(8.dp), tint = Ink.muted, size = 20.dp) }
         }
@@ -1239,7 +1861,7 @@ private fun Group(title: String, content: @Composable () -> Unit) {
 /** The card itself. */
 @Composable
 private fun Panel(content: @Composable () -> Unit) {
-    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ink.surface).padding(start = 16.dp, end = 16.dp, top = 18.dp)) { content() }
+    Column(Modifier.padding(bottom = 22.dp).fillMaxWidth().clip(RoundedCornerShape(9.dp)).frosted(RoundedCornerShape(9.dp)).padding(start = CARD, end = CARD, top = CARD + 2.dp)) { content() }
 }
 
 /** One line of the settings list; [words] are what else it answers to in the search. */
@@ -1252,13 +1874,13 @@ private class Entry(@androidx.annotation.DrawableRes val icon: Int, val title: S
 private fun SettingsList(groups: List<List<Entry>>, query: String) {
     val q = query.trim()
     val shown = if (q.isEmpty()) groups else listOf(groups.flatten().filter { it.matches(q) }).filter { it.isNotEmpty() }
-    if (shown.isEmpty()) Text("No settings match", Modifier.padding(start = 4.dp, bottom = 12.dp), style = Type.meta.copy(color = Ink.faint))
+    if (shown.isEmpty()) EmptyNote("No settings match", Modifier.padding(start = 4.dp, bottom = 12.dp))
     shown.forEach { group ->
-        Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Ink.surface).padding(vertical = 4.dp)) {
+        Column(Modifier.padding(bottom = 12.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).frosted(RoundedCornerShape(12.dp)).padding(vertical = 4.dp)) {
             group.forEach { e ->
-                Tap(e.onClick, Modifier.fillMaxWidth(), RoundedCornerShape(12.dp)) {
+                Tap(e.onClick, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(38.dp).clip(RoundedCornerShape(6.dp)).background(Ink.text.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
                             Lc(e.icon, tint = e.tint ?: Ink.text, size = 18.dp)
                         }
                         Column(Modifier.padding(start = 14.dp)) {
@@ -1304,7 +1926,7 @@ private fun TrackerSection(t: com.torrentviewer.core.Tracker) {
             // By its domain, from Google's favicon service, as the review sites are.
             Artwork(
                 "https://www.google.com/s2/favicons?sz=64&domain=${t.site}", t.name,
-                Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)), scale = androidx.compose.ui.layout.ContentScale.Fit, fill = false,
+                Modifier.size(38.dp).clip(RoundedCornerShape(6.dp)), scale = androidx.compose.ui.layout.ContentScale.Fit, fill = false,
             )
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(t.name, style = Type.body.copy(fontWeight = FontWeight.SemiBold))
@@ -1331,6 +1953,27 @@ private fun TrackerSection(t: com.torrentviewer.core.Tracker) {
             }
         }
         note?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.meta.copy(color = Ink.faint)) }
+    }
+}
+
+/** One preference: its name, then a chip per value, the chosen one lit. */
+@Composable
+private fun PrefRow(name: String, options: List<Pair<String, String>>, chosen: String, onPick: (String) -> Unit) {
+    Text(name, Modifier.padding(bottom = 8.dp), style = Type.title.copy(fontWeight = FontWeight.Bold))
+    SpreadRow(Modifier.padding(bottom = 20.dp)) {
+        options.forEach { (value, label) -> Chip(label, chosen == value, onClick = { onPick(value) }) }
+    }
+}
+
+/** An on/off setting: its name and what it does on the left, the switch on the right. */
+@Composable
+private fun ToggleSection(title: String, hint: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, style = Type.title.copy(fontWeight = FontWeight.Bold))
+            Text(hint, Modifier.padding(top = 4.dp), style = Type.meta.copy(color = Ink.faint))
+        }
+        Toggle(checked, onChange)
     }
 }
 
@@ -1425,12 +2068,12 @@ private fun Picker(
             }
             if (!managing) Tile("Guest", onGuest) { Avatar(GUEST, 96.dp) }
             if (!managing && profiles.size < 6) Tile("Add profile", onAdd) {
-                Box(Modifier.size(96.dp).background(Ink.surface, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_plus, tint = Ink.muted, size = 36.dp) }
+                Box(Modifier.size(96.dp).background(Ink.surface, CircleShape), contentAlignment = Alignment.Center) { Lc(L.drawable.lucide_ic_plus, tint = Ink.muted, size = 36.dp) }
             }
         }
         Spacer(Modifier.height(36.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (profiles.isNotEmpty()) Button(if (managing) "Done" else "Manage", onManage, icon = if (managing) L.drawable.lucide_ic_check else L.drawable.lucide_ic_pencil)
+            if (profiles.isNotEmpty()) Button(if (managing) "Done" else "Manage", onManage, Modifier.width(210.dp), icon = if (managing) L.drawable.lucide_ic_check else L.drawable.lucide_ic_user_round, faint = true, iconSize = 28.dp, textSize = 17.sp, tall = true)
             if (onCancel != null && !managing) Button("Back", onCancel)
         }
     }
@@ -1438,15 +2081,16 @@ private fun Picker(
 
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.Badge(icon: Int) {
-    Box(Modifier.align(Alignment.BottomEnd).padding(6.dp).size(26.dp).clip(RoundedCornerShape(7.dp)).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
-        Lc(icon, tint = Color.White, size = 14.dp)
+    // In the middle of the round avatar (the owner's choice): at a corner, the circle cut it off.
+    Box(Modifier.align(Alignment.Center).size(38.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+        Lc(icon, tint = Color.White, size = 18.dp)
     }
 }
 
 @Composable
 private fun Tile(name: String, onClick: () -> Unit, face: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(100.dp)) {
-        Tap(onClick, shape = RoundedCornerShape(12.dp)) { Box { face() } }
+        Tap(onClick, shape = CircleShape) { Box { face() } }
         Text(name, Modifier.padding(top = 10.dp), style = Type.label.copy(color = Ink.muted), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -1485,10 +2129,10 @@ private fun Editor(profile: Profile?, canCancel: Boolean, onSave: (String, Strin
             Text("ICON", Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 10.dp), style = Type.overline)
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 EMOJI_ICONS.forEach { a ->
-                    Tap({ icon = a }, Modifier.size(54.dp), RoundedCornerShape(12.dp)) {
+                    Tap({ icon = a }, Modifier.size(54.dp), RoundedCornerShape(8.dp)) {
                         Box {
                             AvatarImage(a, colorOf(colour), 54.dp)
-                            if (a == icon) Box(Modifier.matchParentSize().border(3.dp, Ink.accent, RoundedCornerShape(12.dp)))
+                            if (a == icon) Box(Modifier.matchParentSize().border(3.dp, Ink.accent, RoundedCornerShape(8.dp)))
                         }
                     }
                 }
@@ -1526,18 +2170,28 @@ private fun Editor(profile: Profile?, canCancel: Boolean, onSave: (String, Strin
             // A profile not saved yet has no id to keep a connection under.
             if (profile != null && Stremio.available) Box(Modifier.fillMaxWidth().padding(top = 24.dp)) { StremioSection(profile) }
         }
-        Button("Save", { onSave(name, icon, colour, kids) }, Modifier.fillMaxWidth().padding(top = 20.dp), icon = L.drawable.lucide_ic_check, primary = true)
-        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (canCancel) Button("Cancel", onCancel)
-            if (profile != null) Button("Delete profile", onDelete, icon = L.drawable.lucide_ic_trash_2)
+        // Save, Cancel and Delete on one row (the owner's choice); the delete is just the bin and "Profile" — no "Delete"
+        // word, the bin says it.
+        Row(Modifier.fillMaxWidth().padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button("Save", { onSave(name, icon, colour, kids) }, Modifier.weight(1f), icon = L.drawable.lucide_ic_check, primary = true, compact = true)
+            if (canCancel) Button("Cancel", onCancel, Modifier.weight(1f), compact = true)
+            if (profile != null) Button("Profile", onDelete, Modifier.weight(1f), icon = L.drawable.lucide_ic_trash_2, compact = true)
         }
     }
 }
 
+/**
+ * A locked profile's PIN, and nothing else on the page (the owner's choice): the phone's back returns to Who's
+ * watching, where Guest opens without one.
+ */
 @Composable
 private fun PinPad(profile: Profile, onOk: () -> Unit, onBack: () -> Unit) {
+    BackHandler { onBack() }
     var pin by remember { mutableStateOf("") }
     var wrong by remember { mutableStateOf(false) }
+    // Focused as it opens, so the green cursor blinks between the stars and the keypad comes up at once.
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { repeat(6) { kotlinx.coroutines.delay(70); runCatching { focus.requestFocus() } } }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Avatar(profile, 96.dp)
         Text(profile.name, Modifier.padding(top = 14.dp), style = Type.display)
@@ -1553,8 +2207,6 @@ private fun PinPad(profile: Profile, onOk: () -> Unit, onBack: () -> Unit) {
                     pin = ""
                 }
             }
-        }, "• • • •", Modifier.width(200.dp), secret = true, digits = true)
-        Spacer(Modifier.height(20.dp))
-        Button("Back", onBack)
+        }, "* * * *", Modifier.width(220.dp), secret = true, digits = true, bare = true, focus = focus)
     }
 }

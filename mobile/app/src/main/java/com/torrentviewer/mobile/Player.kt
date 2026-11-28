@@ -17,6 +17,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -41,6 +42,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -94,6 +96,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
@@ -112,11 +115,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.torrentviewer.core.Artwork
+import com.torrentviewer.core.grain
 import com.torrentviewer.core.TORBOX_STALL_MS
 import com.torrentviewer.core.NeedsVlc
 import com.torrentviewer.core.TORBOX_STALL_NOTE
 import com.torrentviewer.core.Ep
 import com.torrentviewer.core.Episode
+import com.torrentviewer.core.Hit
 import com.torrentviewer.core.History
 import com.torrentviewer.core.Stremio
 import com.torrentviewer.core.WatchedEverywhere
@@ -137,7 +142,6 @@ import com.google.android.gms.cast.framework.SessionManagerListener
 import android.net.Uri
 import java.io.File
 import com.torrentviewer.core.Motion
-import com.torrentviewer.core.Note
 import com.torrentviewer.core.Progress
 import com.torrentviewer.core.ProgressLine
 import com.torrentviewer.core.SavedSub
@@ -155,6 +159,7 @@ import com.torrentviewer.core.TorrentFile
 import com.torrentviewer.core.Tracks
 import com.torrentviewer.core.Type
 import com.torrentviewer.core.Video
+import com.torrentviewer.core.Scale
 import com.torrentviewer.core.VlcView
 import com.torrentviewer.core.Watch
 import com.torrentviewer.core.bytes
@@ -175,7 +180,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.videolan.libvlc.MediaPlayer
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.abs
@@ -189,12 +193,12 @@ private const val PAUSE_CARD_MS = 800L
 private const val SKIP = 10
 private val RATES = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 private val SCALES = listOf(
-    MediaPlayer.ScaleType.SURFACE_BEST_FIT to "Best fit",
-    MediaPlayer.ScaleType.SURFACE_FIT_SCREEN to "Zoom to fill",
-    MediaPlayer.ScaleType.SURFACE_FILL to "Stretch",
-    MediaPlayer.ScaleType.SURFACE_16_9 to "16:9",
-    MediaPlayer.ScaleType.SURFACE_4_3 to "4:3",
-    MediaPlayer.ScaleType.SURFACE_ORIGINAL to "Original",
+    Scale.BEST_FIT to "Best fit",
+    Scale.FIT_SCREEN to "Zoom to fill",
+    Scale.FILL to "Stretch",
+    Scale.RATIO_16_9 to "16:9",
+    Scale.RATIO_4_3 to "4:3",
+    Scale.ORIGINAL to "Original",
 )
 /** Sleep timer steps, in minutes; -1 is "at the end of this episode". */
 private val SLEEP = listOf(0, 15, 30, 60, -1)
@@ -223,7 +227,7 @@ private const val SEEK_CHECK_MS = 2500L
 /** A seek that has not landed: the player goes on reporting the old time until it does. */
 private class Seeking(val target: Double, val from: Double, val since: Long, val connections: Long)
 
-private enum class Panel { TRACKS, SPEED, ASPECT, FIND, LANG, MORE, EPISODES }
+private enum class Panel { TRACKS, SPEED, ASPECT, FIND, LANG, MORE, EPISODES, SOURCES }
 
 private data class Flash(val seconds: Int, val id: Long)
 
@@ -329,8 +333,8 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     }
 
     val view = remember { mutableStateOf<Video?>(null) }
-    /** Media3 unless the setting asks for VLC, or Media3 has already given up on this file — now or any time before. */
-    var vlc by remember { mutableStateOf(SettingsStore.value.value.vlcPlayer || file?.let { NeedsVlc.has(it.name, it.size) } == true) }
+    /** Media3, the phone's player — VLC only for a file Media3 has given up on, now or any time before. */
+    var vlc by remember { mutableStateOf(file?.let { NeedsVlc.has(it.name, it.size) } == true) }
     var paused by remember { mutableStateOf(false) }
     var at by remember { mutableDoubleStateOf(startAt) }
     var duration by remember { mutableDoubleStateOf(0.0) }
@@ -427,6 +431,16 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
         findEpisode(onlineNext ?: return) { noNext = true }
     }
 
+    /** Picked in the Sources panel: that release instead, from this very spot. */
+    fun switchSource(hit: Hit) {
+        panel = null
+        if (advanced || hit.uri == watch.item?.uri) return
+        advanced = true
+        if (at > 0) watch.savePosition(at)
+        say("Switching source…")
+        watch.switchTo(hit, title, episode, at)
+    }
+
     /** Picked from the list: from this torrent if it holds the episode, else found online. */
     fun playEpisode(ep: Episode) {
         panel = null
@@ -440,7 +454,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
     fun mediaCard() {
         if (castSession != null) return
         MediaCard.update(
-            title = title?.title ?: watch.item?.label ?: "Watchly",
+            title = title?.title ?: watch.item?.label ?: "WatchHub",
             subtitle = episode?.let { "${episodeLabel(title, it.season, it.episode)}  “${it.name}”" },
             paused = paused || !loaded,
             positionMs = (at * 1000).toLong(),
@@ -589,6 +603,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
         val r = ready ?: return@LaunchedEffect
         val v = view.value ?: return@LaunchedEffect
         v.headers = r.headers
+        v.mime = r.mime
         v.open(r.url, (at * 1000).toLong(), cacheMsFor(bitrate), r.subtitleFiles + external.map { it.path })
     }
 
@@ -744,9 +759,9 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
 
     /* ---------------------------------------------------- TorBox stall */
 
-    // A TorBox stream that hasn't moved goes to Watchly's own engine: a video this phone can't
-    // decode left VLC silent, with no error to fall back on, and the film never started. Counted
-    // again from the switch to VLC: Media3's failed attempt used 4–6 s of VLC's time.
+    // A TorBox stream that hasn't moved goes to WatchHub's own engine: a video this phone can't
+    // decode left the player silent, with no error to fall back on, and the film never started. Counted
+    // again from a switch of engine: Media3's failed attempt used some of the next engine's time.
     LaunchedEffect(watch.via, vlc) {
         if (watch.via == null) return@LaunchedEffect
         val from = at
@@ -869,9 +884,8 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                         if (!vlc) v.onUnsupported = { message ->
                             Log.w("Player", "Media3 gave up ($message), falling back to VLC")
                             watch.engine.note("player: Media3 gave up ($message), falling back to VLC")
-                            // Said, so a slower start isn't a mystery: VLC takes a few seconds more to open a file.
                             // A note, not the HUD: the loading screen is usually still up and hides the HUD.
-                            watch.notes.tryEmit("Switching to VLC — the built-in player can't play this video")
+                            watch.notes.tryEmit("Switching to VLC — Media3 can't play this video")
                             // Next time this file opens straight in VLC.
                             file?.let { NeedsVlc.add(it.name, it.size) }
                             // Track ids are the backend's own.
@@ -945,8 +959,9 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                         }
                         v.onFailed = { message ->
                             watch.engine.note("player: failed — $message")
-                            // From TorBox: on to Watchly's own engine at the same spot, not out of the film.
-                            if (!watch.leaveTorBox(at)) {
+                            // From TorBox: on to WatchHub's own engine at the same spot, not out of the film.
+                            // Then the next source Play lined up, from the same spot; only with none left does it back out.
+                            if (!watch.leaveTorBox(at) && !watch.tryNext(message)) {
                                 watch.notes.tryEmit(message)
                                 watch.exit()
                             }
@@ -993,7 +1008,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                     BrightnessRail(brightness, ::setBrightness, Modifier.align(Alignment.CenterStart))
                     Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(44.dp)) {
                         RoundIcon(L.drawable.lucide_ic_rotate_ccw, { skip(-SKIP); show() }, size = 52.dp)
-                        RoundIcon(if (paused) L.drawable.lucide_ic_play else L.drawable.lucide_ic_pause, ::togglePause, size = 72.dp)
+                        RoundIcon(if (paused) L.drawable.lucide_ic_play else R.drawable.ic_pause_bars, ::togglePause, size = 72.dp)
                         RoundIcon(L.drawable.lucide_ic_rotate_cw, { skip(SKIP); show() }, size = 52.dp)
                     }
                     Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
@@ -1020,6 +1035,8 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                                 pipParams()?.let { p -> runCatching { activity?.enterPictureInPictureMode(p) } }
                             }
                             BarButton(L.drawable.lucide_ic_ellipsis, "More", on = scale != 0 || SLEEP[sleep] != 0 || wholeFile) { panel = Panel.MORE }
+                            // Another release of what's playing, from the same spot (a title to search for, or a list Play kept).
+                            if (title != null || watch.sources != null) BarButton(L.drawable.lucide_ic_server, "Sources") { panel = Panel.SOURCES }
                             if (title?.episodes.orEmpty().isNotEmpty()) BarButton(L.drawable.lucide_ic_list, "Episodes") { panel = Panel.EPISODES }
                             if (next != null || onlineNext != null) BarButton(L.drawable.lucide_ic_skip_forward, "Next episode", onClick = ::goNext)
                         }
@@ -1037,7 +1054,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
             enter = fadeIn() + slideInHorizontally { it / 3 },
             exit = fadeOut(),
         ) {
-            Tap({ intro?.let { seekTo(it.end) } }, shape = RoundedCornerShape(8.dp)) {
+            Tap({ intro?.let { seekTo(it.end) } }, shape = RoundedCornerShape(5.dp)) {
                 Row(Modifier.background(Color.White).padding(horizontal = 18.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
                     Lc(L.drawable.lucide_ic_chevrons_right, tint = Color.Black, size = 18.dp)
                     Text("  Skip intro", style = Type.label.copy(color = Color.Black, fontWeight = FontWeight.Bold))
@@ -1058,7 +1075,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
         val shownHud = hud
         AnimatedVisibility(shownHud != null && !waiting, Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 20.dp), enter = fadeIn() + slideInVertically { -it }, exit = fadeOut()) {
             val h = shownHud ?: return@AnimatedVisibility
-            Row(Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.78f)).padding(horizontal = 18.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.clip(PILL).background(Color.Black.copy(alpha = 0.78f)).padding(horizontal = 18.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                 h.icon?.let {
                     Lc(it, tint = Color.White, size = 16.dp)
                     Spacer(Modifier.width(8.dp))
@@ -1067,7 +1084,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
             }
         }
         if (boosting) {
-            Row(Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 20.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 20.dp).clip(PILL).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Lc(L.drawable.lucide_ic_fast_forward, tint = Color.White, size = 16.dp)
                 Text("  ${rateLabel(HOLD_RATE)}", style = Type.label.copy(fontWeight = FontWeight.Bold))
             }
@@ -1115,7 +1132,9 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
             finding = true
             found = null
             scope.launch {
-                found = runCatching {
+                // What the plugin found with this very link comes first: it was cut for it.
+                val withLink = com.torrentviewer.mobile.cs.CsStreams.subtitlesFor(watch.item?.uri)
+                found = withLink + runCatching {
                     // OpenSubtitles needs no key; SubDL joins in once the viewer has given theirs.
                     val ep = parseEpisode(file?.name.orEmpty())
                     findSubtitles(
@@ -1196,7 +1215,7 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
             Panel.MORE -> Sheet(
                 title = "More",
                 options = listOfNotNull(
-                    Option("picture", "Picture", SCALES[scale].second),
+                    Option("picture", "Picture", SCALES[scale].second, icon = L.drawable.lucide_ic_maximize),
                     Option(
                         "sleep", "Sleep timer",
                         when {
@@ -1204,9 +1223,10 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                             SLEEP[sleep] < 0 -> "End of episode"
                             else -> "${maxOf(1L, (sleepEnds - System.currentTimeMillis() + 59_999) / 60_000)} min left"
                         },
+                        icon = L.drawable.lucide_ic_moon,
                     ),
-                    Option("download", "Download ahead", if (wholeFile) "Whole file" else "Next 5 minutes"),
-                    Option("open", "Open in another player"),
+                    Option("download", "Download ahead", if (wholeFile) "Whole file" else "Next 5 minutes", icon = R.drawable.ic_download, iconTint = Ink.download),
+                    Option("open", "Open in another player", icon = L.drawable.lucide_ic_external_link),
                 ),
                 selected = null,
                 onPick = { what ->
@@ -1270,7 +1290,122 @@ private fun Player(watch: Watch, sleepState: MutableState<Int>, sleepEndsState: 
                 onDismiss = { panel = Panel.FIND },
             )
             Panel.EPISODES -> title?.let { EpisodesPanel(it, episode, ::playEpisode) { panel = null } }
+            Panel.SOURCES -> SourcesPanel(watch, title, episode, ::switchSource) { panel = null }
             null -> Unit
+        }
+    }
+}
+
+/**
+ * The releases of what's playing down the right of the picture, as the Episodes list is: by resolution (that of the
+ * one playing first), links before torrents ([sourceOrder]), the one playing marked; picking one plays it from the same
+ * spot. The list Play kept for this title and episode, or — opened without one (Continue Watching, a downloaded copy) —
+ * found here, filling in as the sites answer. ↻ asks every site again.
+ */
+@Composable
+private fun SourcesPanel(watch: Watch, title: Title?, episode: Episode?, onPick: (Hit) -> Unit, onDismiss: () -> Unit) {
+    BackHandler(onBack = onDismiss)
+    val kept = watch.sources?.takeIf { it.imdb == title?.imdb && it.episodeId == episode?.id }?.hits
+    var found by remember { mutableStateOf(kept.orEmpty()) }
+    var busy by remember { mutableStateOf(false) }
+    /** Searches asked for: one at once when there's no list to show; each ↻ another, from the sites themselves. */
+    var ask by remember { mutableIntStateOf(if (kept.isNullOrEmpty()) 1 else 0) }
+    var again by remember { mutableStateOf(false) }
+    // Searched as the title page does: the addons and the plugins side by side, shown as they come.
+    LaunchedEffect(ask) {
+        val t = title ?: return@LaunchedEffect
+        if (ask == 0) return@LaunchedEffect
+        busy = true
+        try {
+            if (again) {
+                com.torrentviewer.core.forgetStreams()
+                com.torrentviewer.mobile.cs.CsPlugins.forgetPages()
+            }
+            val all = com.torrentviewer.mobile.cs.CsStreams.withPlugins(t, episode, { partial -> found = allowedHits(partial) }) { fromAddons ->
+                if (episode != null) com.torrentviewer.core.searchEpisode(t, episode.season, episode.episode, fromAddons)
+                else com.torrentviewer.core.searchStreams(t.title, t.imdb, t.year?.take(4), onHits = fromAddons, type = t.type)
+            }
+            found = allowedHits(all).distinctBy { it.id }
+            watch.keepSources(com.torrentviewer.core.SourceList(t.imdb, episode?.id, found))
+        } finally {
+            busy = false
+        }
+    }
+    val playing = watch.item?.uri
+    val resolutions = remember(found) { com.torrentviewer.core.sourceResolutions(found) }
+    // The playing release's resolution to start with: the usual reason to switch is another copy of the same.
+    var quality by remember { mutableStateOf(found.find { it.uri == playing }?.quality?.takeIf { it in resolutions }) }
+    // One row per release: a list with the same release twice would break the list's keys.
+    val shown = remember(found, quality) { com.torrentviewer.core.sourceOrder(found.distinctBy { it.id }, quality) }
+    // Full width on an upright phone, 70% and off to the right on its side (the owner's choice).
+    val portrait = isPortraitPhone()
+    val shape = RoundedCornerShape(16.dp)
+    // Minimal height: the panel wraps to its content, the list capped so a long one scrolls rather than fills the screen.
+    val listCap = (LocalConfiguration.current.screenHeightDp * 0.62f).dp
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume(); onDismiss() } })
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
+                    .then(if (portrait) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.7f))
+                    // Frosted and nearly the page's own dark, as the sheets (the owner's choice).
+                    .clip(shape).background(Color.Black.copy(alpha = 0.92f)).grain()
+                    .pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
+                    .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            ) {
+                // The reload rides the title row now, at the far right before the close (the owner's choice): the
+                // resolutions below keep their own full-width row. A long title scrolls right to left.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sources", Modifier.weight(1f).basicMarquee(), style = Type.title.copy(color = Color.White, fontWeight = FontWeight.Bold), maxLines = 1)
+                    if (title != null) Tap({ if (!busy) { again = true; ask++ } }, Modifier.semantics { contentDescription = "Ask every site again" }, CircleShape) {
+                        ReloadArrow(busy, Color.White, 20.dp, Modifier.padding(8.dp))
+                    }
+                    Tap(onDismiss, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Color.White, size = 22.dp) }
+                }
+                BarChoices(
+                    listOf("All") + resolutions, quality?.let { resolutions.indexOf(it) + 1 }?.takeIf { it > 0 } ?: 0,
+                    Modifier.padding(top = 2.dp, bottom = 4.dp), spread = true,
+                ) { i -> quality = if (i == 0) null else resolutions[i - 1] }
+                if (shown.isEmpty()) Text(
+                    when {
+                        busy -> "Finding sources…"
+                        title == null -> "No other sources kept for this."
+                        else -> "Nothing found${quality?.let { " at $it" } ?: ""}."
+                    },
+                    Modifier.padding(top = 16.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f)),
+                )
+                else if (busy) Text("${found.size} so far · finding more…", Modifier.padding(top = 2.dp, bottom = 4.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp))
+                LazyColumn(Modifier.padding(top = 4.dp).heightIn(max = listCap), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(shown, key = { it.id }) { hit -> SourceRow(hit, hit.uri == playing) { onPick(hit) } }
+                }
+            }
+        }
+    }
+}
+
+/** One release in the Sources panel: its name, then resolution · size (a torrent's seeds) · where it came from. */
+@Composable
+private fun SourceRow(hit: Hit, here: Boolean, onClick: () -> Unit) {
+    val about = listOfNotNull(
+        hit.quality,
+        hit.size.takeIf { it > 0 }?.let { com.torrentviewer.core.bytes(it) },
+        if (hit.direct) "Link" else "${hit.seeders} seeds",
+        hit.addon.takeIf { it.isNotBlank() },
+    ).joinToString(" · ")
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
+        // The one playing is marked by an accent bar a notch in from its left edge, the whole card's height, over a
+        // frosted fill nearly the page's own dark (the owner's choice). The others are plain.
+        Box(Modifier.fillMaxWidth().then(if (here) Modifier.background(Color.Black.copy(alpha = 0.45f)).grain() else Modifier)) {
+            Column(Modifier.fillMaxWidth().padding(start = if (here) 18.dp else 8.dp, end = 8.dp, top = 9.dp, bottom = 9.dp)) {
+                // The title on one line, scrolling right to left when it's longer than the row (the owner's choice).
+                Text(hit.name, Modifier.fillMaxWidth().basicMarquee(), style = Type.label.copy(color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold), maxLines = 1)
+                Text(about, Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (here) Text("Now playing", Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
+            }
+            // Full card height, inset a notch from the left edge; matchParentSize so it tracks the card, not the screen.
+            if (here) Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.padding(start = 7.dp).width(3.dp).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(Ink.accent))
+            }
         }
     }
 }
@@ -1285,31 +1420,36 @@ private fun EpisodesPanel(title: Title, playing: Episode?, onPlay: (Episode) -> 
     // Specials after the seasons.
     val seasons = remember(title.episodes) { title.episodes.map { it.season }.distinct().sortedBy { if (it == 0) Int.MAX_VALUE else it } }
     var season by remember { mutableStateOf(playing?.season ?: seasons.first()) }
+    // Full width on an upright phone, 70% off to the right on its side (the owner's choice), frosted and page-dark.
+    val portrait = isPortraitPhone()
+    val shape = RoundedCornerShape(16.dp)
     Box(Modifier.fillMaxSize()) {
         // The picture stays in view beside the list; a tap on it closes the list.
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume(); onDismiss() } })
-        Column(
-            Modifier.align(Alignment.CenterEnd).fillMaxHeight().widthIn(max = 400.dp).fillMaxWidth(0.9f)
-                .background(Color.Black.copy(alpha = 0.92f)).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
-                .windowInsetsPadding(WindowInsets.safeDrawing).padding(start = 16.dp, end = 12.dp, top = 12.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Episodes", Modifier.weight(1f), style = Type.title.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                Tap(onDismiss, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Color.White, size = 22.dp) }
-            }
-            if (seasons.size > 1) Row(Modifier.padding(top = 4.dp, bottom = 4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                seasons.forEach { s ->
-                    // A green tick on a season watched through.
-                    val done = seasonWatched(title.episodes, s, seen)
-                    Chip(if (s == 0) "Specials" else "Season $s", s == season, onClick = { season = s }, trailing = L.drawable.lucide_ic_check.takeIf { done }, trailingTint = Ink.good)
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd).fillMaxHeight()
+                    .then(if (portrait) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.7f))
+                    .clip(shape).background(Color.Black.copy(alpha = 0.92f)).grain()
+                    .pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
+                    .padding(start = 16.dp, end = 12.dp, top = 12.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Episodes", Modifier.weight(1f).basicMarquee(), style = Type.title.copy(color = Color.White, fontWeight = FontWeight.Bold), maxLines = 1)
+                    Tap(onDismiss, shape = CircleShape) { Lc(L.drawable.lucide_ic_x, Modifier.padding(8.dp), tint = Color.White, size = 22.dp) }
                 }
-            }
-            key(season) {
-                val shown = remember { title.episodes.filter { it.season == season } }
-                val list = rememberLazyListState(shown.indexOfFirst { it.id == playing?.id }.coerceAtLeast(0))
-                LazyColumn(Modifier.padding(top = 6.dp).weight(1f), state = list, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(shown, key = { it.id }) { ep ->
-                        EpisodeRow(ep, title.wide, ep.id == playing?.id, seen[Ep(ep.season, ep.episode)] ?: 0.0) { onPlay(ep) }
+                // The seasons as pipe-split words, no pill behind them, the chosen one accent with a dot (the owner's choice).
+                if (seasons.size > 1) BarChoices(
+                    seasons.map { if (it == 0) "Specials" else "Season $it" }, seasons.indexOf(season).takeIf { it >= 0 },
+                    Modifier.padding(top = 4.dp, bottom = 4.dp),
+                ) { i -> season = seasons[i] }
+                key(season) {
+                    val shown = remember { title.episodes.filter { it.season == season } }
+                    val list = rememberLazyListState(shown.indexOfFirst { it.id == playing?.id }.coerceAtLeast(0))
+                    LazyColumn(Modifier.padding(top = 6.dp).weight(1f), state = list, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(shown, key = { it.id }) { ep ->
+                            EpisodeRow(ep, title.wide, ep.id == playing?.id, seen[Ep(ep.season, ep.episode)] ?: 0.0) { onPlay(ep) }
+                        }
                     }
                 }
             }
@@ -1320,9 +1460,12 @@ private fun EpisodesPanel(title: Title, playing: Episode?, onPlay: (Episode) -> 
 @Composable
 private fun EpisodeRow(ep: Episode, fallback: String?, here: Boolean, seen: Double, onClick: () -> Unit) {
     val watched = isWatched(seen)
-    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(8.dp)) {
-        Row(Modifier.fillMaxWidth().background(if (here) Color.White.copy(alpha = 0.12f) else Color.Transparent).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).background(Color.Black)) {
+    // Smaller thumbnails on an upright phone (the owner's choice); full size on its side.
+    val thumbW = if (isPortraitPhone()) 96.dp else 128.dp
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(7.dp)) {
+        // The one playing stands out in a frosted accent wash (the owner's choice: the dark fill was too faint to notice).
+        Row(Modifier.fillMaxWidth().then(if (here) Modifier.background(Ink.accent.copy(alpha = 0.16f)).grain() else Modifier).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(thumbW).aspectRatio(16f / 9f).clip(RoundedCornerShape(4.dp)).background(Color.Black)) {
                 Artwork(ep.thumbnail ?: fallback, ep.name, Modifier.fillMaxSize(), fill = false)
                 if (seen > 0 && !watched) ProgressLine(seen.toFloat(), Modifier.align(Alignment.BottomStart))
                 if (watched) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(18.dp).clip(CircleShape).background(Ink.good), contentAlignment = Alignment.Center) {
@@ -1340,7 +1483,7 @@ private fun EpisodeRow(ep: Episode, fallback: String?, here: Boolean, seen: Doub
                     Lc(L.drawable.lucide_ic_check, tint = Ink.good, size = 13.dp)
                     Text(" Watched", style = Type.meta.copy(color = Ink.good, fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
                 }
-                if (here) Text("Now playing", Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp))
+                if (here) Text("Now playing", Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
             }
         }
     }
@@ -1372,8 +1515,8 @@ private fun TopBar(
             Text(listOfNotNull(ep, ends).joinToString("  ·  "), style = Type.meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         progress?.let {
-            Row(Modifier.padding(end = 6.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Lc(L.drawable.lucide_ic_download, tint = Ink.muted, size = 13.dp)
+            Row(Modifier.padding(end = 6.dp).clip(PILL).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Lc(R.drawable.ic_download, tint = Ink.muted, size = 13.dp)
                 Text(" ${speed(it.speed)}", style = Type.meta.copy(color = Color.White))
                 Spacer(Modifier.width(10.dp))
                 Lc(L.drawable.lucide_ic_users, tint = Ink.muted, size = 13.dp)
@@ -1435,7 +1578,7 @@ private fun BarButton(@DrawableRes icon: Int, label: String, on: Boolean = false
  * time so far and left either side, and while dragging a bubble with the target and the jump.
  */
 @Composable
-private fun SeekBar(at: () -> Double, playing: () -> Double, duration: Double, scrubbing: Boolean, onScrub: (Double) -> Unit, onCommit: () -> Unit) {
+fun SeekBar(at: () -> Double, playing: () -> Double, duration: Double, scrubbing: Boolean, onScrub: (Double) -> Unit, onCommit: () -> Unit) {
     val fraction = if (duration > 0) (at() / duration).toFloat().coerceIn(0f, 1f) else 0f
     val shown by animateFloatAsState(fraction, if (scrubbing) tween(60) else tween(420, easing = FastOutSlowInEasing), label = "head")
     val lift by animateFloatAsState(if (scrubbing) 1f else 0.4f, tween(200, easing = FastOutSlowInEasing), label = "lift")
@@ -1481,7 +1624,7 @@ private fun SeekBar(at: () -> Double, playing: () -> Double, duration: Double, s
                 exit = fadeOut(tween(220)) + scaleOut(tween(220), 0.9f, TransformOrigin(0.5f, 1f)),
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(clock(at()), Modifier.clip(RoundedCornerShape(6.dp)).background(Color.White).padding(horizontal = 10.dp, vertical = 3.dp), style = Type.label.copy(color = Color.Black, fontWeight = FontWeight.Bold))
+                    Text(clock(at()), Modifier.clip(RoundedCornerShape(4.dp)).background(Color.White).padding(horizontal = 10.dp, vertical = 3.dp), style = Type.label.copy(color = Color.Black, fontWeight = FontWeight.Bold))
                     Text(delta(at() - playing()), Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Color.White, fontWeight = FontWeight.SemiBold))
                 }
             }
@@ -1571,51 +1714,33 @@ private fun PausedCard(visible: Boolean, title: Title?, episode: Episode?, label
     }
 }
 
-/** Before the first frame: the title's own backdrop, its logo, and a ring that fills — the TV's loading screen. */
+/**
+ * Before the first frame: black, the back arrow, and three dots gliding in the middle — nothing else (the owner's
+ * choice). The parameters stay for the callers; what they told is in the engine log.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun Loading(title: Title?, episode: Episode?, file: TorrentFile?, starting: Boolean, progress: Progress?, via: String?, asking: Boolean, onBack: () -> Unit) {
-    val percent = if (starting) 100 else progress?.buffer ?: 0
-    val ring by animateFloatAsState(percent / 100f, Motion.spatial(), label = "ring")
+    val glide = androidx.compose.animation.core.rememberInfiniteTransition(label = "dots")
+    // One wave running through the three: each rises and brightens a beat after the one before.
+    val phase by glide.animateFloat(
+        0f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(1100, easing = androidx.compose.animation.core.LinearEasing)), label = "phase",
+    )
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        (episode?.thumbnail ?: title?.art)?.let { art ->
-            Artwork(art, title?.title.orEmpty(), Modifier.fillMaxSize().then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(10.dp) else Modifier), fallback = title?.art)
-        }
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.92f), 0.7f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.45f))))
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 12.dp, vertical = 8.dp)) {
             RoundIcon(L.drawable.lucide_ic_arrow_left, onBack)
-            Row(Modifier.align(Alignment.CenterStart).padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    if (title != null) TitleMark(title, Modifier.widthIn(max = 380.dp), maxHeight = 76.dp, style = Type.display)
-                    else Text(searchableName(file?.name.orEmpty()).ifBlank { file?.name.orEmpty() }, style = Type.display, maxLines = 2)
-                    (episode?.let { "${episodeLabel(title, it.season, it.episode)}  ${it.name}" } ?: file?.let { fileEpisodeLabel(title, it.name) })
-                        ?.let { Text(it, Modifier.padding(top = 10.dp), style = Type.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    Row(Modifier.padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val live = via != null || (progress?.peers ?: 0) > 0
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(if (live) Ink.good else Ink.faint))
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            when {
-                                starting -> if (via != null) "Starting playback  ·  from $via" else "Starting playback"
-                                asking -> "Checking TorBox"
-                                progress == null -> "Finding peers"
-                                progress.peers == 0 -> "Finding peers  ·  ${progress.dhtNodes} DHT nodes"
-                                else -> "Buffering  ·  ${speed(progress.speed)}  ·  ${progress.peers} peers"
-                            },
-                            style = Type.label.copy(color = Ink.muted, fontSize = 14.sp),
-                        )
-                    }
-                }
-                Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) {
-                    val red = Ink.accent
-                    Canvas(Modifier.fillMaxSize()) {
-                        val stroke = 5.dp.toPx()
-                        val inset = Offset(stroke / 2, stroke / 2)
-                        val arc = Size(size.width - stroke, size.height - stroke)
-                        drawArc(Color.White.copy(alpha = 0.12f), 0f, 360f, false, inset, arc, style = Stroke(stroke))
-                        drawArc(red, -90f, 360f * ring, false, inset, arc, style = Stroke(stroke, cap = StrokeCap.Round))
-                    }
-                    Text("$percent%", style = Type.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold))
-                }
+        }
+        Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(3) { i ->
+                // 0..1..0 over the dot's share of the cycle, a third of it later than the dot before.
+                val t = ((phase - i / 3f) % 1f + 1f) % 1f
+                val lift = kotlin.math.sin((t * 2 * Math.PI).toFloat()).coerceAtLeast(0f)
+                Box(
+                    Modifier.size(9.dp)
+                        .graphicsLayer { translationY = -lift * 9.dp.toPx() }
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.35f + 0.65f * lift)),
+                )
             }
         }
     }
@@ -1627,15 +1752,15 @@ private fun UpNext(name: String, still: String?, seconds: () -> Int, onPlay: () 
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
     AnimatedVisibility(visible, modifier, enter = fadeIn() + slideInHorizontally { it / 3 }) {
-        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xF2141414)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Artwork(still, name, Modifier.width(150.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)))
+        Row(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xF2141414)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Artwork(still, name, Modifier.width(150.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(4.dp)))
             Column(Modifier.padding(start = 14.dp).width(210.dp)) {
                 Text("NEXT EPISODE", style = Type.overline.copy(color = Ink.muted))
                 Text(name, Modifier.padding(top = 4.dp, bottom = 10.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val left = seconds()
                     val fill by animateFloatAsState(1f - left / UP_NEXT_SECONDS.toFloat(), tween(900), label = "fill")
-                    Tap(onPlay, shape = RoundedCornerShape(6.dp)) {
+                    Tap(onPlay, shape = RoundedCornerShape(4.dp)) {
                         Box(Modifier.background(Color.White).height(38.dp).width(120.dp)) {
                             Box(Modifier.fillMaxHeight().fillMaxWidth(fill.coerceIn(0f, 1f)).background(Color.Black.copy(alpha = 0.14f)))
                             Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
@@ -1645,7 +1770,7 @@ private fun UpNext(name: String, still: String?, seconds: () -> Int, onPlay: () 
                         }
                     }
                     Spacer(Modifier.width(8.dp))
-                    Tap(onCancel, shape = RoundedCornerShape(6.dp)) {
+                    Tap(onCancel, shape = RoundedCornerShape(4.dp)) {
                         Text("Cancel", Modifier.background(Color.White.copy(alpha = 0.14f)).padding(horizontal = 14.dp, vertical = 9.dp), style = Type.label.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold))
                     }
                 }
@@ -1686,7 +1811,7 @@ private fun CastingCard(
                 episode?.let { Text("${episodeLabel(title, it.season, it.episode)}  ${it.name}", Modifier.padding(top = 8.dp), style = Type.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 Row(Modifier.padding(top = 22.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(36.dp)) {
                     RoundIcon(L.drawable.lucide_ic_rotate_ccw, { onSeek(at - SKIP) }, size = 50.dp)
-                    RoundIcon(if (paused) L.drawable.lucide_ic_play else L.drawable.lucide_ic_pause, onToggle, size = 66.dp)
+                    RoundIcon(if (paused) L.drawable.lucide_ic_play else R.drawable.ic_pause_bars, onToggle, size = 66.dp)
                     RoundIcon(L.drawable.lucide_ic_rotate_cw, { onSeek(at + SKIP) }, size = 50.dp)
                 }
             }
@@ -1695,7 +1820,7 @@ private fun CastingCard(
                     scrub?.let(onSeek)
                     scrub = null
                 })
-                Tap(onStop, Modifier.align(Alignment.End).padding(top = 4.dp), RoundedCornerShape(6.dp)) {
+                Tap(onStop, Modifier.align(Alignment.End).padding(top = 4.dp), RoundedCornerShape(4.dp)) {
                     Text("Stop casting", Modifier.background(Color.White.copy(alpha = 0.14f)).padding(horizontal = 14.dp, vertical = 8.dp), style = Type.label.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold))
                 }
             }
@@ -1723,7 +1848,7 @@ private fun TracksPanel(
         Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(start = 32.dp, end = 64.dp, top = 24.dp, bottom = 12.dp)) {
             TrackColumn("Audio", Modifier.weight(1f)) {
                 val list = tracks?.audio.orEmpty()
-                if (list.isEmpty()) item { Note("No audio tracks reported yet.", Modifier.padding(start = 14.dp)) }
+                if (list.isEmpty()) item { EmptyNote("No audio tracks reported yet.", Modifier.padding(start = 14.dp)) }
                 itemsIndexed(list) { _, t -> TrackRow(t.name, t.id == audio) { onAudio(t.id) } }
             }
             Spacer(Modifier.width(32.dp))
@@ -1733,7 +1858,7 @@ private fun TracksPanel(
                     Row(Modifier.padding(start = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Delay", Modifier.width(56.dp), style = Type.meta)
                         Tap({ onDelay(delay - 100) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_minus, Modifier.padding(8.dp), tint = Color.White, size = 18.dp) }
-                        Tap({ onDelay(0) }, shape = RoundedCornerShape(6.dp)) {
+                        Tap({ onDelay(0) }, shape = RoundedCornerShape(4.dp)) {
                             Text("%+.1f s".format(delay / 1000.0), Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = Type.label.copy(fontWeight = FontWeight.SemiBold, color = if (delay != 0L) Ink.accent else Color.White))
                         }
                         Tap({ onDelay(delay + 100) }, shape = CircleShape) { Lc(L.drawable.lucide_ic_plus, Modifier.padding(8.dp), tint = Color.White, size = 18.dp) }
@@ -1769,7 +1894,7 @@ private fun TrackColumn(heading: String, modifier: Modifier, content: LazyListSc
 
 @Composable
 private fun TrackRow(label: String, on: Boolean, @DrawableRes icon: Int? = null, onClick: () -> Unit) {
-    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(6.dp)) { pressed ->
+    Tap(onClick, Modifier.fillMaxWidth(), RoundedCornerShape(4.dp)) { pressed ->
         Row(Modifier.background(if (pressed) Color.White.copy(alpha = 0.1f) else Color.Transparent).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(22.dp)) {
                 when {
@@ -1817,12 +1942,12 @@ private fun StatsPanel(s: Stats?, progress: Progress?, file: TorrentFile?, durat
         progress?.let { add("Swarm" to "${speed(it.speed)}  ·  ${it.peers} peers  ·  ${it.seeds} seeds") }
         file?.let { add("File" to "${bytes(it.size)}  ·  ${it.name}") }
     }
-    Column(Modifier.widthIn(max = 460.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.78f)).padding(horizontal = 14.dp, vertical = 10.dp)) {
+    Column(Modifier.widthIn(max = 460.dp).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.78f)).padding(horizontal = 14.dp, vertical = 10.dp)) {
         rows.forEach { (label, value) ->
             Row(Modifier.padding(vertical = 2.dp)) {
                 Text(label, Modifier.width(70.dp), style = Type.meta.copy(color = Ink.faint, fontSize = 12.sp))
                 // The file's name is long and is the one worth reading whole: it scrolls rather than being cut.
-                val scroll = if (label == "File") Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, velocity = 40.dp) else Modifier
+                val scroll = if (label == "File") Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1500, repeatDelayMillis = 2000, spacing = androidx.compose.foundation.MarqueeSpacing(28.dp), velocity = 40.dp) else Modifier
                 Text(value, scroll, style = Type.meta.copy(color = Color.White, fontSize = 12.sp), maxLines = 1, overflow = if (label == "File") TextOverflow.Clip else TextOverflow.Ellipsis)
             }
         }

@@ -9,11 +9,37 @@
     <!-- Downloads: a foreground service with a progress notification. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Tube keeps playing with the screen off or the app in the background. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The one-time "let downloads run in the background" prompt (battery optimisation off). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- No REQUEST_INSTALL_PACKAGES: an update downloads through Android's download manager, whose
-         notification installs it. Play Protect flagged a sideloaded app that installs APKs itself. -->
+    <!-- Updates download inside the app (progress on the update card) and are handed to Android's installer,
+         which asks to confirm. The download manager's notification, used before, opened nothing when tapped. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Android 11+ hides other apps unless asked for: the downloaders (1DM, ADM…) a link is handed to,
+         listed in the "Download With" sheet and used straight away by a tap. -->
+    <queries>
+        <!-- The owner's Grabber app, offered as "Send to Grabber" when it's installed. -->
+        <package android:name="com.hwezah.grabber" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="magnet" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="video/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="false"
@@ -64,6 +90,13 @@
                 <data android:scheme="file" />
                 <data android:mimeType="application/x-bittorrent" />
             </intent-filter>
+            <!-- Shared to WatchHub from another app (Instagram, TikTok, a browser): the link in the shared text opens
+                 in the Browser, where its video is grabbed — the same place Grabber appears in the share sheet. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <meta-data
@@ -80,14 +113,40 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Tube's playback: Media3's session service, foreground while a video plays (its notification has the controls). -->
+        <service
+            android:name=".TubeService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".DownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- System-wide ad blocking without the WireGuard tunnel: a DNS-only VPN. Bound by the system, which is why it
+             holds BIND_VPN_SERVICE and answers the VpnService action. -->
+        <service
+            android:name=".AdShieldService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
         <!-- The playback card's Play/Pause on older Android, and a headset's buttons on ROMs
              that route them by receiver. Exported because the system is the sender; it acts
              only on ACTION_MEDIA_BUTTON key events. -->
+        <!-- Told by Android which app was picked in its "Other Apps…" list, so that one becomes the default. -->
+        <receiver
+            android:name=".ChosenDownloader"
+            android:exported="false" />
+
         <receiver
             android:name=".MediaButtons"
             android:exported="true">

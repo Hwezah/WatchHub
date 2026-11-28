@@ -8,7 +8,7 @@ import org.junit.Test
 
 /** The fields GitHub's releases/latest gives, with the page's mix of files. */
 class ReleaseTest {
-    private fun asset(name: String) = """{"name":"$name","size":77306948,"digest":"sha256:abc","browser_download_url":"https://github.com/sammyZi/Watchly/releases/download/v2.4.1/$name"}"""
+    private fun asset(name: String) = """{"name":"$name","size":77306948,"digest":"sha256:abc","browser_download_url":"https://github.com/Hwezah/WatchHub/releases/download/v2.4.1/$name"}"""
     private val json = """{"tag_name":"v2.4.1","assets":[
         ${asset("Watchly-phone-v2.4.1-armeabi-v7a.apk")},${asset("Watchly-phone-v2.4.1-arm64-v8a.apk")},${asset("Watchly-phone-v2.4.1-universal.apk")},
         ${asset("Watchly-tv-v2.4.1-arm64-v8a.apk")},${asset("Watchly-windows-v2.4.1-x64-setup.exe")}]}"""

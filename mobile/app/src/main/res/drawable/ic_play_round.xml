@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same puffy play as Resume's, centred and on its own (no bar), outline only, thin stroke. For the big minimal
+     hero play. Tinted by the caller. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.2"
+        android:pathData="M8.53,5.88 L16.47,10.12 Q20,12 16.47,13.88 L8.53,18.12 Q5,20 5,16 L5,8 Q5,4 8.53,5.88 Z" />
+</vector>

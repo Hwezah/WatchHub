@@ -1,0 +1,411 @@
+package com.torrentviewer.mobile
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.torrentviewer.core.Ink
+import com.torrentviewer.core.Kv
+import com.torrentviewer.core.Lc
+import com.torrentviewer.core.Type
+import com.composables.icons.lucide.R as L
+
+/**
+ * A four-digit code before what's on the phone (the Library's saved downloads) and Files (the owner's choice: nobody else into the downloads). Set in Settings →
+ * Lock; asked for in a row that opens on top of the tab bar; unlocked for [FilesLock.timeout].
+ */
+object FilesLock {
+    private const val KEY = "files-lock-code"
+
+    /**
+     * The tabs behind the code. The Library itself opens: what's on the phone, under its "On this phone" chevron, is
+     * what asks (the owner's choice), so it isn't asked for twice.
+     */
+    val LOCKED = setOf(Tab.FILES, Tab.BROWSER)  // and the Browser (the owner's choice); the Library's Downloads half asks on its own page
+
+    /** Unlocked: by the code or the password, at [unlockedAt]; how long that lasts is [timeout]. */
+    var unlocked by mutableStateOf(false)
+
+    /** When the code was last typed right. */
+    private var unlockedAt = 0L
+
+    /** The tab the code is being asked for, its row open over the tab bar; null when none. */
+    var asking by mutableStateOf<Tab?>(null)
+
+    /** What opens once the code is right, beside [asking]'s tab: the "On this phone" list. */
+    var then: (() -> Unit)? = null
+
+    /** The pin pad put away without opening anything: its page went off screen. */
+    fun dismiss() {
+        asking = null
+        then = null
+    }
+
+    /** Asks for the code before [tab], and [after] once it's right. */
+    fun ask(tab: Tab, after: (() -> Unit)? = null) {
+        then = after
+        asking = tab
+        asks++
+    }
+
+    /** Each ask, counted: the pin row puts the keyboard up again even when it was already open ([CodeRow]). */
+    var asks by mutableStateOf(0)
+        private set
+
+    private const val TIMEOUT = "files-lock-timeout"
+
+    /** How long an unlock lasts, in ms (Settings → Lock): [IMMEDIATELY], a few minutes, or [UNTIL_CLOSED]. */
+    const val IMMEDIATELY = 0L
+    const val UNTIL_CLOSED = -1L
+
+    /** The choices for [timeout], as Settings → Lock shows them. */
+    val TIMEOUTS = listOf(IMMEDIATELY to "Immediately", 60_000L to "1 min", 300_000L to "5 min", 900_000L to "15 min", UNTIL_CLOSED to "App closes")
+
+    /** Kept app-wide; until the app is closed (to the background) unless chosen otherwise. */
+    var timeout by mutableStateOf(Kv.global(TIMEOUT)?.toLongOrNull() ?: UNTIL_CLOSED)
+        private set
+
+    fun chooseTimeout(ms: Long) {
+        timeout = ms
+        Kv.setGlobal(TIMEOUT, ms.toString())
+    }
+
+    /** Unlocked now: by the code, and not timed out. */
+    private fun open() = unlocked && (timeout <= 0 || System.currentTimeMillis() - unlockedAt < timeout)
+
+    /** Whether what's locked needs the code now: a code set, and not [open]. */
+    fun needed() = code() != null && !open()
+
+    /** Another page or tab: locked again at once when the timeout is [IMMEDIATELY] (the owner's choice). */
+    fun left(tab: Tab? = null) {
+        // The tab the code was just typed for, opening: that's arriving, not leaving.
+        if (tab != null && tab == arriving) { arriving = null; return }
+        arriving = null
+        relock()
+    }
+
+    /** The tab a right code is opening ([passed]): its own arrival doesn't lock it again. */
+    private var arriving: Tab? = null
+
+    /**
+     * Locked again: any move away from Downloads or Files — another tab, Settings, Search, a page opened — asks for the
+     * code once more (the owner's choice), whatever the timeout; the timeout only covers the app sent to the background.
+     */
+    fun relock() {
+        unlocked = false
+    }
+
+    /** The app sent to the background: locked again, unless a few minutes were chosen (the clock decides those). */
+    fun backgrounded() {
+        if (timeout <= 0) unlocked = false
+        asking = null
+        then = null
+    }
+
+    /**
+     * The code was right: what was asked for opens — [then] where there is one (the saved list, on the page already),
+     * else the tab, through [onOpen].
+     */
+    fun passed(tab: Tab?, onOpen: (Tab) -> Unit) {
+        val after = then
+        asking = null
+        then = null
+        if (after != null) after() else tab?.let { arriving = it; onOpen(it) }
+    }
+
+    private fun opened() {
+        unlocked = true
+        unlockedAt = System.currentTimeMillis()
+    }
+
+    /** The code set, or null (no lock). Kept on this phone only. */
+    fun code(): String? = Kv.global(KEY)?.takeIf { it.length == 4 }
+
+    fun set(code: String?) = Kv.setGlobal(KEY, code?.takeIf { it.length == 4 && it.all(Char::isDigit) })
+
+    private const val PASS = "files-lock-pass"
+
+    /** A one-way digest: the password itself is never kept. */
+    private fun digest(text: String) = java.security.MessageDigest.getInstance("SHA-256").digest(("watchhub:" + text).toByteArray())
+        .joinToString("") { "%02x".format(it) }
+
+    /**
+     * The password for a forgotten pin: kept on this phone only, as a digest (a session-only stand-in for a real
+     * account sign-in, the owner's choice for now). Null clears it.
+     */
+    fun setPassword(password: String?) = Kv.setGlobal(PASS, password?.takeIf { it.length >= 4 }?.let(::digest))
+
+    fun hasPassword() = Kv.global(PASS) != null
+
+    /** The password typed: right, unlocked (for this session); wrong, false. */
+    fun tryPassword(typed: String): Boolean = (Kv.global(PASS) != null && digest(typed) == Kv.global(PASS)).also { if (it) opened() }
+
+    /** Whether [tab] needs the code now. */
+    fun locks(tab: Tab) = tab in LOCKED && needed()
+
+    /** The code typed: right, unlocked; wrong, false. */
+    fun tryCode(typed: String): Boolean = (typed == code()).also { if (it) opened() }
+}
+
+/**
+ * The tab bar's top row while the code is asked for (the owner's design): the bar's own face, a lock, and a field of
+ * four stars that takes the code; the fourth digit checks it. Right: on to [FilesLock.asking]'s tab. Wrong: cleared.
+ */
+@Composable
+fun CodeRow(onOpen: (Tab) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var typed by remember { mutableStateOf("") }
+    /** The pin forgotten: the password instead. */
+    var byPassword by remember { mutableStateOf(false) }
+    val focus = remember { FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // The dial pad up at once, every time it's asked for (the owner caught it often not coming): focus alone, at the
+    // row's first frame, came before the field was placed and left the keyboard down. So it's asked for a few times over
+    // the next third of a second — once the field has attached, focus takes and the keyboard is asked for outright — so
+    // it comes up whether the lock was automatic or the prompt was tapped.
+    LaunchedEffect(byPassword, FilesLock.asks) {
+        repeat(6) {
+            kotlinx.coroutines.delay(70)
+            runCatching { focus.requestFocus() }
+            runCatching { keyboard?.show() }
+        }
+    }
+    // No strip behind it (the owner's choice): the lock, the field and the shield sit on the page itself.
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // The lock and the shield each 36dp wide, either side, so the field between them sits in the very middle.
+        Lc(L.drawable.lucide_ic_lock, Modifier.padding(6.dp), tint = Ink.muted, size = 24.dp)
+        Box(Modifier.weight(1f).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+            if (typed.isEmpty()) Text(if (byPassword) "Auth Password" else "Auth Pin", style = Type.label.copy(color = Ink.faint), textAlign = TextAlign.Center, maxLines = 1)
+            if (byPassword) BasicTextField(
+                typed, { typed = it.replace("\n", "") },
+                Modifier.focusRequester(focus),
+                textStyle = TextStyle(color = Ink.text, fontSize = 16.sp, textAlign = TextAlign.Center),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                    val tab = FilesLock.asking
+                    if (FilesLock.tryPassword(typed)) FilesLock.passed(tab, onOpen)
+                    else { typed = ""; android.widget.Toast.makeText(context, "Wrong password", android.widget.Toast.LENGTH_SHORT).show() }
+                }),
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                cursorBrush = SolidColor(Ink.download),
+            ) else BasicTextField(
+                typed,
+                { v ->
+                    typed = v.filter(Char::isDigit).take(4)
+                    if (typed.length == 4) {
+                        val tab = FilesLock.asking
+                        if (FilesLock.tryCode(typed)) FilesLock.passed(tab, onOpen) else {
+                            typed = ""
+                            android.widget.Toast.makeText(context, "Wrong code", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                Modifier.focusRequester(focus),
+                textStyle = TextStyle(color = Ink.text, fontSize = 22.sp, letterSpacing = 16.sp, textAlign = TextAlign.Center),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                visualTransformation = PasswordVisualTransformation('*'),
+                singleLine = true,
+                cursorBrush = SolidColor(Ink.download),
+            )
+        }
+        // The pin forgotten: the password (when one is set), behind a shield with a keyhole, last on the row. No X: a tap
+        // outside puts the row away (the owner's choice).
+        if (FilesLock.hasPassword()) Tap({ byPassword = !byPassword; typed = "" }, shape = CircleShape) {
+            Lc(if (byPassword) L.drawable.lucide_ic_hash else R.drawable.ic_shield_keyhole, Modifier.padding(6.dp), tint = Ink.muted, size = 24.dp)
+        } else androidx.compose.foundation.layout.Spacer(Modifier.size(36.dp))
+    }
+}
+
+/** Whether the "Add a link" sheet is up: opened from the Library's heading, shown by the shell over every tab. */
+object AddLink {
+    /** Set by the Library's ＋, cleared when the sheet is dismissed. */
+    var open by mutableStateOf(false)
+}
+
+/** The ＋ beside the Library's heading: a link copied elsewhere, to download (the owner's design: big, in the accent). */
+@Composable
+fun AddLinkPlus(modifier: Modifier = Modifier) {
+    Tap({ AddLink.open = true }, modifier, CircleShape) {
+        Lc(L.drawable.lucide_ic_plus, Modifier.padding(4.dp), tint = Ink.accent, size = 42.dp)
+    }
+}
+
+/**
+ * Settings → Lock, as steps (the owner found one page of fields confusing). Off: one form — the pin twice and the Auth
+ * Password — and one button to turn it on. On: what's set, and three choices, each opening its own short form that asks
+ * for the current pin first.
+ */
+@Composable
+fun LockSettings(say: (String) -> Unit) {
+    var on by remember { mutableStateOf(FilesLock.code() != null) }
+    /** The open form while on: "pin", "pass" or "off"; null for the three choices. */
+    var step by remember { mutableStateOf<String?>(null) }
+    var current by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
+    var again by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    fun reset() { step = null; current = ""; pin = ""; again = ""; pass = "" }
+    val gap = Modifier.padding(top = 10.dp).fillMaxWidth()
+    @Composable
+    fun Note(text: String) = Text(text, Modifier.padding(bottom = 4.dp), style = Type.meta.copy(color = Ink.faint))
+    @Composable
+    fun PinField(value: String, set: (String) -> Unit, hint: String) = Field(value, { set(it.filter(Char::isDigit).take(4)) }, hint, gap, secret = true, digits = true)
+    /** The current pin, or the Auth Password for a forgotten one: what every change asks for. */
+    fun knows() = FilesLock.tryCode(current) || FilesLock.tryPassword(current)
+    @Composable
+    fun CancelSave(label: String, onSave: () -> Unit) = Row(gap, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Button("Cancel", { reset() }, Modifier.weight(1f))
+        Button(label, onSave, Modifier.weight(1f), primary = true)
+    }
+
+    if (!on) {
+        Note("Lock your downloads, Files and the Browser behind a four-digit pin. The Auth Password opens them if you forget the pin.")
+        PinField(pin, { pin = it }, "Pin (four digits)")
+        PinField(again, { again = it }, "The pin again")
+        Field(pass, { pass = it }, "Auth Password", gap, secret = true)
+        Button("Turn On Lock", {
+            when {
+                pin.length != 4 -> say("The pin is four digits")
+                again != pin -> say("The two pins don't match")
+                pass.length < 4 -> say("The Auth Password needs four characters at least")
+                else -> {
+                    FilesLock.set(pin)
+                    FilesLock.setPassword(pass)
+                    FilesLock.tryCode(pin)
+                    on = true
+                    reset()
+                    say("Lock on")
+                }
+            }
+        }, gap, icon = L.drawable.lucide_ic_lock, primary = true)
+        return
+    }
+    when (step) {
+        null -> {
+            Note("On. Downloads, Files and the Browser ask for the pin" + if (FilesLock.hasPassword()) "; the Auth Password opens them too." else ". No Auth Password yet: set one in case you forget the pin.")
+            Text("Lock Again", Modifier.padding(top = 8.dp), style = Type.label.copy(color = Ink.text))
+            Text(
+                "Going to another page always locks Downloads, Files and the Browser again. This is for the app sent to the background.",
+                Modifier.padding(top = 2.dp), style = Type.meta.copy(color = Ink.faint),
+            )
+            BarChoices(FilesLock.TIMEOUTS.map { it.second }, FilesLock.TIMEOUTS.indexOfFirst { it.first == FilesLock.timeout }.takeIf { it >= 0 }, Modifier.padding(top = 4.dp)) {
+                FilesLock.chooseTimeout(FilesLock.TIMEOUTS[it].first)
+            }
+            Button("Change Pin", { step = "pin" }, gap, icon = L.drawable.lucide_ic_lock)
+            Button(if (FilesLock.hasPassword()) "Change Auth Password" else "Set Auth Password", { step = "pass" }, gap, icon = L.drawable.lucide_ic_key_round)
+            Button("Turn Off Lock", { step = "off" }, gap, icon = L.drawable.lucide_ic_lock_open, tint = Ink.accent)
+        }
+        "pin" -> {
+            Note("Change Pin")
+            Field(current, { current = it }, "Current pin or Auth Password", gap, secret = true)
+            PinField(pin, { pin = it }, "New pin (four digits)")
+            PinField(again, { again = it }, "The new pin again")
+            CancelSave("Save") {
+                when {
+                    !knows() -> say("That isn't the current pin or Auth Password")
+                    pin.length != 4 -> say("The pin is four digits")
+                    again != pin -> say("The two pins don't match")
+                    else -> { FilesLock.set(pin); reset(); say("Pin changed") }
+                }
+            }
+        }
+        "pass" -> {
+            Note(if (FilesLock.hasPassword()) "Change Auth Password" else "Set Auth Password")
+            Field(current, { current = it }, "Current pin", gap, secret = true, digits = true)
+            Field(pass, { pass = it }, "New Auth Password", gap, secret = true)
+            CancelSave("Save") {
+                when {
+                    !FilesLock.tryCode(current) -> say("That isn't the current pin")
+                    pass.length < 4 -> say("Four characters at least")
+                    else -> { FilesLock.setPassword(pass); reset(); say("Auth Password saved") }
+                }
+            }
+        }
+        "off" -> {
+            Note("Turn Off Lock: downloads, Files and the Browser will open for anyone.")
+            Field(current, { current = it }, "Current pin or Auth Password", gap, secret = true)
+            CancelSave("Turn Off") {
+                if (!knows()) say("That isn't the current pin or Auth Password") else {
+                    FilesLock.set(null)
+                    FilesLock.setPassword(null)
+                    on = false
+                    reset()
+                    say("Lock off")
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * What a locked page shows, wherever the lock appears (the owner's design): a green lock, [said] ("Downloads are locked.") and
+ * "Tap to unlock", centred, on nothing — no button, no fill. [modifier] places it; the caller makes its area tappable.
+ */
+@Composable
+fun LockPrompt(said: String, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Lc(L.drawable.lucide_ic_lock, tint = Ink.good, size = 40.dp)
+        Text(said, Modifier.padding(top = 16.dp), style = Type.body.copy(color = Ink.text), textAlign = TextAlign.Center)
+        Text("Tap to unlock", Modifier.padding(top = 4.dp), style = Type.meta.copy(color = Ink.faint), textAlign = TextAlign.Center)
+    }
+}
+
+/** A whole area that asks for the code when tapped anywhere, with no ripple or fill. */
+fun Modifier.tapToUnlock(tab: Tab): Modifier = composedTap { FilesLock.ask(tab) {} }
+
+private fun Modifier.composedTap(onTap: () -> Unit): Modifier = this.then(
+    Modifier.pointerInput(Unit) { detectTapGestures { onTap() } },
+)
+
+/**
+ * A locked tab's page (the Browser, the owner's choice): behind the code however it's reached — the tab bar, or a link
+ * sent to it from elsewhere — asked for while it's on screen; a tap anywhere asks again if the row was put away.
+ */
+@Composable
+fun LockedPage(tab: Tab, what: String) {
+    val shown = LocalShown.current
+    LaunchedEffect(shown) {
+        if (shown) FilesLock.ask(tab) {}
+        else if (FilesLock.asking == tab) FilesLock.dismiss()
+    }
+    // Opaque over the page under it, and taking every touch: nothing of the locked page shows or answers.
+    Box(
+        Modifier.fillMaxSize().background(Ink.bg)
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } }
+            .tapToUnlock(tab),
+        contentAlignment = Alignment.Center,
+    ) { LockPrompt("$what is locked.") }
+}

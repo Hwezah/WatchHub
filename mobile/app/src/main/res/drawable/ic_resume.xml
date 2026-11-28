@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resume: a puffy play with a curved bar just ahead of its tip (the icons8 "End" glyph), outline only, thin stroke,
+     sized to fill the box so it reads large in the button. Tinted by the caller (white on the olive button). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.3"
+        android:pathData="M5.36,5.52 L11.64,9.98 Q14.5,12 11.64,14.02 L5.36,18.48 Q2.5,20.5 2.5,17 L2.5,7 Q2.5,3.5 5.36,5.52 Z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.3"
+        android:pathData="M17,6 Q21.5,12 17,18" />
+</vector>

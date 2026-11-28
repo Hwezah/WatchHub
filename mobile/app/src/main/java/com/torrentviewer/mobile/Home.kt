@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.sp
+import com.torrentviewer.core.ADDON_SHELF
 import com.torrentviewer.core.ANIME_GENRE
 import com.torrentviewer.core.Artwork
 import com.torrentviewer.core.Avatar
@@ -80,13 +81,15 @@ import com.torrentviewer.core.left
 import com.torrentviewer.core.latestPerTitle
 import com.torrentviewer.core.titleKey
 import com.torrentviewer.core.parseEpisode
-import com.torrentviewer.core.quality
 import com.torrentviewer.core.bytes
 import com.torrentviewer.core.playedSize
 import com.torrentviewer.core.remoteArt
 import com.torrentviewer.core.TOP_SHELF
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.composables.icons.lucide.R as L
+import com.torrentviewer.mobile.R
 
 data class Shelf(val title: String, val kind: String, val genre: String? = null) {
     val key get() = "$kind:${genre.orEmpty()}"
@@ -112,8 +115,14 @@ private val SHELVES = listOf(
     Shelf("Crime Series", "tv", "Crime"),
 )
 
-/** How many titles of the lead shelf the hero swipes through. */
-private const val HEROES = 6
+/** How many titles the hero swipes through (the owner's choice: a fuller pool). */
+private const val HEROES = 15
+
+/**
+ * How long a title's picture waits for its full entry's art before showing the row's: the full entry's is usually
+ * another, better one, and showing the row's first meant a visible swap (the owner's choice: start on the better one).
+ */
+internal const val ART_WAIT_MS = 2500L
 
 /** The viewer's latest titles that suggestions are drawn from, and how many of the best to show. */
 private const val FOR_YOU_SEEDS = 4
@@ -126,6 +135,10 @@ class HomeState {
     val list = LazyListState()
     val rows = HashMap<String, LazyListState>()
     val loaded = mutableStateMapOf<String, List<Title>>()
+    /** The picture each Genres tile wears, by its list's key: claimed once, so no two tiles share one. */
+    val genreArt = mutableStateMapOf<String, String>()
+    /** Rows fetching their next page, by key. */
+    val paging = mutableStateMapOf<String, Boolean>()
     var heroCount by mutableIntStateOf(0)
     val hero = PagerState { heroCount }
     var picks by mutableStateOf<List<Shelf>>(emptyList())
@@ -178,10 +191,11 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         }
     }
     // What TMDB suggests for the titles this profile last played or saved: not for kids, whose rows are the family ones.
-    LaunchedEffect(history.size, saved.size, online, com.torrentviewer.core.Kids.on) {
+    LaunchedEffect(history.size, saved.size, online, com.torrentviewer.core.Kids.on, settings.builtInHome) {
         val played = history.sortedByDescending { it.at }.mapNotNull { h -> h.imdb?.let { it to (h.kind ?: "movie") } }
         val seeds = (played + saved.map { it.imdb to it.kind }).filter { it.first.startsWith("tt") }.distinctBy { it.first }.take(FOR_YOU_SEEDS)
-        if (seeds.isEmpty() || com.torrentviewer.core.Kids.on) state.forYou = com.torrentviewer.core.ForYou()
+        // Built-in rows off: no TMDB suggestions either.
+        if (seeds.isEmpty() || com.torrentviewer.core.Kids.on || !settings.builtInHome) state.forYou = com.torrentviewer.core.ForYou()
         else Meta.forYou(seeds).takeIf { it.picks.isNotEmpty() }?.let { state.forYou = it }
     }
     // Followed series — watched or saved — with episodes out since their page was last opened.
@@ -189,21 +203,24 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         val shows = history.filter { it.kind == "tv" }.mapNotNull { it.imdb } + saved.filter { it.kind == "tv" }.map { it.imdb }
         state.fresh = runCatching { NewEpisodes.fresh(shows) }.getOrDefault(state.fresh)
     }
-    val chosen = settings.genres.map { Shelf(if (it == ANIME_GENRE) "Anime" else it, kindOfGenre(it), it) }
+    // Built-in rows off: Home is the viewer's own setup alone — their addons' catalogues, in their order.
+    val builtIn = settings.builtInHome
+    val chosen = if (!builtIn) emptyList() else settings.genres.map { Shelf(if (it == ANIME_GENRE) "Anime" else it, kindOfGenre(it), it) }
     val kids = com.torrentviewer.core.Kids
     val addons by com.torrentviewer.core.Addons.list.collectAsState()
     val personal = state.forYou.picks.isNotEmpty()
-    val shelves = remember(chosen, state.picks, kids.on, addons, personal) {
+    val shelves = remember(chosen, state.picks, kids.on, addons, personal, builtIn, settings.hiddenShelves) {
         if (kids.on) return@remember com.torrentviewer.core.KIDS_SHELVES.map { (title, kind, genre) -> Shelf(title, kind, genre) }
         // The viewer's addons' own lists lead, as on Stremio's board.
-        val mine = com.torrentviewer.core.Addons.shelves().map { (title, kind, key) -> Shelf(title, kind, key) }
+        val mine = com.torrentviewer.core.Addons.shelves().filter { it.third !in settings.hiddenShelves }.map { (title, kind, key) -> Shelf(title, kind, key) }
+        if (!builtIn) return@remember mine
         val taken = chosen.map { it.key }.toMutableSet()
         // A genre's popular list is no suggestion: it's what TMDB's rows replace, with no key or nothing played.
         val rest = if (personal) emptyList() else state.picks.filter { taken.add(it.key) }
         chosen + mine + rest + SHELVES.filter { it.key !in taken }
     }
     // The charts draw on every genre the viewer chose, or on all of them with none chosen.
-    val tops = if (kids.on) emptyList() else listOf("movie", "tv").flatMap { kind ->
+    val tops = if (kids.on || !builtIn) emptyList() else listOf("movie", "tv").flatMap { kind ->
         settings.genres.ifEmpty { listOf("") }.map { Shelf("", kind, TOP_SHELF + it) }
     }
 
@@ -225,7 +242,6 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
     val resumable = latestPerTitle(history).filter { inProgress(it) && !stremio.finishedSince(it) }.take(10)
     // Left part-way somewhere this phone never saw — another device, before a reinstall: Stremio kept the spot.
     val fromStremio = com.torrentviewer.core.Kids.only(stremio.paused.filter { p -> history.none { it.imdb == p.imdb } }.distinctBy { it.imdb }) { Title(it.imdb, it.kind, it.title) }.take(10)
-    val watchlist = saved.filter { it.list == "later" }.map { it.asTitle() }
     var menu by remember { mutableStateOf<Item?>(null) }
     var releases by remember { mutableStateOf<List<Item>?>(null) }
     // Nothing already played, seen elsewhere or saved is a suggestion.
@@ -239,9 +255,12 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         val heading = if (settings.genres.isEmpty()) "Top $word on IMDb" else "Top IMDb $word in your genres"
         Triple(kind, heading, com.torrentviewer.core.mixTop(parts.map { state.loaded[it.key].orEmpty() }, CHART_SIZE))
     }
-    // What's suggested, then every chosen genre in turn, so one genre doesn't fill the hero.
-    val mixed = com.torrentviewer.core.interleave(listOf(picks.map { it.title }) + chosen.map { state.loaded[it.key].orEmpty() }).filter { it.imdb !in watched }
-    val heroes = mixed.ifEmpty { shelves.firstNotNullOfOrNull { state.loaded[it.key]?.takeIf { l -> l.isNotEmpty() } }.orEmpty() }.take(HEROES)
+    // The hero's pool: what's suggested, each chosen genre, the charts, then every other row (the addons' lists, the
+    // built-in ones) — one title from each in turn, so no one list fills it and there's plenty to swipe through.
+    val heroes = com.torrentviewer.core.interleave(
+        listOf(picks.map { it.title }) + chosen.map { state.loaded[it.key].orEmpty() } + charts.map { it.third } +
+            shelves.filter { it !in chosen }.map { state.loaded[it.key].orEmpty() },
+    ).filter { it.imdb !in watched }.take(HEROES)
     SideEffect { state.heroCount = heroes.size }
     // A title shows once, in the first row it lands in: genre rows overlap, and the week's
     // big film otherwise led half the page. "See all" still lists a shelf in full. What's been
@@ -250,13 +269,30 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
     picks.mapTo(seen) { it.title.imdb }
     because.forEach { (_, titles) -> titles.mapTo(seen) { it.imdb } }
     charts.forEach { (_, _, titles) -> titles.mapTo(seen) { it.imdb } }
-    val rows = shelves.associate { s -> s.key to state.loaded[s.key].orEmpty().filter { seen.add(it.imdb) } }
+    // The viewer's addons' rows are theirs, shown whole and in the addon's order, as Stremio and Nuvio show them: a
+    // "Highly Rated" list that the charts above already cover otherwise emptied out and vanished.
+    val rows = shelves.associate { s ->
+        val all = state.loaded[s.key].orEmpty()
+        s.key to if (s.genre?.startsWith(ADDON_SHELF) == true) all.distinctBy { it.imdb }.also { it.mapTo(seen) { t -> t.imdb } } else all.filter { seen.add(it.imdb) }
+    }
     val visible = shelves.filter { state.loaded[it.key].isNullOrEmpty() || rows[it.key].orEmpty().isNotEmpty() }
+    // A row scrolled to its end asks for its next page (an addon that pages, Cinemeta's lists), so it keeps going back in time.
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun more(shelf: Shelf) {
+        if (state.paging[shelf.key] == true || !Meta.pages(shelf.kind, shelf.genre)) return
+        state.paging[shelf.key] = true
+        scope.launch {
+            Meta.more(shelf.kind, shelf.genre)?.let { state.loaded[shelf.key] = kids.only(it) }
+            state.paging[shelf.key] = false
+        }
+    }
+    /** An addon's genres for the Genres row, while the shelves come from addons and none is hidden in Settings. */
+    val genreTiles = remember(addons, kids.on) { if (kids.on) null else com.torrentviewer.core.Addons.genres() }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(state = state.list, contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+        LazyColumn(state = state.list, contentPadding = PaddingValues(bottom = NAV_CLEARANCE), verticalArrangement = Arrangement.spacedBy(22.dp)) {
             item(key = "hero") {
-                if (heroes.isEmpty()) Box(Modifier.fillMaxWidth().height(if (isWide()) 320.dp else 420.dp))
+                if (heroes.isEmpty()) Box(Modifier.fillMaxWidth().height(if (isWide()) 320.dp else 390.dp))
                 else Hero(state.hero, heroes, onOpen)
             }
             if (resumable.isNotEmpty() || fromStremio.isNotEmpty()) item(key = "resume") {
@@ -268,7 +304,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                                     // Played from more than one release: ask which, each resuming where it was left.
                                     val all = history.filter { it.titleKey == item.titleKey }.sortedByDescending { it.at }
                                     if (all.size > 1) releases = all else watch.resume(item)
-                                }, Modifier.fillMaxWidth().aspectRatio(2f / 3f), RoundedCornerShape(6.dp), onLongClick = { menu = item }) {
+                                }, Modifier.fillMaxWidth().aspectRatio(2f / 3f), RoundedCornerShape(4.dp), onLongClick = { menu = item }) {
                                     LandscapeCard(remoteArt(item.poster) ?: item.art(), item.label, resumeStamp(item), item.ratio.toFloat())
                                 }
                                 Text(item.label.substringBefore(" · "), Modifier.padding(top = 6.dp), style = Type.label.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -277,7 +313,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                         // No release to resume from yet: the title opens, and the one picked starts at Stremio's spot.
                         items(fromStremio, key = { "stremio:${it.imdb}" }) { p ->
                             Column(Modifier.width(posterWidth())) {
-                                Tap({ onOpen(Title(p.imdb, p.kind, p.title, year = p.year)) }, Modifier.fillMaxWidth().aspectRatio(2f / 3f), RoundedCornerShape(6.dp)) {
+                                Tap({ onOpen(Title(p.imdb, p.kind, p.title, year = p.year)) }, Modifier.fillMaxWidth().aspectRatio(2f / 3f), RoundedCornerShape(4.dp)) {
                                     LandscapeCard(
                                         "https://images.metahub.space/poster/medium/${p.imdb}/img", p.title,
                                         listOfNotNull(p.ep?.let { "S${it.season}:E${it.episode}" }, "${p.progress.toInt()}%").joinToString("  ·  "),
@@ -290,12 +326,23 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                     }
                 }
             }
+            // An addon's genres (Xperience, AIOMetadata…) as picture tiles, as Nuvio shows them: a tap opens that genre's list.
+            genreTiles?.let { (kind, genres) ->
+                item(key = "genres") {
+                    Rail("Genres") {
+                        LazyRow(state = state.row("genres"), contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(genres, key = { it.second }) { (name, key) -> GenreTile(name, kind, key, state.genreArt) { onShelf(Shelf(name, kind, key)) } }
+                        }
+                    }
+                }
+            }
             // A list by hand isn't sorted for children: their rows stay the family ones.
-            if (!com.torrentviewer.core.Kids.on) item(key = "orders") {
+            if (!com.torrentviewer.core.Kids.on && builtIn) item(key = "orders") {
                 // Nothing chosen: what they watch stands in.
                 Rail("Watch orders", onMore = onOrders) { WatchOrderRow(settings.genres.ifEmpty { state.picks.mapNotNull { it.genre } }, onOrder) }
             }
-            if (state.fresh.isNotEmpty()) item(key = "fresh") {
+            // New Episodes is off (the owner's choice): its row stays in code, unreached. ponytail: revisit if missed.
+            if (false && state.fresh.isNotEmpty()) item(key = "fresh") {
                 Rail("New Episodes") {
                     LazyRow(state = state.row("fresh"), contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(CARD_GAP)) {
                         items(state.fresh, key = { it.title.imdb }) { f ->
@@ -307,9 +354,7 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
                     }
                 }
             }
-            if (watchlist.isNotEmpty()) item(key = "list") {
-                Rail("My List") { TitleRow(state.row("list"), watchlist, onOpen) }
-            }
+            // No My Listing row here (the owner's choice): it lives in Library → My Wishlist.
             if (picks.isNotEmpty()) item(key = "picks") {
                 Rail("Picked for you") { PickedRow(state.row("picks"), picks, onOpen) }
             }
@@ -324,28 +369,20 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
             itemsIndexed(visible, key = { _, s -> s.key }) { _, shelf ->
                 val titles = rows[shelf.key].orEmpty()
                 Rail(shelf.title, onMore = { onShelf(shelf) }) {
-                    if (titles.isEmpty()) Placeholders() else TitleRow(state.row(shelf.key), titles, onOpen)
+                    if (titles.isEmpty()) Placeholders() else TitleRow(state.row(shelf.key), titles, onOpen, loading = state.paging[shelf.key] == true) { more(shelf) }
                 }
             }
         }
 
-        // The wordmark and who is watching: a shade over the hero; once the rows scroll under it, the
-        // page itself, eased in. A clean edge: a fade under it washed out the tops of the cards.
-        val scrolled by remember { derivedStateOf { state.list.firstVisibleItemIndex > 0 || state.list.firstVisibleItemScrollOffset > 240 } }
-        val solid by animateFloatAsState(if (scrolled) 1f else 0f, tween(260), label = "bar")
+        // The status bar's icons: white over the hero's art, the page's own once the rows scroll under them.
+        val scrolled by remember { derivedStateOf { state.list.firstVisibleItemIndex > 0 || state.list.firstVisibleItemScrollOffset > 120 } }
         StatusIconsOverArt(!scrolled)
-        Box(Modifier.fillMaxWidth()) {
-            Box(Modifier.matchParentSize().graphicsLayer { alpha = 1f - solid }.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent))))
-            Box(Modifier.matchParentSize().graphicsLayer { alpha = solid }.background(Ink.bg).grain())
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = EDGE, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("WATCHLY", Modifier.weight(1f), style = Type.title.copy(color = Ink.accent, fontWeight = FontWeight.Black, letterSpacing = 2.sp))
-                if (!isWide()) Tap(onProfile, shape = RoundedCornerShape(6.dp)) { Avatar(who, 30.dp) }
-            }
-        }
+        // No wordmark or avatar over the hero (the owner's choice): the art runs clean to the top. Profiles are
+        // switched from Settings.
         if (!online) {
             Text(
                 "You're offline — showing what was saved",
-                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 52.dp).background(Ink.surface2, RoundedCornerShape(8.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
+                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 52.dp).background(Ink.surface2, RoundedCornerShape(5.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
                 style = Type.meta.copy(color = Ink.text),
             )
         }
@@ -355,8 +392,8 @@ fun HomeScreen(state: HomeState, watch: Watch, who: Profile, onOpen: (Title) -> 
         Sheet(
             title = item.label,
             options = listOfNotNull(
-                item.imdb?.let { Option("info", "Details") },
-                Option("remove", "Remove from Continue Watching"),
+                item.imdb?.let { Option("info", "Details", icon = L.drawable.lucide_ic_info) },
+                Option("remove", "Remove from Continue Watching", icon = L.drawable.lucide_ic_trash_2, iconTint = Ink.danger),
             ),
             selected = null,
             onPick = {
@@ -381,7 +418,7 @@ fun ReleasesSheet(all: List<Item>, watch: Watch, onDismiss: () -> Unit) {
         options = all.map {
             val name = it.torrentName ?: it.title
             val hint = listOfNotNull(it.playedSize()?.let(::bytes), it.seeders?.let { s -> "$s seeds" }, resumeStamp(it) ?: "Not started")
-            Option(it.uri, name, hint.joinToString("  ·  "), tag = quality(name))
+            Option(it.uri, name, hint.joinToString("  ·  "))
         },
         selected = latestPerTitle(all).first().uri,
         onPick = { uri ->
@@ -391,6 +428,40 @@ fun ReleasesSheet(all: List<Item>, watch: Watch, onDismiss: () -> Unit) {
         onDismiss = onDismiss,
     )
 }
+
+/**
+ * One genre as a wide picture tile: a backdrop from the genre's list, darkened at the foot, its name over it.
+ * The list is fetched when the tile first shows, and kept as Home's rows are. Each tile takes the first picture
+ * no other tile has ([taken], kept while Home is): a big film sits in half the genres, and every tile wore its face.
+ */
+@Composable
+private fun GenreTile(name: String, kind: String, key: String, taken: MutableMap<String, String>, onOpen: () -> Unit) {
+    fun claim(titles: List<Title>?): String? {
+        taken[key]?.let { return it }
+        val pictures = titles.orEmpty().mapNotNull { it.backdrop ?: it.poster }.ifEmpty { return null }
+        val used = taken.values.toSet()
+        return (pictures.firstOrNull { it !in used } ?: pictures.first()).also { taken[key] = it }
+    }
+    val art by produceState(taken[key], key) {
+        if (value == null) value = claim(Meta.peekCatalog(kind, key) ?: Meta.catalog(kind, key))
+    }
+    Tap(onOpen, Modifier.width(220.dp).aspectRatio(16f / 9f), RoundedCornerShape(6.dp)) {
+        Box(Modifier.fillMaxSize().background(Ink.surface)) {
+            art?.let { Artwork(it, name, Modifier.fillMaxSize()) }
+            Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.75f))))
+            Text(
+                sentenceCase(name), Modifier.align(Alignment.BottomStart).padding(12.dp),
+                // The app's own type, as its rows' names are: no capitals all through, no spacing out, not heavy.
+                style = Type.label.copy(color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** "Science Fiction" → "Science fiction": a capital to start with only. A short word in capitals ("TV") stays so. */
+private fun sentenceCase(name: String) = name.trim().split(' ')
+    .joinToString(" ") { w -> if (w.length <= 3 && w.all { it.isUpperCase() }) w else w.lowercase() }
+    .replaceFirstChar { it.uppercase() }
 
 @Composable
 private fun Rail(heading: String, onMore: (() -> Unit)? = null, content: @Composable () -> Unit) {
@@ -416,12 +487,24 @@ private fun Placeholders() {
     }
 }
 
+/**
+ * A row of posters. With [onEnd], nearing the last few cards asks for more, once each time the end comes into view;
+ * a placeholder card stands at the end while [loading].
+ */
 @Composable
-private fun TitleRow(state: LazyListState, titles: List<Title>, onOpen: (Title) -> Unit) {
+private fun TitleRow(state: LazyListState, titles: List<Title>, onOpen: (Title) -> Unit, loading: Boolean = false, onEnd: (() -> Unit)? = null) {
+    if (onEnd != null) {
+        val end = androidx.compose.runtime.rememberUpdatedState(onEnd)
+        LaunchedEffect(state) {
+            androidx.compose.runtime.snapshotFlow { state.layoutInfo.let { i -> i.totalItemsCount > 0 && (i.visibleItemsInfo.lastOrNull()?.index ?: 0) >= i.totalItemsCount - 5 } }
+                .collect { near -> if (near) end.value() }
+        }
+    }
     LazyRow(state = state, contentPadding = PaddingValues(horizontal = EDGE), horizontalArrangement = Arrangement.spacedBy(CARD_GAP)) {
         items(titles, key = { it.imdb }) { t ->
             TitleCard(t.poster ?: t.wide, t.title, { onOpen(t) }, Modifier.width(posterWidth()), info = t.year?.take(4), rating = t.rating)
         }
+        if (loading) item(key = "~more~") { CardPlaceholder(Modifier.width(posterWidth())) }
     }
 }
 
@@ -438,40 +521,84 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
         if (count > 1) pager.animateScrollToPage((pager.settledPage + 1) % count)
     }
     val wide = isWide()
-    val height = if (wide) (LocalConfiguration.current.screenHeightDp * 0.82f).dp else (LocalConfiguration.current.screenWidthDp * 1.12f).dp
+    // Clean line, upright: the facts and buttons sit under the picture, so the hero grows by their room and the
+    // picture keeps its full height (the owner's choice: a tall poster area).
+    val height = if (wide) (LocalConfiguration.current.screenHeightDp * 0.82f).dp
+    else (LocalConfiguration.current.screenWidthDp * 1.02f).dp + if (HeaderEdge.fade) 0.dp else 158.dp
     Box(Modifier.fillMaxWidth().height(height)) {
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { titles.getOrNull(it)?.imdb ?: it }) { page ->
             val start = titles.getOrNull(page) ?: return@HorizontalPager
-            // The shelf row carries no logo or runtime; the full entry does.
-            val t by produceState(start, start.imdb) { Meta.title(start.imdb, start.kind)?.let { value = it } }
+            // The shelf row carries no logo or runtime; the full entry does, and often other, better art. The picture
+            // waits a moment for the full entry's ([ART_WAIT_MS]) rather than showing the row's and then swapping it.
+            val cached = remember(start.imdb) { Meta.peekTitle(start.imdb, start.kind) }
+            var t by remember(start.imdb) { mutableStateOf(cached ?: start) }
+            var art by remember(start.imdb) { mutableStateOf(cached?.wide) }
+            LaunchedEffect(start.imdb) {
+                if (cached != null) return@LaunchedEffect
+                val full = async { Meta.title(start.imdb, start.kind) }
+                art = (kotlinx.coroutines.withTimeoutOrNull(ART_WAIT_MS) { full.await() } ?: start).wide
+                full.await()?.let { t = it }
+            }
+            // The next title's entry fetched meanwhile, so it opens on its own picture straight away.
+            LaunchedEffect(start.imdb) { titles.getOrNull((page + 1) % count)?.let { n -> Meta.title(n.imdb, n.kind) } }
+            // Out at home yet, or only in cinemas: as on the title's page (TMDB's answer is kept, so opening it asks again for nothing).
+            val tmdb by produceState<com.torrentviewer.core.TmdbTitle?>(null, start.imdb) { value = com.torrentviewer.core.Tmdb.title(start.imdb, start.kind) }
+            val release = releaseOf(tmdb, t.isSeries)
             val saved by SavedStore.items.collectAsState()
             val inList = saved.any { it.imdb == t.imdb && it.list == "later" }
             // The whole billboard opens the title, as Watch does; the buttons keep their own taps.
             val open = Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) { onOpen(t) }
             if (wide) {
                 Box(open) {
-                    Artwork(t.wide, t.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.72f).fillMaxHeight().heroScrims(), fill = false)
+                    art?.let { Artwork(it, t.title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.72f).fillMaxHeight().then(if (HeaderEdge.fade) Modifier.heroScrims() else Modifier), fill = false) }
                     Column(Modifier.align(Alignment.CenterStart).padding(start = EDGE + 8.dp, top = 40.dp).widthIn(max = 380.dp)) {
                         TitleMark(t, Modifier.widthIn(max = 300.dp), maxHeight = 72.dp, style = Type.display)
-                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp))
+                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp), release = release)
                         t.plot?.let { Text(it, Modifier.padding(top = 8.dp), style = Type.body.copy(color = Ink.text.copy(alpha = 0.78f)), maxLines = 3, overflow = TextOverflow.Ellipsis) }
                         HeroButtons(t, inList, onOpen, Modifier.padding(top = 16.dp))
                     }
                 }
+            } else if (!HeaderEdge.fade) {
+                // Clean line (Settings → Appearance): as a title's page lays out — the picture with its logo at its foot,
+                // ending on a straight edge, and the facts and buttons below it on the page itself.
+                Column(open, horizontalAlignment = Alignment.CenterHorizontally) {
+                    // The picture runs down to where the buttons start: the logo and facts sit on its foot.
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        art?.let { Artwork(it, t.title, Modifier.fillMaxSize(), fill = false) }
+                        Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = EDGE, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
+                                TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
+                            }
+                            // The carousel's dots on the poster, under the logo (the owner's choice).
+                            if (count > 1) Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                repeat(count) { i ->
+                                    Box(Modifier.size(if (i == pager.currentPage) 16.dp else 6.dp, 4.dp).clip(CircleShape).background(if (i == pager.currentPage) Color.White else Color.White.copy(alpha = 0.45f)))
+                                }
+                            }
+                        }
+                        // The play on the poster, in the accent (the owner's choice), as a title's page does it.
+                        if (isPortraitPhone()) Tap({ onOpen(t) }, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Ink.accent, size = 104.dp) }
+                    }
+                    // The facts on the page, under the picture's edge, not over the picture (the owner's choice).
+                    Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(start = EDGE, end = EDGE, top = 14.dp), centred = isPortraitPhone(), release = release)
+                    HeroButtons(t, inList, onOpen, Modifier.padding(start = EDGE, end = EDGE, top = 14.dp))
+                }
             } else {
                 Box(open) {
-                    Artwork(t.wide, t.title, Modifier.fillMaxSize().bottomScrim(0.35f), fill = false)
+                    art?.let { Artwork(it, t.title, Modifier.fillMaxSize().bottomScrim(0.35f), fill = false) }
+                    if (isPortraitPhone()) Tap({ onOpen(t) }, Modifier.align(Alignment.Center), shape = CircleShape) { Lc(R.drawable.ic_play_round, Modifier.padding(12.dp), tint = Ink.accent, size = 104.dp) }
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = EDGE, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.widthIn(max = 280.dp), contentAlignment = Alignment.Center) {
-                            TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center))
+                            TitleMark(t, maxHeight = 84.dp, style = Type.display.copy(textAlign = TextAlign.Center), centred = true)
                         }
-                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp))
+                        Facts(t.copy(genres = t.genres.take(2)), Modifier.padding(top = 12.dp), centred = isPortraitPhone(), release = release)
                         HeroButtons(t, inList, onOpen, Modifier.padding(top = 16.dp))
                     }
                 }
             }
         }
-        if (count > 1) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // The clean layout carries its dots on the poster (above); the fade and wide ones keep them at the foot.
+        if (count > 1 && (wide || HeaderEdge.fade)) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(count) { i ->
                 Box(Modifier.size(if (i == pager.currentPage) 16.dp else 6.dp, 4.dp).clip(CircleShape).background(if (i == pager.currentPage) Ink.text else Ink.faint))
             }
@@ -481,9 +608,24 @@ private fun Hero(pager: PagerState, titles: List<Title>, onOpen: (Title) -> Unit
 
 @Composable
 private fun HeroButtons(t: Title, inList: Boolean, onOpen: (Title) -> Unit, modifier: Modifier) {
+    if (isPortraitPhone()) {
+        // Upright: Watch is the play centred on the poster now; here, just one big add-to-list plus, centred, no text,
+        // in the theme's own colour (the owner's choice).
+        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Tap({ SavedStore.toggle(t) }, shape = CircleShape) {
+                Lc(if (inList) L.drawable.lucide_ic_check else R.drawable.ic_plus_round, Modifier.padding(10.dp), tint = if (inList) Ink.accent else Ink.text, size = 60.dp)
+            }
+        }
+        return
+    }
+    // Tablet / landscape: the pair of buttons as before.
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button("Watch", { onOpen(t) }, Modifier.widthIn(min = 132.dp), icon = L.drawable.lucide_ic_play, primary = true)
+        val each = Modifier.widthIn(min = 132.dp)
+        Button("Watch", { onOpen(t) }, each, icon = L.drawable.lucide_ic_play, primary = true, glass = true)
         // Wide enough for "In My List", and the details screen's toggle: a green disc springs in behind the tick.
-        Button(if (inList) "In My List" else "My List", { SavedStore.toggle(t) }, Modifier.widthIn(min = 132.dp), icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList)
+        Button(
+            if (inList) "In My Listing" else "My Listing", { SavedStore.toggle(t) }, each,
+            icon = if (inList) L.drawable.lucide_ic_check else L.drawable.lucide_ic_plus, on = inList, glass = true,
+        )
     }
 }

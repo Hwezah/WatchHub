@@ -29,7 +29,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.SubtitleView
-import org.videolan.libvlc.MediaPlayer.ScaleType
 import java.io.File
 import java.util.Locale
 import androidx.media3.common.Tracks as MediaTracks
@@ -99,7 +98,7 @@ class ExoView(context: Context) : Video(context) {
         }
     private var paused = false
     private var rate = 1f
-    private var scale = ScaleType.SURFACE_BEST_FIT
+    private var scale = Scale.BEST_FIT
     private var videoSize = VideoSize.UNKNOWN
     /** Indexes into the playable subtitle / audio tracks; text is off until one is picked. */
     private var wantedText: Int? = null
@@ -192,7 +191,7 @@ class ExoView(context: Context) : Video(context) {
         player?.let { applyTracks(it.currentTracks) }
     }
 
-    override fun setScale(type: ScaleType) {
+    override fun setScale(type: Scale) {
         scale = type
         applyScale()
     }
@@ -292,7 +291,7 @@ class ExoView(context: Context) : Video(context) {
             http.setDefaultRequestProperties(headers)
             val files = subtitleFiles.filter { subtitleMime(it) != null && File(it).let { f -> f.exists() && f.length() > 0L } }
             attached = files
-            val item = MediaItem.Builder().setUri(uri).setSubtitleConfigurations(
+            val item = MediaItem.Builder().setUri(uri).apply { mime?.let(::setMimeType) }.setSubtitleConfigurations(
                 files.map { path ->
                     val f = File(path)
                     MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(f))
@@ -380,22 +379,22 @@ class ExoView(context: Context) : Video(context) {
         val w = videoSize.width
         val h = videoSize.height
         frame.resizeMode = when (scale) {
-            ScaleType.SURFACE_FIT_SCREEN -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            ScaleType.SURFACE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+            Scale.FIT_SCREEN -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            Scale.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
             else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
         // The layer is the whole screen, whatever the picture does: with the picture filling it,
         // the words go down by the edge, off as much of the film as they can.
-        val fills = scale == ScaleType.SURFACE_FIT_SCREEN || scale == ScaleType.SURFACE_FILL
+        val fills = scale == Scale.FIT_SCREEN || scale == Scale.FILL
         subtitleView.setBottomPaddingFraction(if (fills) FILLED_SUBTITLE_PADDING else SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION)
         frame.setAspectRatio(
             when (scale) {
-                ScaleType.SURFACE_16_9 -> 16f / 9f
-                ScaleType.SURFACE_4_3 -> 4f / 3f
+                Scale.RATIO_16_9 -> 16f / 9f
+                Scale.RATIO_4_3 -> 4f / 3f
                 else -> if (h > 0) w * videoSize.pixelWidthHeightRatio / h else 0f
             },
         )
-        val original = scale == ScaleType.SURFACE_ORIGINAL && w > 0 && h > 0
+        val original = scale == Scale.ORIGINAL && w > 0 && h > 0
         frame.layoutParams = LayoutParams(if (original) w else LayoutParams.MATCH_PARENT, if (original) h else LayoutParams.MATCH_PARENT, Gravity.CENTER)
     }
 
