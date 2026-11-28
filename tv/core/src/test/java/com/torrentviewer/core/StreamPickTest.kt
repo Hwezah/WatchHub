@@ -30,6 +30,18 @@ class StreamPickTest {
         assertEquals(hits, streamOrder(hits, "any"))
     }
 
+    /** Direct Play tries every direct link before any torrent (no peer-finding when a link can serve it), then by tier. */
+    @Test fun directPlayPrefersLinksOverTorrents() {
+        val link480 = Hit("l480", "a", "https://x/l480", 0, 0, 216, "480p", "tv", Scope.EPISODE, null)
+        val link1080 = Hit("l1080", "a", "https://x/l1080", 0, 0, 900, "1080p", "tv", Scope.EPISODE, null)
+        val torrent1080 = Hit("t1080", "t", "magnet:?xt=urn:btih:t1080", 80, 0, 0, "1080p", "tv", Scope.EPISODE, null)
+        val torrent720 = Hit("t720", "t", "magnet:?xt=urn:btih:t720", 40, 0, 0, "720p", "tv", Scope.EPISODE, null)
+        // Aiming 1080p with a 1080p torrent present: the links still lead (1080p link, then the 480p link), torrents last.
+        assertEquals(listOf("l1080", "l480", "t1080", "t720"), streamOrder(listOf(torrent1080, link480, torrent720, link1080), "1080p").map { it.id })
+        // Only a torrent at the aim, a link below it: the link still wins — no finding peers.
+        assertEquals(listOf("l480", "t1080"), streamOrder(listOf(torrent1080, link480), "1080p").map { it.id })
+    }
+
     @Test fun saysWhenItPlaysAnother() {
         assertNull(streamNote(hit("a", "720p"), "720p"))
         assertEquals("No 720p source — playing 1080p", streamNote(hit("a", "1080p"), "720p"))

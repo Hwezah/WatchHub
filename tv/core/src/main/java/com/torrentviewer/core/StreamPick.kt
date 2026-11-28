@@ -19,22 +19,25 @@ fun resolutionOf(quality: String?): Int? = when {
 fun streamTarget(wanted: String, onMobileData: Boolean): String = wanted.ifEmpty { if (onMobileData) "720p" else "1080p" }
 
 /**
- * [hits] in the order Play tries them for [target] ([streamTarget]): that resolution first, then the nearest below it
- * (lighter, so it streams), then the nearest above; those whose resolution isn't known last. Within a resolution the
- * order found is kept: the search's own ranking.
+ * [hits] in the order Play tries them for [target] ([streamTarget]): direct links before torrents (the owner's rule —
+ * a torrent has to find peers first, so Direct Play falls to one only when no link can serve the title, even if the
+ * search ranked a torrent higher), then that resolution first, the nearest below it (lighter, so it streams), the
+ * nearest above, those whose resolution isn't known last. Within a tier the order found is kept: the search's ranking.
  */
 fun streamOrder(hits: List<Hit>, target: String): List<Hit> {
-    val aim = resolutionOf(target) ?: return hits
-    // A stable sort, by tier (match, below, above, unknown) and then how far off.
-    return hits.sortedBy { h ->
-        val r = resolutionOf(h.quality)
-        when {
-            r == null -> 3 * 10_000
-            r == aim -> 0
-            r < aim -> 10_000 + (aim - r)
-            else -> 2 * 10_000 + (r - aim)
-        }
-    }
+    val aim = resolutionOf(target)
+    // A stable sort: links ahead of torrents, then by tier (match, below, above, unknown) and how far off.
+    return hits.sortedWith(
+        compareByDescending<Hit> { it.direct }.thenBy { h ->
+            val r = resolutionOf(h.quality)
+            when {
+                aim == null || r == null -> 3 * 10_000
+                r == aim -> 0
+                r < aim -> 10_000 + (aim - r)
+                else -> 2 * 10_000 + (r - aim)
+            }
+        },
+    )
 }
 
 /** What to tell the viewer when Play couldn't find [target] and plays [playing]'s resolution instead; null when it's a match. */
