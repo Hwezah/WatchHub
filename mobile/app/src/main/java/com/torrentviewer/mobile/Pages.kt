@@ -1049,7 +1049,7 @@ fun SettingsScreen(watch: Watch, who: Profile, onSwitchProfile: () -> Unit) {
                                 watch.notes.tryEmit("PIN set for ${me.name}")
                             }
                         }
-                    }, Modifier.weight(1f), icon = L.drawable.lucide_ic_lock)
+                    }, Modifier.weight(1f), icon = L.drawable.lucide_ic_lock, tall = true)
                 }
                 if (locked) Button("Remove PIN", {
                     if (unlocked) {
